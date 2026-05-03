@@ -1,0 +1,13 @@
+rarc_code,description
+N1,Alert: You may appeal this decision
+N4,Alert: Missing/Incomplete/Invalid procedure code
+N30,Alert: Missing/Incomplete patient information
+N56,Alert: Procedure code billed is not correct
+N115,Alert: This decision was based on a National Coverage Determination
+N386,Alert: This decision was based on a Local Coverage Determination
+M15,Alert: Separately billed services not allowed
+M79,Alert: Procedure requires documentation to support medical necessity
+MA04,Alert: Secondary payment cannot be determined
+MA130,Alert: Claim was denied based on clinical review
+N362,Alert: Missing/Incomplete authorization number
+N657,Alert: Provider not enrolled; cannot adjudicate

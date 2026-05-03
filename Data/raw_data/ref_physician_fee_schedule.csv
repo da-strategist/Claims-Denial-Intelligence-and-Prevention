@@ -1,0 +1,61 @@
+cpt_code,description,category,work_rvu,pe_rvu_facility,pe_rvu_nonfacility,mp_rvu,total_rvu_facility,total_rvu_nonfacility,conversion_factor_2024,conversion_factor_2025,medicare_payment_facility_2024,medicare_payment_nonfacility_2024,medicare_payment_facility_2025,medicare_payment_nonfacility_2025,gpci_work,gpci_pe,gpci_mp,locality,mac,status_indicator
+99213,"Office visit, established, low complexity",E&M,1.3,0.59,1.23,0.04,1.92,2.57,33.2875,32.7442,63.14,83.71,62.11,82.35,1.007,0.951,0.802,"Charlotte, NC (Mecklenburg County)",Palmetto GBA,A
+99214,"Office visit, established, moderate complexity",E&M,1.92,0.86,1.82,0.06,2.84,3.8,33.2875,32.7442,93.25,123.64,91.73,121.62,1.007,0.951,0.802,"Charlotte, NC (Mecklenburg County)",Palmetto GBA,A
+99215,"Office visit, established, high complexity",E&M,2.8,1.26,2.66,0.08,4.14,5.54,33.2875,32.7442,135.99,180.31,133.77,177.36,1.007,0.951,0.802,"Charlotte, NC (Mecklenburg County)",Palmetto GBA,A
+99203,"Office visit, new patient, low complexity",E&M,1.6,0.72,1.52,0.05,2.37,3.17,33.2875,32.7442,77.71,103.03,76.44,101.35,1.007,0.951,0.802,"Charlotte, NC (Mecklenburg County)",Palmetto GBA,A
+99204,"Office visit, new patient, moderate complexity",E&M,2.6,1.17,2.47,0.08,3.85,5.15,33.2875,32.7442,126.27,167.43,124.21,164.69,1.007,0.951,0.802,"Charlotte, NC (Mecklenburg County)",Palmetto GBA,A
+99232,"Subsequent hospital care, moderate",E&M,1.39,0.63,1.32,0.04,2.06,2.75,33.2875,32.7442,67.51,89.51,66.41,88.05,1.007,0.951,0.802,"Charlotte, NC (Mecklenburg County)",Palmetto GBA,A
+99233,"Subsequent hospital care, high",E&M,2.0,0.9,1.9,0.06,2.96,3.96,33.2875,32.7442,97.13,128.79,95.55,126.69,1.007,0.951,0.802,"Charlotte, NC (Mecklenburg County)",Palmetto GBA,A
+99223,"Initial hospital care, high complexity",E&M,3.86,1.74,3.67,0.12,5.71,7.64,33.2875,32.7442,187.47,248.56,184.41,244.51,1.007,0.951,0.802,"Charlotte, NC (Mecklenburg County)",Palmetto GBA,A
+99285,"ED visit, high complexity",E&M,4.0,1.8,3.8,0.12,5.92,7.92,33.2875,32.7442,194.27,257.58,191.1,253.38,1.007,0.951,0.802,"Charlotte, NC (Mecklenburg County)",Palmetto GBA,A
+99283,"ED visit, moderate complexity",E&M,2.56,1.15,2.43,0.08,3.79,5.07,33.2875,32.7442,124.33,164.85,122.3,162.16,1.007,0.951,0.802,"Charlotte, NC (Mecklenburg County)",Palmetto GBA,A
+99284,"ED visit, moderately high complexity",E&M,3.26,1.47,3.1,0.1,4.82,6.45,33.2875,32.7442,158.33,209.93,155.74,206.5,1.007,0.951,0.802,"Charlotte, NC (Mecklenburg County)",Palmetto GBA,A
+99291,"Critical care, first 30-74 minutes",E&M,4.5,2.02,4.27,0.14,6.66,8.91,33.2875,32.7442,218.55,289.78,214.98,285.05,1.007,0.951,0.802,"Charlotte, NC (Mecklenburg County)",Palmetto GBA,A
+36415,Venipuncture,Lab,0.17,0.0,0.34,0.01,0.18,0.52,33.2875,32.7442,5.97,16.73,5.87,16.46,1.007,0.951,0.802,"Charlotte, NC (Mecklenburg County)",Palmetto GBA,X
+80053,Comprehensive metabolic panel,Lab,0.0,0.0,1.5,0.01,0.01,1.51,33.2875,32.7442,0.27,47.75,0.26,46.97,1.007,0.951,0.802,"Charlotte, NC (Mecklenburg County)",Palmetto GBA,X
+85025,CBC with differential,Lab,0.0,0.0,1.5,0.01,0.01,1.51,33.2875,32.7442,0.27,47.75,0.26,46.97,1.007,0.951,0.802,"Charlotte, NC (Mecklenburg County)",Palmetto GBA,X
+80061,Lipid panel,Lab,0.0,0.0,1.5,0.01,0.01,1.51,33.2875,32.7442,0.27,47.75,0.26,46.97,1.007,0.951,0.802,"Charlotte, NC (Mecklenburg County)",Palmetto GBA,X
+81001,Urinalysis with microscopy,Lab,0.0,0.0,1.5,0.01,0.01,1.51,33.2875,32.7442,0.27,47.75,0.26,46.97,1.007,0.951,0.802,"Charlotte, NC (Mecklenburg County)",Palmetto GBA,X
+71046,"Chest X-ray, 2 views",Radiology,0.18,0.14,0.27,0.01,0.33,0.46,33.2875,32.7442,10.78,14.77,10.61,14.53,1.007,0.951,0.802,"Charlotte, NC (Mecklenburg County)",Palmetto GBA,A
+74177,CT abdomen/pelvis with contrast,Radiology,1.74,1.39,2.61,0.07,3.2,4.42,33.2875,32.7442,104.25,142.81,102.55,140.48,1.007,0.951,0.802,"Charlotte, NC (Mecklenburg County)",Palmetto GBA,A
+70553,MRI brain with and without contrast,Radiology,2.28,1.82,3.42,0.09,4.2,5.79,33.2875,32.7442,136.6,187.13,134.37,184.07,1.007,0.951,0.802,"Charlotte, NC (Mecklenburg County)",Palmetto GBA,A
+73721,MRI lower extremity without contrast,Radiology,1.42,1.14,2.13,0.06,2.61,3.61,33.2875,32.7442,85.08,116.54,83.69,114.64,1.007,0.951,0.802,"Charlotte, NC (Mecklenburg County)",Palmetto GBA,A
+77067,"Screening mammography, bilateral",Radiology,1.19,0.95,1.78,0.05,2.19,3.02,33.2875,32.7442,71.3,97.67,70.13,96.07,1.007,0.951,0.802,"Charlotte, NC (Mecklenburg County)",Palmetto GBA,A
+93000,"ECG, 12-lead",Cardiology,0.17,0.06,0.14,0.01,0.24,0.33,33.2875,32.7442,7.95,10.64,7.82,10.46,1.007,0.951,0.802,"Charlotte, NC (Mecklenburg County)",Palmetto GBA,A
+93306,Transthoracic echocardiography,Cardiology,0.92,0.32,0.78,0.07,1.32,1.78,33.2875,32.7442,43.0,57.56,42.3,56.62,1.007,0.951,0.802,"Charlotte, NC (Mecklenburg County)",Palmetto GBA,A
+93458,Left heart catheterization,Cardiology,4.22,1.48,3.59,0.34,6.03,8.14,33.2875,32.7442,197.23,264.02,194.01,259.71,1.007,0.951,0.802,"Charlotte, NC (Mecklenburg County)",Palmetto GBA,A
+92928,Percutaneous coronary stent,Cardiology,9.5,3.32,8.07,0.76,13.58,18.34,33.2875,32.7442,443.99,594.36,436.75,584.66,1.007,0.951,0.802,"Charlotte, NC (Mecklenburg County)",Palmetto GBA,A
+33533,"CABG, single graft",Surgery,33.75,11.81,28.69,2.7,48.26,65.14,33.2875,32.7442,1577.34,2111.54,1551.59,2077.08,1.007,0.951,0.802,"Charlotte, NC (Mecklenburg County)",Palmetto GBA,A
+43239,Upper GI endoscopy with biopsy,Surgery,2.39,0.84,2.03,0.19,3.42,4.61,33.2875,32.7442,111.7,149.53,109.88,147.09,1.007,0.951,0.802,"Charlotte, NC (Mecklenburg County)",Palmetto GBA,A
+45380,Colonoscopy with biopsy,Surgery,3.36,1.18,2.86,0.27,4.8,6.48,33.2875,32.7442,157.03,210.22,154.47,206.78,1.007,0.951,0.802,"Charlotte, NC (Mecklenburg County)",Palmetto GBA,A
+27447,Total knee replacement,Surgery,20.77,7.27,17.65,1.66,29.7,40.09,33.2875,32.7442,970.71,1299.46,954.86,1278.25,1.007,0.951,0.802,"Charlotte, NC (Mecklenburg County)",Palmetto GBA,A
+27130,Total hip replacement,Surgery,20.77,7.27,17.65,1.66,29.7,40.09,33.2875,32.7442,970.71,1299.46,954.86,1278.25,1.007,0.951,0.802,"Charlotte, NC (Mecklenburg County)",Palmetto GBA,A
+47562,Laparoscopic cholecystectomy,Surgery,10.54,3.69,8.96,0.84,15.07,20.34,33.2875,32.7442,492.6,659.43,484.56,648.66,1.007,0.951,0.802,"Charlotte, NC (Mecklenburg County)",Palmetto GBA,A
+44970,Laparoscopic appendectomy,Surgery,9.83,3.44,8.36,0.79,14.06,18.97,33.2875,32.7442,459.41,615.01,451.92,604.97,1.007,0.951,0.802,"Charlotte, NC (Mecklenburg County)",Palmetto GBA,A
+35301,Carotid endarterectomy,Surgery,16.98,5.94,14.43,1.36,24.28,32.77,33.2875,32.7442,793.58,1062.34,780.62,1045.0,1.007,0.951,0.802,"Charlotte, NC (Mecklenburg County)",Palmetto GBA,A
+90837,"Psychotherapy, 60 minutes",Behavioral,1.65,0.66,1.48,0.08,2.39,3.22,33.2875,32.7442,78.4,104.52,77.12,102.82,1.007,0.951,0.802,"Charlotte, NC (Mecklenburg County)",Palmetto GBA,A
+90834,"Psychotherapy, 45 minutes",Behavioral,1.23,0.49,1.11,0.06,1.78,2.4,33.2875,32.7442,58.45,77.92,57.49,76.64,1.007,0.951,0.802,"Charlotte, NC (Mecklenburg County)",Palmetto GBA,A
+96372,"Therapeutic injection, SC/IM",Medicine,0.17,0.07,0.15,0.01,0.25,0.33,33.2875,32.7442,8.08,10.77,7.95,10.59,1.007,0.951,0.802,"Charlotte, NC (Mecklenburg County)",Palmetto GBA,A
+96413,"Chemo admin, IV infusion, first hour",Medicine,1.57,0.63,1.41,0.08,2.28,3.06,33.2875,32.7442,74.6,99.45,73.39,97.83,1.007,0.951,0.802,"Charlotte, NC (Mecklenburg County)",Palmetto GBA,A
+96415,"Chemo admin, IV infusion, add'l hour",Medicine,0.58,0.23,0.52,0.03,0.84,1.13,33.2875,32.7442,27.56,36.74,27.11,36.14,1.007,0.951,0.802,"Charlotte, NC (Mecklenburg County)",Palmetto GBA,A
+97110,Therapeutic exercises,Rehab,0.45,0.18,0.41,0.02,0.65,0.88,33.2875,32.7442,21.38,28.51,21.03,28.04,1.007,0.951,0.802,"Charlotte, NC (Mecklenburg County)",Palmetto GBA,A
+97140,Manual therapy techniques,Rehab,0.43,0.17,0.39,0.02,0.62,0.84,33.2875,32.7442,20.43,27.24,20.1,26.79,1.007,0.951,0.802,"Charlotte, NC (Mecklenburg County)",Palmetto GBA,A
+97161,"PT evaluation, low complexity",Rehab,1.2,0.48,1.08,0.06,1.74,2.34,33.2875,32.7442,57.02,76.02,56.09,74.77,1.007,0.951,0.802,"Charlotte, NC (Mecklenburg County)",Palmetto GBA,A
+90715,Tdap vaccine,Preventive,0.17,0.07,0.15,0.01,0.25,0.33,33.2875,32.7442,8.08,10.77,7.95,10.59,1.007,0.951,0.802,"Charlotte, NC (Mecklenburg County)",Palmetto GBA,A
+90471,Immunization administration,Preventive,0.17,0.07,0.15,0.01,0.25,0.33,33.2875,32.7442,8.08,10.77,7.95,10.59,1.007,0.951,0.802,"Charlotte, NC (Mecklenburg County)",Palmetto GBA,A
+G0121,Colorectal cancer screening,Preventive,3.36,1.34,3.02,0.17,4.87,6.55,33.2875,32.7442,159.66,212.84,157.05,209.37,1.007,0.951,0.802,"Charlotte, NC (Mecklenburg County)",Palmetto GBA,A
+99395,"Preventive visit, 18-39 years",Preventive,1.5,0.6,1.35,0.08,2.18,2.93,33.2875,32.7442,71.28,95.02,70.11,93.47,1.007,0.951,0.802,"Charlotte, NC (Mecklenburg County)",Palmetto GBA,A
+99396,"Preventive visit, 40-64 years",Preventive,1.75,0.7,1.57,0.09,2.54,3.41,33.2875,32.7442,83.16,110.86,81.8,109.05,1.007,0.951,0.802,"Charlotte, NC (Mecklenburg County)",Palmetto GBA,A
+11042,"Debridement, subcutaneous tissue",Surgery,1.01,0.35,0.86,0.08,1.44,1.95,33.2875,32.7442,47.2,63.19,46.43,62.16,1.007,0.951,0.802,"Charlotte, NC (Mecklenburg County)",Palmetto GBA,A
+20610,"Joint aspiration/injection, major",Medicine,1.13,0.45,1.02,0.06,1.64,2.2,33.2875,32.7442,53.7,71.58,52.82,70.41,1.007,0.951,0.802,"Charlotte, NC (Mecklenburg County)",Palmetto GBA,A
+62322,Lumbar epidural injection,Pain,1.42,0.5,1.21,0.11,2.03,2.74,33.2875,32.7442,66.37,88.84,65.28,87.39,1.007,0.951,0.802,"Charlotte, NC (Mecklenburg County)",Palmetto GBA,A
+64483,"Transforaminal epidural, lumbar",Pain,1.9,0.66,1.61,0.15,2.72,3.67,33.2875,32.7442,88.8,118.87,87.35,116.93,1.007,0.951,0.802,"Charlotte, NC (Mecklenburg County)",Palmetto GBA,A
+59400,"Routine OB care, vaginal delivery",OB,22.19,7.77,18.86,1.78,31.73,42.83,33.2875,32.7442,1037.07,1388.3,1020.14,1365.64,1.007,0.951,0.802,"Charlotte, NC (Mecklenburg County)",Palmetto GBA,A
+59510,"Routine OB care, cesarean delivery",OB,26.96,9.44,22.92,2.16,38.55,52.03,33.2875,32.7442,1260.0,1686.73,1239.44,1659.2,1.007,0.951,0.802,"Charlotte, NC (Mecklenburg County)",Palmetto GBA,A
+59025,Fetal non-stress test,OB,0.55,0.19,0.47,0.04,0.79,1.06,33.2875,32.7442,25.7,34.41,25.29,33.85,1.007,0.951,0.802,"Charlotte, NC (Mecklenburg County)",Palmetto GBA,A
+77386,"IMRT delivery, complex",Radiation,1.6,0.64,1.44,0.08,2.32,3.12,33.2875,32.7442,76.03,101.35,74.79,99.7,1.007,0.951,0.802,"Charlotte, NC (Mecklenburg County)",Palmetto GBA,A
+77263,"Radiation treatment planning, complex",Radiation,3.56,1.42,3.2,0.18,5.16,6.94,33.2875,32.7442,169.16,225.51,166.4,221.83,1.007,0.951,0.802,"Charlotte, NC (Mecklenburg County)",Palmetto GBA,A
+90832,"Psychotherapy, 30 minutes",Behavioral,0.82,0.33,0.74,0.04,1.19,1.6,33.2875,32.7442,38.96,51.94,38.33,51.1,1.007,0.951,0.802,"Charlotte, NC (Mecklenburg County)",Palmetto GBA,A
+99281,"ED visit, minimal",E&M,0.48,0.22,0.46,0.01,0.71,0.95,33.2875,32.7442,23.31,30.91,22.93,30.41,1.007,0.951,0.802,"Charlotte, NC (Mecklenburg County)",Palmetto GBA,A
+93005,ECG tracing only,Cardiology,0.09,0.03,0.08,0.01,0.13,0.17,33.2875,32.7442,4.21,5.63,4.14,5.54,1.007,0.951,0.802,"Charlotte, NC (Mecklenburg County)",Palmetto GBA,A
+94640,Nebulizer treatment,Respiratory,0.16,0.06,0.14,0.01,0.23,0.31,33.2875,32.7442,7.6,10.14,7.48,9.97,1.007,0.951,0.802,"Charlotte, NC (Mecklenburg County)",Palmetto GBA,A

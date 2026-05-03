@@ -1,0 +1,8 @@
+facility_id,facility_name,facility_type,bed_count,address,status,tax_id
+FAC001,Meridian Regional Medical Center - Main Campus,Acute Care Hospital,312,"4200 Providence Rd, Charlotte, NC 28211",Active,1234567890
+FAC002,Meridian Ambulatory Surgery Center,ASC,0,"4250 Providence Rd, Charlotte, NC 28211",Active,1234567890
+FAC003,Meridian Primary Care - University,Clinic,0,"9105 University City Blvd, Charlotte, NC 28213",Active,1234567890
+FAC004,Meridian Primary Care - Ballantyne,Clinic,0,"15235 John J Delaney Dr, Charlotte, NC 28277",Active,1234567890
+FAC005,Meridian Imaging Center,Imaging,0,"4300 Providence Rd, Charlotte, NC 28211",Active,1234567890
+FAC006,Meridian Urgent Care - Northlake,Urgent Care,0,"9820 Northlake Centre Pkwy, Charlotte, NC 28216",Active,1234567890
+FAC007,Meridian Rehabilitation Center,Rehab,24,"4350 Providence Rd, Charlotte, NC 28211",Active,1234567890

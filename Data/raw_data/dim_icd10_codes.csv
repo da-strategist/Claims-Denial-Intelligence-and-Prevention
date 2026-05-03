@@ -1,0 +1,81 @@
+icd10_code,description,body_system,relative_frequency,acuity_type
+I10,Essential hypertension,Circulatory,0.08,Both
+E11.9,Type 2 diabetes without complications,Endocrine,0.06,Both
+J06.9,Acute upper respiratory infection,Respiratory,0.05,Chronic
+M54.5,Low back pain,Musculoskeletal,0.05,Both
+I25.10,Atherosclerotic heart disease,Circulatory,0.04,Acute
+J44.1,COPD with acute exacerbation,Respiratory,0.03,Both
+N39.0,Urinary tract infection,Genitourinary,0.03,Acute
+K21.0,GERD with esophagitis,Digestive,0.03,Both
+F32.1,"Major depressive disorder, moderate",Mental,0.02,Both
+E78.5,Hyperlipidemia,Endocrine,0.04,Chronic
+I48.91,"Atrial fibrillation, unspecified",Circulatory,0.03,Both
+J18.9,"Pneumonia, unspecified",Respiratory,0.02,Both
+M79.3,"Panniculitis, unspecified",Musculoskeletal,0.01,Acute
+G43.909,"Migraine, unspecified",Nervous,0.02,Both
+R10.9,Unspecified abdominal pain,Symptoms,0.02,Acute
+K80.20,Gallstones without obstruction,Digestive,0.02,Chronic
+I50.9,"Heart failure, unspecified",Circulatory,0.03,Acute
+E11.65,Type 2 diabetes with hyperglycemia,Endocrine,0.02,Chronic
+J45.20,"Mild intermittent asthma, uncomplicated",Respiratory,0.02,Both
+M17.11,"Primary osteoarthritis, right knee",Musculoskeletal,0.02,Chronic
+C50.911,"Malignant neoplasm, right female breast",Neoplasm,0.01,Chronic
+Z87.891,Personal history of nicotine dependence,Factors,0.01,Acute
+R07.9,"Chest pain, unspecified",Symptoms,0.02,Both
+N18.3,"Chronic kidney disease, stage 3",Genitourinary,0.02,Both
+D64.9,"Anemia, unspecified",Blood,0.02,Acute
+I63.9,"Cerebral infarction, unspecified",Circulatory,0.01,Chronic
+S72.001A,"Fracture of femur, initial encounter",Injury,0.01,Chronic
+K57.30,Diverticulosis without hemorrhage,Digestive,0.01,Chronic
+G47.33,Obstructive sleep apnea,Nervous,0.02,Chronic
+M48.06,"Spinal stenosis, lumbar region",Musculoskeletal,0.01,Acute
+I21.09,"ST elevation MI, anterior wall",Circulatory,0.01,Chronic
+Z96.641,Presence of right artificial hip joint,Factors,0.01,Chronic
+E03.9,"Hypothyroidism, unspecified",Endocrine,0.02,Chronic
+J96.01,Acute respiratory failure with hypoxia,Respiratory,0.01,Chronic
+R06.02,Shortness of breath,Symptoms,0.02,Both
+N40.0,Benign prostatic hyperplasia without LUTS,Genitourinary,0.01,Acute
+K59.00,"Constipation, unspecified",Digestive,0.01,Chronic
+F41.1,Generalized anxiety disorder,Mental,0.02,Acute
+I73.9,Peripheral vascular disease,Circulatory,0.01,Acute
+M62.838,Other muscle spasm,Musculoskeletal,0.01,Acute
+Z23,Encounter for immunization,Factors,0.01,Both
+B34.9,"Viral infection, unspecified",Infectious,0.01,Acute
+L03.116,Cellulitis of left lower limb,Skin,0.01,Acute
+T81.4XXA,Infection following procedure,Injury,0.005,Chronic
+S82.001A,"Fracture of tibia, initial",Injury,0.005,Both
+O80,Full-term uncomplicated delivery,Pregnancy,0.01,Chronic
+O99.89,Other specified diseases complicating pregnancy,Pregnancy,0.005,Both
+Z38.00,"Single liveborn infant, born in hospital",Perinatal,0.01,Both
+P59.9,"Neonatal jaundice, unspecified",Perinatal,0.005,Chronic
+R50.9,"Fever, unspecified",Symptoms,0.01,Both
+Z51.11,Encounter for chemotherapy,Factors,0.01,Acute
+C34.90,Malignant neoplasm of lung,Neoplasm,0.005,Chronic
+G40.909,"Epilepsy, unspecified",Nervous,0.005,Both
+I70.0,Atherosclerosis of aorta,Circulatory,0.005,Both
+K35.80,"Acute appendicitis, unspecified",Digestive,0.005,Acute
+M75.110,"Rotator cuff tear, right shoulder",Musculoskeletal,0.005,Acute
+S52.501A,"Fracture of radius, initial",Injury,0.005,Chronic
+Z80.3,Family history of breast cancer,Factors,0.005,Chronic
+E66.01,Morbid obesity due to excess calories,Endocrine,0.01,Acute
+I11.9,Hypertensive heart disease without HF,Circulatory,0.005,Acute
+J20.9,"Acute bronchitis, unspecified",Respiratory,0.01,Chronic
+M25.561,Pain in right knee,Musculoskeletal,0.01,Chronic
+R11.2,Nausea with vomiting,Symptoms,0.005,Both
+Z01.818,Encounter for other preprocedural exam,Factors,0.005,Both
+F10.20,"Alcohol dependence, uncomplicated",Mental,0.005,Acute
+N20.0,Calculus of kidney,Genitourinary,0.005,Chronic
+I42.9,"Cardiomyopathy, unspecified",Circulatory,0.005,Chronic
+K70.30,Alcoholic cirrhosis without ascites,Digestive,0.005,Both
+G20,Parkinson's disease,Nervous,0.005,Chronic
+M06.9,"Rheumatoid arthritis, unspecified",Musculoskeletal,0.005,Chronic
+D50.9,"Iron deficiency anemia, unspecified",Blood,0.005,Both
+Z95.1,Presence of aortocoronary bypass graft,Factors,0.005,Both
+I26.99,Other pulmonary embolism,Circulatory,0.005,Chronic
+S06.0X0A,"Concussion without LOC, initial",Injury,0.005,Acute
+M16.11,"Primary osteoarthritis, right hip",Musculoskeletal,0.005,Both
+C61,Malignant neoplasm of prostate,Neoplasm,0.005,Both
+Z12.31,Encounter for screening mammogram,Factors,0.005,Acute
+R42,Dizziness and giddiness,Symptoms,0.005,Chronic
+E87.1,Hypo-osmolality and hyponatremia,Endocrine,0.005,Acute
+A41.9,"Sepsis, unspecified organism",Infectious,0.005,Both
