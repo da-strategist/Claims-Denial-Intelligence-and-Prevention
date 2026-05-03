@@ -1,32 +1,3 @@
-carc_code,description,group_code
-1,Deductible,PR
-2,Coinsurance,PR
-3,Copay,PR
-4,Procedure not covered by plan,CO
-5,Services not authorized,CO
-16,Claim lacks required information,CO
-18,Duplicate claim/service,CO
-22,Required effective date coordination of benefits,CO
-27,Expenses incurred after coverage terminated,CO
-29,Time limit for filing has expired,CO
-31,Patient cannot be identified as our insured,CO
-45,Charges exceed fee schedule/usual & customary,CO
-50,Non-covered service - not deemed medical necessity,CO
-55,Procedure requires PA; not obtained,CO
-96,Non-covered charges,CO
-97,Payment adjusted - benefit maximum reached,CO
-109,Claim not covered by this payer,CO
-119,Benefit maximum for this time period reached,CO
-125,Payment adjusted - submission/billing error,CO
-136,Claim not covered; patient ineligible,CO
-151,Payment adjusted - prior payer paid above allowed,OA
-167,Diagnosis not consistent with procedure,CO
-170,Payment made to patient; provider not enrolled,CO
-181,Procedure code inconsistent with modifier,CO
-182,Procedure code inconsistent with diagnosis,CO
-197,Precertification/authorization absent,CO
-204,Service not covered unless condition met,CO
-219,Claim denied based on payer processing guidelines,CO
-226,Information requested not furnished; claim denied,CO
-242,Services not provided by network providers,CO
-252,Service not adjudicated; requires medical records,CO
+version https://git-lfs.github.com/spec/v1
+oid sha256:1b7b4c6021fc15a54d0b257a896fb7421773bb17d86ce951bf9d94ea28a2de75
+size 1421

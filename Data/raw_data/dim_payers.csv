@@ -1,13 +1,3 @@
-payer_id,payer_name,payer_type,market_share,denial_rate,avg_days_to_pay,pa_strictness,policy_prefix,status
-PAY001,Medicare FFS,Medicare,0.22,0.12,32,0.3,POL-001,Active
-PAY002,Blue Cross NC,Commercial,0.15,0.16,28,0.5,POL-002,Active
-PAY003,NC Medicaid,Medicaid,0.15,0.14,45,0.4,POL-003,Active
-PAY004,UnitedHealthcare MA,Medicare Advantage,0.08,0.22,25,0.7,POL-004,Active
-PAY005,UnitedHealthcare Commercial,Commercial,0.08,0.19,24,0.6,POL-005,Active
-PAY006,Aetna,Commercial,0.06,0.17,26,0.55,POL-006,Active
-PAY007,Humana MA,Medicare Advantage,0.05,0.21,27,0.65,POL-007,Active
-PAY008,Cigna,Commercial,0.05,0.18,23,0.5,POL-008,Active
-PAY009,Medicaid MCO - AmeriHealth,Medicaid MCO,0.05,0.15,40,0.45,POL-009,Active
-PAY010,Self-Pay,Self-Pay,0.04,0.0,0,0.0,POL-010,Active
-PAY011,Tricare,Government,0.04,0.1,30,0.35,POL-011,Active
-PAY012,Workers Comp - Sedgwick,Workers Comp,0.03,0.08,35,0.25,POL-012,Active
+version https://git-lfs.github.com/spec/v1
+oid sha256:e953fdb686d713d0f1b39f279c05e3b9dcdf32927ab3cb35305c0cd4d3c768e1
+size 913

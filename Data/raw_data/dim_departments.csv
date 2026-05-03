@@ -1,15 +1,3 @@
-department_id,department_name,service_line,claim_share,pa_frequency,avg_daily_volume
-DEPT01,Emergency Medicine,Emergency,0.12,0.05,23
-DEPT02,Internal Medicine,Medicine,0.14,0.15,13
-DEPT03,Cardiology,Medicine,0.1,0.25,17
-DEPT04,Orthopedics,Surgical,0.09,0.35,14
-DEPT05,General Surgery,Surgical,0.08,0.2,21
-DEPT06,Obstetrics & Gynecology,Women's Health,0.07,0.1,16
-DEPT07,Radiology,Ancillary,0.08,0.3,25
-DEPT08,Pathology & Lab,Ancillary,0.06,0.02,15
-DEPT09,Neurology,Medicine,0.05,0.2,23
-DEPT10,Pulmonology,Medicine,0.05,0.15,19
-DEPT11,Oncology,Medicine,0.05,0.4,21
-DEPT12,Pediatrics,Pediatrics,0.04,0.08,24
-DEPT13,Psychiatry,Behavioral Health,0.04,0.12,14
-DEPT14,Physical Therapy,Rehab,0.03,0.18,17
+version https://git-lfs.github.com/spec/v1
+oid sha256:ae9b7e7302fe31276ff128829ff34b37c62409089697a416092848a66e872683
+size 713
