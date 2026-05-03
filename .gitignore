@@ -22,6 +22,9 @@ rcm/package-lock.yml
 logs/
 *.log
 
+# Raw data (lives in rcm/seeds symlink, no need to duplicate)
+Data/raw_data/
+
 # Sensitive / credentials
 *.json
 *.p8
