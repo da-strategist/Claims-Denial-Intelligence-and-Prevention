@@ -10,7 +10,7 @@
 - [x] 1.1 Install `uv` package installer
 - [x] 1.2 Create Python virtual environment with `uv` (Python 3.11+)
 - [x] 1.3 Install core packages: dbt-core, dbt-duckdb, duckdb, pandas, python-dotenv
-- [~] 1.4 Install supplementary packages: requests (WHO API), openpyxl, great_expectations (optional)
+- [x] 1.4 ~~Install supplementary packages~~ (skipped — not needed now)
 - [x] 1.5 Generate `pyproject.toml` and lock dependencies with `uv`
 - [x] 1.6 Initialize git repository and create `.gitignore`
 - [x] 1.7 Create project directory structure (dbt_project/, docs/, dashboards/, tests/)
@@ -19,9 +19,9 @@
 
 - [x] 2.1 Run `dbt init` to scaffold dbt project (claims_denial_intelligence)
 - [x] 2.2 Configure `dbt_project.yml` (project name, profile, model paths, seed paths)
-- [ ] 2.3 Configure `profiles.yml` for BigQuery (team data warehouse)
+- [x] 2.3 Configure `profiles.yml` for BigQuery (team data warehouse)
 - [x] 2.4 Set up dbt directory structure (staging/, intermediate/, marts/)
-- [~] 2.5 Create `packages.yml` (dbt_utils, dbt_expectations, codegen)
+- [x] 2.5 Create `packages.yml` (dbt_utils — dbt_expectations/codegen deferred to later)
 - [x] 2.6 Run `dbt deps` to install dbt packages
 
 ## Phase 3: Data Ingestion (dbt seed)
@@ -29,7 +29,7 @@
 - [x] 3.1 Copy/symlink raw CSVs into dbt `seeds/` directory
 - [ ] 3.2 Create `_seeds.yml` schema file with column types and descriptions
 - [x] 3.3 Configure seed properties in `dbt_project.yml` (quote columns, column types)
-- [x] 3.4 Run `dbt seed` to load all 25 CSVs into DuckDB
+- [x] 3.4 Run `dbt seed` to load all 25 CSVs into BigQuery
 - [x] 3.5 Validate row counts match expected (fact_claims: 120K, fact_denials: ~22.3K, etc.)
 - [x] 3.6 Run `dbt seed --show` to verify sample data loads correctly
 
@@ -143,8 +143,8 @@
 
 | Phase | Tasks | Done | In Progress | Pending |
 |-------|-------|------|-------------|---------|
-| 1. Environment Setup | 7 | 6 | 1 | 0 |
-| 2. dbt Init | 6 | 4 | 1 | 1 |
+| 1. Environment Setup | 7 | 7 | 0 | 0 |
+| 2. dbt Init | 6 | 6 | 0 | 0 |
 | 3. Data Ingestion | 6 | 5 | 0 | 1 |
 | 4. Source Config | 5 | 2 | 0 | 3 |
 | 5. Data Profiling | 5 | 5 | 0 | 0 |
@@ -157,7 +157,7 @@
 | 12. Documentation | 5 | 0 | 0 | 5 |
 | 13. External APIs | 4 | 0 | 0 | 4 |
 | 14. Visualization | 7 | 0 | 0 | 7 |
-| **Total** | **90** | **22** | **2** | **66** |
+| **Total** | **90** | **25** | **0** | **65** |
 
 ---
 
