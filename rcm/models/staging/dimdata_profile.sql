@@ -35,7 +35,18 @@ with profile_cte as
 , payer_contract as 
     (SELECT * 
     FROM {{source ('rcm_raw', 'dim_payer_contracts')}})
+
+, payers as 
+    (SELECT * 
+    FROM {{source ('rcm_raw', 'dim_payers')}})
+
+, providers as 
+    (SELECT * 
+    FROM {{source ('rcm_raw', 'dim_providers')}})
+
 SELECT * FROM profile_cte
+
+
 
 
 /*
