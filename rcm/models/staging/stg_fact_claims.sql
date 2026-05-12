@@ -3,19 +3,22 @@
 WITH fct_claims as 
 
     (SELECT 
+        claim_id,
+        patient_id,
+        provider_id,
         payer_id, 
         facility_id,
         department_id,
-        service_date,
-        submission_date,
+        cast(service_date as date) as service_date,
+        cast(submission_date as date) as submission_date,
         round(total_charge, 2) as total_charge,
         round(total_allowed, 2) as total_allowed,
         round(total_paid,2) as total_paid,
         round(patient_responsibility, 2) as amount_pt_charged,
-        round((total_paid) + (patient_responsibility),2) as bill_confirmation,
+        round((total_paid) + (patient_responsibility),2) as total_collected,
         status,
         claim_type,
-        place_of_service,
+        cast(place_of_service as string) service_point,
         primary_icd10,
         days_in_ar,
         is_clean_claim,
@@ -27,6 +30,9 @@ WITH fct_claims as
 , cleaned as 
     (
     SELECT 
+        claim_id,
+        patient_id,
+        provider_id,
         payer_id, 
         facility_id,
         department_id,
@@ -36,22 +42,18 @@ WITH fct_claims as
         total_allowed,
         total_paid,
         amount_pt_charged,
-        bill_confirmation,
-        CASE WHEN total_allowed = bill_confirmation THEN 1 ELSE 0 END as bill_conf_status,
+        total_collected,
+        CASE WHEN total_allowed = total_collected THEN 1 ELSE 0 END as bill_match_status,
         status,
         claim_type,
-        place_of_service,
+        service_point,
         primary_icd10,
         days_in_ar,
         is_clean_claim,
         pa_required,
         pa_obtained,
-        pa_number
+        pa_number,
+        date_diff(submission_date, service_date, day) as service_to_submission_days
     FROM fct_claims
-    )
-, non as 
-    (
-    SELECT * FROM cleaned 
-    WHERE bill_conf_status = 0
     )
 select * from cleaned
