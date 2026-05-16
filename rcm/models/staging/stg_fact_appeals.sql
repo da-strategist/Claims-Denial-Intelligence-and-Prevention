@@ -12,7 +12,7 @@ WITH src_appeals as
             outcome,
             outcome = 'Overturned' as is_overturned, 
             round(cast(overturn_amount as numeric),2) as overturn_amount,
-            cast(days_to_resolution as int64),
+            cast(days_to_resolution as int64) as days_to_resolve,
             submitted_by
         FROM {{source('rcm_raw', 'fact_appeals')}}       
     )

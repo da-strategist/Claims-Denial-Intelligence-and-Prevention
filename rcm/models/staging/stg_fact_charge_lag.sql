@@ -33,4 +33,4 @@ WITH src_charge_lag AS
             entered_by_role
         FROM src_charge_lag
     )
-        SELECT * FROM src_charge_lag
+        SELECT * FROM cleaned_charge_lag
