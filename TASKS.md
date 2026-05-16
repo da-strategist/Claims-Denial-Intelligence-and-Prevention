@@ -7,47 +7,47 @@
 
 ## Phase 1: Environment & Project Setup
 
-- [ ] 1.1 Install `uv` package installer
-- [ ] 1.2 Create Python virtual environment with `uv` (Python 3.11+)
-- [ ] 1.3 Install core packages: dbt-core, dbt-duckdb, duckdb, pandas, python-dotenv
-- [ ] 1.4 Install supplementary packages: requests (WHO API), openpyxl, great_expectations (optional)
-- [ ] 1.5 Generate `pyproject.toml` and lock dependencies with `uv`
-- [ ] 1.6 Initialize git repository and create `.gitignore`
-- [ ] 1.7 Create project directory structure (dbt_project/, docs/, dashboards/, tests/)
+- [x] 1.1 Install `uv` package installer
+- [x] 1.2 Create Python virtual environment with `uv` (Python 3.11+)
+- [x] 1.3 Install core packages: dbt-core, dbt-duckdb, duckdb, pandas, python-dotenv
+- [x] 1.4 ~~Install supplementary packages~~ (skipped — not needed now)
+- [x] 1.5 Generate `pyproject.toml` and lock dependencies with `uv`
+- [x] 1.6 Initialize git repository and create `.gitignore`
+- [x] 1.7 Create project directory structure (dbt_project/, docs/, dashboards/, tests/)
 
 ## Phase 2: dbt Project Initialization
 
-- [ ] 2.1 Run `dbt init` to scaffold dbt project (claims_denial_intelligence)
-- [ ] 2.2 Configure `dbt_project.yml` (project name, profile, model paths, seed paths)
-- [ ] 2.3 Configure `profiles.yml` for DuckDB (local dev warehouse)
-- [ ] 2.4 Set up dbt directory structure (staging/, intermediate/, marts/)
-- [ ] 2.5 Create `packages.yml` (dbt_utils, dbt_expectations, codegen)
-- [ ] 2.6 Run `dbt deps` to install dbt packages
+- [x] 2.1 Run `dbt init` to scaffold dbt project (claims_denial_intelligence)
+- [x] 2.2 Configure `dbt_project.yml` (project name, profile, model paths, seed paths)
+- [x] 2.3 Configure `profiles.yml` for BigQuery (team data warehouse)
+- [x] 2.4 Set up dbt directory structure (staging/, intermediate/, marts/)
+- [x] 2.5 Create `packages.yml` (dbt_utils — dbt_expectations/codegen deferred to later)
+- [x] 2.6 Run `dbt deps` to install dbt packages
 
 ## Phase 3: Data Ingestion (dbt seed)
 
-- [ ] 3.1 Copy/symlink raw CSVs into dbt `seeds/` directory
+- [x] 3.1 Copy/symlink raw CSVs into dbt `seeds/` directory
 - [ ] 3.2 Create `_seeds.yml` schema file with column types and descriptions
-- [ ] 3.3 Configure seed properties in `dbt_project.yml` (quote columns, column types)
-- [ ] 3.4 Run `dbt seed` to load all 25 CSVs into DuckDB
-- [ ] 3.5 Validate row counts match expected (fact_claims: 120K, fact_denials: ~22.3K, etc.)
-- [ ] 3.6 Run `dbt seed --show` to verify sample data loads correctly
+- [x] 3.3 Configure seed properties in `dbt_project.yml` (quote columns, column types)
+- [x] 3.4 Run `dbt seed` to load all 25 CSVs into BigQuery
+- [x] 3.5 Validate row counts match expected (fact_claims: 120K, fact_denials: ~22.3K, etc.)
+- [x] 3.6 Run `dbt seed --show` to verify sample data loads correctly
 
 ## Phase 4: Source Configuration & Documentation
 
-- [ ] 4.1 Create `_sources.yml` with full source definitions for all 25 tables
-- [ ] 4.2 Add column-level descriptions to source definitions
+- [x] 4.1 Create `_sources.yml` with full source definitions for all 25 tables
+- [x] 4.2 Add column-level descriptions to source definitions
 - [ ] 4.3 Add source freshness checks (loaded_at_field where applicable)
 - [ ] 4.4 Regenerate DATA_DICTIONARY.md from source definitions
 - [ ] 4.5 Run `dbt source freshness` to validate configuration
 
 ## Phase 5: Data Profiling & Quality Assessment
 
-- [ ] 5.1 Profile dimension tables (row counts, null rates, cardinality)
-- [ ] 5.2 Profile fact tables (distributions, date ranges, key metrics)
-- [ ] 5.3 Identify and document the Self-Pay denial bug (self-pay patients should have 0 denials)
-- [ ] 5.4 Check referential integrity (foreign keys between fact and dim tables)
-- [ ] 5.5 Document data quality findings and decisions
+- [x] 5.1 Profile dimension tables (row counts, null rates, cardinality)
+- [x] 5.2 Profile fact tables (distributions, date ranges, key metrics)
+- [x] 5.3 Identify and document the Self-Pay denial bug (self-pay patients should have 0 denials)
+- [x] 5.4 Check referential integrity (foreign keys between fact and dim tables)
+- [x] 5.5 Document data quality findings and decisions
 
 ## Phase 6: Staging Models
 
@@ -141,25 +141,25 @@
 
 ## Summary
 
-| Phase | Tasks | Status |
-|-------|-------|--------|
-| 1. Environment Setup | 7 | Pending |
-| 2. dbt Init | 6 | Pending |
-| 3. Data Ingestion | 6 | Pending |
-| 4. Source Config | 5 | Pending |
-| 5. Data Profiling | 5 | Pending |
-| 6. Staging Models | 19 | Pending |
-| 7. Intermediate Models | 8 | Pending |
-| 8. Finance Marts | 4 | Pending |
-| 9. Operations Marts | 5 | Pending |
-| 10. Executive Marts | 4 | Pending |
-| 11. Testing | 5 | Pending |
-| 12. Documentation | 5 | Pending |
-| 13. External APIs | 4 | Pending |
-| 14. Visualization | 7 | Pending |
-| **Total** | **90** | **Pending** |
+| Phase | Tasks | Done | In Progress | Pending |
+|-------|-------|------|-------------|---------|
+| 1. Environment Setup | 7 | 7 | 0 | 0 |
+| 2. dbt Init | 6 | 6 | 0 | 0 |
+| 3. Data Ingestion | 6 | 5 | 0 | 1 |
+| 4. Source Config | 5 | 2 | 0 | 3 |
+| 5. Data Profiling | 5 | 5 | 0 | 0 |
+| 6. Staging Models | 19 | 0 | 0 | 19 |
+| 7. Intermediate Models | 8 | 0 | 0 | 8 |
+| 8. Finance Marts | 4 | 0 | 0 | 4 |
+| 9. Operations Marts | 5 | 0 | 0 | 5 |
+| 10. Executive Marts | 4 | 0 | 0 | 4 |
+| 11. Testing | 5 | 0 | 0 | 5 |
+| 12. Documentation | 5 | 0 | 0 | 5 |
+| 13. External APIs | 4 | 0 | 0 | 4 |
+| 14. Visualization | 7 | 0 | 0 | 7 |
+| **Total** | **90** | **25** | **0** | **65** |
 
 ---
 
 *Created: 2026-05-04*  
-*Last updated: 2026-05-04*
+*Last updated: 2026-05-05 (daily brief sync)*
