@@ -26,7 +26,7 @@ WITH src_scheduling AS (
         appointment_type,
         scheduling_lead_days,
         appointment_status,
-        appointment_status = 'no-show'              as is_no_show,
+        appointment_status = 'No-Show'              as is_no_show,
         prior_no_show_count,
         check_in_minutes_early,
         insurance_verified_at_scheduling,
