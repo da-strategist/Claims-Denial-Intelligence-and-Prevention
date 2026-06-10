@@ -35,3 +35,6 @@ Data/raw_data/
 # Node / IDE
 node_modules/
 .vscode/
+
+# Daily briefs
+daily_brief_*.md

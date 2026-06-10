@@ -12,11 +12,11 @@ WITH date_spine AS (
 )
 
 SELECT
-    format_date('%m%Y', date_day)       AS date_key,
-    extract(month from date_day)        AS month_num,
-    format_date('%B', date_day)         AS month_name,
-    format_date('%b', date_day)         AS month_name_short,
-    extract(year from date_day)         AS year_num,
-    format_date('%Y-%m', date_day)      AS year_month
+    format_date('%m%Y', date_month)       AS date_key,
+    extract(month from date_month)        AS month_num,
+    format_date('%B', date_month)         AS month_name,
+    format_date('%b', date_month)         AS month_name_short,
+    extract(year from date_month)         AS year_num,
+    format_date('%Y-%m', date_month)      AS year_month
 
 FROM date_spine

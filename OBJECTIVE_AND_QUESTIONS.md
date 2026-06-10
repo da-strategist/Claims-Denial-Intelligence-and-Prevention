@@ -23,15 +23,53 @@ The target users are CFOs, COOs, VPs of Revenue Cycle, and Chief Revenue Officer
 
 ### 1. Executive Summary Dashboard
 
-These are the first questions a CFO or COO asks on Monday morning.
+These are the first questions a CFO or COO asks on Monday morning. The dashboard should answer each in a single headline number with a trend indicator — drill-down belongs in the dashboards that follow.
 
+**Performance at a Glance**
 - What is our current denial rate, and how does it trend month-over-month?
+  - *Grain: one row per month | Int: `int_denial_analysis` + `int_claims_enriched` | Mart: `fct_kpi_summary`*
 - What is our clean claim rate, and is it improving or declining?
-- How many days of revenue are sitting in accounts receivable on average?
+  - *Grain: one row per month | Int: `int_claims_enriched` (`is_clean_claim`) | Mart: `fct_kpi_summary`*
 - What is the first-pass resolution rate — how often are we getting paid on the first try?
+  - *Grain: one row per month | Int: `int_claims_enriched` + `int_denial_analysis` | Mart: `fct_kpi_summary`*
 - What is our net collection rate — are we collecting what we're owed?
+  - *Grain: one row per month | Int: `int_remittance_analysis` | Mart: `fct_kpi_summary`*
+- What is our gross collection rate — total collected as a share of total billed?
+  - *Grain: one row per month | Int: `int_claims_enriched` (`total_collected`, `total_charge`) | Mart: `fct_kpi_summary`*
+
+**Revenue at Risk**
 - How much total revenue leakage have we experienced over the last 6, 12, and 24 months?
+  - *Grain: one row per period (6m / 12m / 24m) | Int: `int_denial_analysis` + `int_remittance_analysis` | Mart: `fct_revenue_leakage`*
+- What dollar value of denied claims is currently pending appeal vs. permanently written off?
+  - *Grain: one row per denial status category | Int: `int_denial_analysis` + `fact_appeals` | Mart: `fct_revenue_leakage`*
+- What percentage of our denials are classified as preventable, and what is that dollar value?
+  - *Grain: one row overall (scalar KPI) | Int: `int_denial_analysis` (`is_preventable`, `denial_amount`) | Mart: `fct_kpi_summary`*
+- What is our write-off rate — how much revenue are we permanently forfeiting each quarter?
+  - *Grain: one row per quarter | Int: `int_remittance_analysis` (`pymt_variance_type = 'write-off'`) | Mart: `fct_kpi_summary`*
+
+**Accounts Receivable Health**
+- How many days of revenue are sitting in accounts receivable on average?
+  - *Grain: one row overall (scalar KPI) | Int: `int_ar_aging` (`days_in_ar`) | Mart: `fct_kpi_summary`*
+- What is the total outstanding AR balance right now, and is it growing or shrinking?
+  - *Grain: one row per month | Int: `int_ar_aging` (`total_charge` where claim not in terminal status) | Mart: `fct_kpi_summary`*
+- What share of outstanding AR is in the high-risk 90+ day bucket?
+  - *Grain: one row per AR bucket | Int: `int_ar_aging` (`ar_bucket`, `ar_bucket_order`) | Mart: `fct_ar_aging_buckets`*
+
+**Operational Efficiency**
+- What is our average charge lag — how many days from service to claim submission?
+  - *Grain: one row overall (scalar KPI) | Int: `int_charge_lag_analysis` (`total_lag_days`) | Mart: `fct_kpi_summary`*
+- What percentage of claims required prior authorisation, and what share of those were denied for PA reasons?
+  - *Grain: one row overall (two ratios) | Int: `int_claims_enriched` (`pa_required`, `pa_obtained`) + `int_denial_analysis` | Mart: `fct_kpi_summary`*
+- What is our appeal overturn rate — when we fight a denial, do we win?
+  - *Grain: one row overall (scalar KPI) | Int: `int_denial_analysis` + `fact_appeals` (direct staging ref) | Mart: `fct_kpi_summary`*
+
+**Benchmarking & Trend**
+- How do our five core KPIs compare to industry benchmarks for hospitals of our type and size?
+  - *Grain: one row per KPI with benchmark column alongside | Int: all int_ models | Mart: `fct_kpi_summary` (benchmark values hardcoded or from ref table)*
 - Which single metric has deteriorated the most in the last quarter?
+  - *Grain: one row per KPI per quarter, ranked by QoQ delta | Int: all int_ models | Mart: `fct_kpi_summary`*
+- Is there any payer whose denial rate or payment behaviour has materially changed in the last 90 days?
+  - *Grain: one row per payer × 30-day window, flagged if delta > 2pp | Int: `int_denial_analysis` + `int_remittance_analysis` | Mart: `fct_payer_scorecard`*
 
 **Metrics to Derive:**
 
@@ -39,11 +77,22 @@ These are the first questions a CFO or COO asks on Monday morning.
 |--------|----------------|---------------|-----------|
 | Denial Rate | denied claims ÷ total claims submitted | `fact_claims`, `fact_denials` | <5% |
 | Clean Claim Rate | claims where `is_clean_claim = true` ÷ total claims | `fact_claims` | >95% |
-| Avg Days in AR | mean of `days_in_ar` across open/resolved claims | `fact_claims` | <30 days |
 | First-Pass Resolution Rate | claims paid without denial or rework ÷ total claims | `fact_claims`, `fact_denials` | >90% |
-| Net Collection Rate | total_paid ÷ (total_allowed − contractual adjustments) | `fact_claims`, `fact_remittance` | >96% |
+| Net Collection Rate | total_paid ÷ (total_allowed − contractual adjustments) | `fact_remittance`, `dim_payer_contracts` | >96% |
+| Gross Collection Rate | total_collected ÷ total_charge | `fact_claims` | >98% |
+| Avg Days in AR | mean of `days_in_ar` across open/unresolved claims | `fact_claims` | <30 days |
+| Total Outstanding AR | sum of `total_charge` where claim is not in a terminal status | `fact_claims` | — |
+| AR at Risk (90+ days) | sum of `total_charge` where `days_in_ar > 90` and claim not paid | `fact_claims` | <15% of total AR |
 | Total Revenue Leakage | sum of denied amounts + underpayments + write-offs | `fact_denials`, `fact_remittance`, `dim_payer_contracts` | — |
-| QoQ Metric Trend | current quarter value − prior quarter value for each KPI | All of the above, grouped by month/quarter | — |
+| Denied Revenue Pending Appeal | sum of `denial_amount` for denials with an open appeal record | `fact_denials`, `fact_appeals` | — |
+| Write-off Rate | total written-off amounts ÷ total billed | `fact_remittance` (`pymt_variance_type = 'write-off'`) | <1.5% |
+| Preventable Denial $ | sum of `denial_amount` where `is_preventable = true` | `fact_denials` | — |
+| Preventable Denial % | preventable denials ÷ total denials | `fact_denials` | <60% of denials |
+| Avg Charge Lag (days) | mean of `total_lag_days` (service → submission) | `fact_charge_lag` | <5 days |
+| PA Denial Rate | denied claims where `pa_required = true` and denial linked to PA ÷ total PA-required claims | `fact_claims`, `fact_denials` | — |
+| Appeal Overturn Rate | appeals where `outcome = 'Overturned'` ÷ total appeals filed | `fact_appeals` | >50% |
+| QoQ KPI Trend | current quarter value − prior quarter value, per KPI | All of the above, grouped by quarter | — |
+| Payer Behaviour Change Flag | denial rate per payer: current 90 days vs. prior 90 days, flagged if delta > 2pp | `fact_denials`, `fact_claims`, `dim_payers` | — |
 
 ---
 

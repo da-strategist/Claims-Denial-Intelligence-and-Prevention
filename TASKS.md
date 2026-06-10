@@ -51,34 +51,34 @@
 
 ## Phase 6: Staging Models
 
-- [ ] 6.1 `stg_claims.sql` — clean fact_claims (rename, cast, filter)
-- [ ] 6.2 `stg_claim_lines.sql` — clean fact_claim_lines
-- [ ] 6.3 `stg_remittance.sql` — clean fact_remittance
-- [ ] 6.4 `stg_denials.sql` — clean fact_denials
-- [ ] 6.5 `stg_appeals.sql` — clean fact_appeals
-- [ ] 6.6 `stg_workflow_events.sql` — clean fact_workflow_events
-- [ ] 6.7 `stg_patients.sql` — clean dim_patients
-- [ ] 6.8 `stg_providers.sql` — clean dim_providers
-- [ ] 6.9 `stg_payers.sql` — clean dim_payers
-- [ ] 6.10 `stg_departments.sql` — clean dim_departments
-- [ ] 6.11 `stg_facilities.sql` — clean dim_facilities
-- [ ] 6.12 `stg_payer_contracts.sql` — clean dim_payer_contracts
-- [ ] 6.13 `stg_charge_lag.sql` — clean fact_charge_lag
-- [ ] 6.14 `stg_encounters.sql` — clean fact_encounters
-- [ ] 6.15 `stg_scheduling.sql` — clean fact_scheduling
-- [ ] 6.16 `stg_claim_status_history.sql` — clean fact_claim_status_history
-- [ ] 6.17 Create `_stg.yml` schema files with tests (not_null, unique, accepted_values, relationships)
-- [ ] 6.18 Fix Self-Pay denial issue at staging layer (filter out self-pay denials)
-- [ ] 6.19 Run `dbt build --select staging` and resolve errors
+- [x] 6.1 `stg_claims.sql` — clean fact_claims (rename, cast, filter)
+- [x] 6.2 `stg_claim_lines.sql` — clean fact_claim_lines
+- [x] 6.3 `stg_remittance.sql` — clean fact_remittance
+- [x] 6.4 `stg_denials.sql` — clean fact_denials
+- [x] 6.5 `stg_appeals.sql` — clean fact_appeals
+- [x] 6.6 `stg_workflow_events.sql` — clean fact_workflow_events
+- [x] 6.7 `stg_patients.sql` — clean dim_patients
+- [x] 6.8 `stg_providers.sql` — clean dim_providers
+- [x] 6.9 `stg_payers.sql` — clean dim_payers
+- [x] 6.10 `stg_departments.sql` — clean dim_departments
+- [x] 6.11 `stg_facilities.sql` — clean dim_facilities
+- [x] 6.12 `stg_payer_contracts.sql` — clean dim_payer_contracts
+- [x] 6.13 `stg_charge_lag.sql` — clean fact_charge_lag
+- [x] 6.14 `stg_encounters.sql` — clean fact_encounters
+- [x] 6.15 `stg_scheduling.sql` — clean fact_scheduling
+- [x] 6.16 `stg_claim_status_history.sql` — clean fact_claim_status_history
+- [x] 6.17 Create `_stg.yml` schema files with tests (not_null, unique, accepted_values, relationships)
+- [x] 6.18 Fix Self-Pay denial issue at staging layer (filter out self-pay denials)
+- [x] 6.19 Run `dbt build --select staging` and resolve errors
 
 ## Phase 7: Intermediate Models
 
-- [ ] 7.1 `int_claims_enriched.sql` — join claims + patient + provider + payer + department
-- [ ] 7.2 `int_denial_analysis.sql` — denials + root cause + workflow failure point + CARC/RARC
-- [ ] 7.3 `int_workflow_summary.sql` — pivot workflow events to one row per claim (8 step pass/fail)
-- [ ] 7.4 `int_ar_aging.sql` — claims bucketed by AR days (0-30, 31-60, 61-90, 91-120, 120+)
-- [ ] 7.5 `int_charge_lag_analysis.sql` — service-to-submission timing with lag buckets
-- [ ] 7.6 `int_remittance_analysis.sql` — payment vs. billed, underpayment detection
+- [x] 7.1 `int_claims_enriched.sql` — join claims + patient + provider + payer + department
+- [x] 7.2 `int_denial_analysis.sql` — denials + root cause + workflow failure point + CARC/RARC
+- [x] 7.3 `int_workflow_summary.sql` — pivot workflow events to one row per claim (8 step pass/fail)
+- [x] 7.4 `int_ar_aging.sql` — claims bucketed by AR days (0-30, 31-60, 61-90, 91-120, 120+)
+- [x] 7.5 `int_charge_lag_analysis.sql` — service-to-submission timing with lag buckets
+- [x] 7.6 `int_remittance_analysis.sql` — payment vs. billed, underpayment detection
 - [ ] 7.7 Create `_int.yml` schema files with tests
 - [ ] 7.8 Run `dbt build --select intermediate` and resolve errors
 
@@ -148,8 +148,8 @@
 | 3. Data Ingestion | 6 | 5 | 0 | 1 |
 | 4. Source Config | 5 | 2 | 0 | 3 |
 | 5. Data Profiling | 5 | 5 | 0 | 0 |
-| 6. Staging Models | 19 | 0 | 0 | 19 |
-| 7. Intermediate Models | 8 | 0 | 0 | 8 |
+| 6. Staging Models | 19 | 19 | 0 | 0 |
+| 7. Intermediate Models | 8 | 6 | 0 | 2 |
 | 8. Finance Marts | 4 | 0 | 0 | 4 |
 | 9. Operations Marts | 5 | 0 | 0 | 5 |
 | 10. Executive Marts | 4 | 0 | 0 | 4 |
@@ -157,9 +157,9 @@
 | 12. Documentation | 5 | 0 | 0 | 5 |
 | 13. External APIs | 4 | 0 | 0 | 4 |
 | 14. Visualization | 7 | 0 | 0 | 7 |
-| **Total** | **90** | **25** | **0** | **65** |
+| **Total** | **90** | **50** | **0** | **40** |
 
 ---
 
 *Created: 2026-05-04*  
-*Last updated: 2026-05-05 (daily brief sync)*
+*Last updated: 2026-05-29 (6 intermediate models marked complete — Phase 7 in progress)*
