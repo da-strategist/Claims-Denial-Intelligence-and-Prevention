@@ -105,3 +105,15 @@ def test_validate_request_limits(client):
     assert client.post("/api/validate", json={"claim_ids": []}).status_code == 422
     too_many = [f"CLM{n:07d}" for n in range(201)]
     assert client.post("/api/validate", json={"claim_ids": too_many}).status_code == 422
+
+
+def test_rule_fields_list_valid_operators(client):
+    fields = {f["field"]: f for f in client.get("/api/rules/fields").json()}
+    assert fields["is_clean_claim"]["operators"] == ["equals", "notEquals"]
+    assert "contains" in fields["primary_icd10"]["operators"]
+    assert "greaterThan" not in fields["primary_icd10"]["operators"]
+
+
+def test_list_departments(client):
+    names = [d["department_name"] for d in client.get("/api/departments").json()]
+    assert names == ["Internal Medicine", "Gastroenterology"]

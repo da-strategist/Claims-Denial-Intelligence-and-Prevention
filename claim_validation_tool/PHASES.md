@@ -39,11 +39,13 @@
 - [x] Add pagination
 
 ## Phase 5: Rule Manager & Custom Rule Builder (Frontend)
-- [ ] Build rule list view with toggle/edit/delete
-- [ ] Build Rule Builder slide-in panel
-- [ ] Build Condition Builder (field/operator/value, AND/OR logic)
-- [ ] Build Test Rule functionality
-- [ ] Connect to rules API
+- [x] Build rule list view with toggle/edit/delete
+- [x] Build Rule Builder slide-in panel
+- [x] Build Condition Builder (field/operator/value, AND/OR logic)
+- [x] Build Test Rule functionality
+- [x] Connect to rules API
+- [x] Persist rules to `backend/rules.json` (gitignored) so edits survive restarts
+- [x] `/api/departments` and per-field operators in `/api/rules/fields` for the builder
 
 ## Phase 6: AI Fix Workflow
 - [ ] Build AI fix suggestion service (backend)
@@ -80,7 +82,7 @@
 | 2. Data Layer & Claims API | Complete |
 | 3. Validation Engine | Complete |
 | 4. Claims Workbench | Complete |
-| 5. Rule Manager & Builder | Pending |
+| 5. Rule Manager & Builder | Complete |
 | 6. AI Fix Workflow | Pending |
 | 7. Executive Dashboard | Pending |
 | 8. JAB Audit | Pending |

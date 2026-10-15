@@ -17,6 +17,7 @@ from app.models import (
     ClaimLine,
     ClaimQuery,
     Denial,
+    Department,
     Page,
     Payer,
     Provider,
@@ -89,6 +90,10 @@ class ClaimsRepository:
             row["provider_id"]: Provider.model_validate(row)
             for row in _read_table(data_dir, "dim_providers").to_dict("records")
         }
+        self._departments = [
+            Department.model_validate(row)
+            for row in _read_table(data_dir, "dim_departments").to_dict("records")
+        ]
 
     # --- Claims -------------------------------------------------------------
 
@@ -161,6 +166,9 @@ class ClaimsRepository:
 
     def get_provider(self, provider_id: str) -> Provider | None:
         return self._providers.get(provider_id)
+
+    def list_departments(self) -> list[Department]:
+        return self._departments
 
     # --- Internals ----------------------------------------------------------
 

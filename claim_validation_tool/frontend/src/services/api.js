@@ -9,6 +9,22 @@ function toQueryString(params = {}) {
   return entries.length ? `?${new URLSearchParams(entries)}` : ''
 }
 
+/**
+ * FastAPI returns a string `detail` for HTTP errors and a list of
+ * { loc, msg } for request validation (422) errors. Turn either into one message.
+ */
+function errorMessage(detail) {
+  if (typeof detail === 'string') return detail
+  if (!Array.isArray(detail)) return null
+  return detail
+    .map(({ loc = [], msg = '' }) => {
+      const where = loc.filter((part) => part !== 'body').join(' › ')
+      const text = msg.replace(/^Value error, /, '')
+      return where ? `${where}: ${text}` : text
+    })
+    .join('; ')
+}
+
 async function request(path, { params, body, method = 'GET', signal } = {}) {
   const init = { method, signal }
   if (body !== undefined) {
@@ -18,8 +34,9 @@ async function request(path, { params, body, method = 'GET', signal } = {}) {
   const res = await fetch(`${API_BASE}${path}${toQueryString(params)}`, init)
   if (!res.ok) {
     const data = await res.json().catch(() => null)
-    const detail = typeof data?.detail === 'string' ? data.detail : null
-    throw new Error(detail ?? `Request failed: ${res.status} ${res.statusText}`)
+    throw new Error(
+      errorMessage(data?.detail) ?? `Request failed: ${res.status} ${res.statusText}`,
+    )
   }
   return res.status === 204 ? null : res.json()
 }
@@ -36,3 +53,27 @@ export const listPayers = (options) => request('/payers', options)
 /** Validate up to 200 claims against the enabled rules. Results keep the order of `claimIds`. */
 export const validateClaims = (claimIds, options) =>
   request('/validate', { ...options, method: 'POST', body: { claim_ids: claimIds } })
+
+export const listDepartments = (options) => request('/departments', options)
+
+// --- Validation rules ---------------------------------------------------------
+
+export const listRules = (options) => request('/rules', options)
+
+/** Claim fields rule conditions can test, with type, allowed values, and valid operators. */
+export const listRuleFields = (options) => request('/rules/fields', options)
+
+export const createRule = (rule) => request('/rules', { method: 'POST', body: rule })
+
+export const replaceRule = (ruleId, rule) =>
+  request(`/rules/${encodeURIComponent(ruleId)}`, { method: 'PUT', body: rule })
+
+export const updateRule = (ruleId, changes) =>
+  request(`/rules/${encodeURIComponent(ruleId)}`, { method: 'PATCH', body: changes })
+
+export const deleteRule = (ruleId) =>
+  request(`/rules/${encodeURIComponent(ruleId)}`, { method: 'DELETE' })
+
+/** Count the claims a draft rule ({ scope, conditions, condition_logic }) would flag. */
+export const testRule = (definition, options) =>
+  request('/rules/test', { ...options, method: 'POST', body: definition })

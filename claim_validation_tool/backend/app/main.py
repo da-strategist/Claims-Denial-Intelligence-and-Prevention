@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.data import get_repository, get_rule_repository
-from app.routers import claims, payers, rules, validation
+from app.routers import claims, departments, payers, rules, validation
 
 
 @asynccontextmanager
@@ -33,6 +33,7 @@ app.add_middleware(
 
 app.include_router(claims.router)
 app.include_router(payers.router)
+app.include_router(departments.router)
 app.include_router(rules.router)
 app.include_router(validation.router)
 

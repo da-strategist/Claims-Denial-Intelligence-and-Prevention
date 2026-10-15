@@ -8,6 +8,7 @@ from app.models.claim import (
     PlaceOfService,
 )
 from app.models.common import Page, RecordStatus
+from app.models.department import Department
 from app.models.denial import Denial, DenialCategory, WorkflowStep
 from app.models.payer import Payer, PayerType
 from app.models.provider import Credential, Provider
@@ -46,6 +47,7 @@ __all__ = [
     "Condition",
     "ConditionLogic",
     "Credential",
+    "Department",
     "Denial",
     "DenialCategory",
     "FieldType",

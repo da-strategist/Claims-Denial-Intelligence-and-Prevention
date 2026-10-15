@@ -4,7 +4,14 @@ from datetime import date, datetime
 from enum import StrEnum
 from typing import Annotated, Any
 
-from pydantic import BaseModel, BeforeValidator, Field, StringConstraints, model_validator
+from pydantic import (
+    BaseModel,
+    BeforeValidator,
+    Field,
+    StringConstraints,
+    computed_field,
+    model_validator,
+)
 
 from app.models.claim import ClaimType, ClaimStatus, PlaceOfService
 from app.models.common import ClaimId, DomainModel
@@ -58,6 +65,12 @@ class RuleField(BaseModel):
     label: str
     type: FieldType
     options: list[str] | None = None
+
+    @computed_field
+    @property
+    def operators(self) -> list[Operator]:
+        """Operators valid for this field, in display order."""
+        return [op for op in Operator if op in _OPERATORS_BY_TYPE[self.type]]
 
 
 def _enum_field(field: str, label: str, enum: type[StrEnum]) -> RuleField:

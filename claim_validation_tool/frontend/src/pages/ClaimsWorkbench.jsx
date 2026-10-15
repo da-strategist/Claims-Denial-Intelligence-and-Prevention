@@ -231,7 +231,7 @@ export default function ClaimsWorkbench() {
 
       <PageSummary claims={claims} validations={validations.byId} />
 
-      <div className="overflow-x-auto rounded-xl border border-gray-100 bg-white shadow-sm">
+      <div className="relative overflow-x-auto rounded-xl border border-gray-100 bg-white shadow-sm">
         <table className={`w-full whitespace-nowrap transition-opacity ${loading && data ? 'opacity-50' : ''}`}>
           <thead>
             <tr className="border-b border-gray-100">
