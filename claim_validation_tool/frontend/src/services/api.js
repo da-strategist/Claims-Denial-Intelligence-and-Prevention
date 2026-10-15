@@ -9,14 +9,19 @@ function toQueryString(params = {}) {
   return entries.length ? `?${new URLSearchParams(entries)}` : ''
 }
 
-async function request(path, { params, signal } = {}) {
-  const res = await fetch(`${API_BASE}${path}${toQueryString(params)}`, { signal })
+async function request(path, { params, body, method = 'GET', signal } = {}) {
+  const init = { method, signal }
+  if (body !== undefined) {
+    init.headers = { 'Content-Type': 'application/json' }
+    init.body = JSON.stringify(body)
+  }
+  const res = await fetch(`${API_BASE}${path}${toQueryString(params)}`, init)
   if (!res.ok) {
-    const body = await res.json().catch(() => null)
-    const detail = typeof body?.detail === 'string' ? body.detail : null
+    const data = await res.json().catch(() => null)
+    const detail = typeof data?.detail === 'string' ? data.detail : null
     throw new Error(detail ?? `Request failed: ${res.status} ${res.statusText}`)
   }
-  return res.json()
+  return res.status === 204 ? null : res.json()
 }
 
 export const getHealth = (options) => request('/health', options)
@@ -27,3 +32,7 @@ export const getClaim = (claimId, options) =>
   request(`/claims/${encodeURIComponent(claimId)}`, options)
 
 export const listPayers = (options) => request('/payers', options)
+
+/** Validate up to 200 claims against the enabled rules. Results keep the order of `claimIds`. */
+export const validateClaims = (claimIds, options) =>
+  request('/validate', { ...options, method: 'POST', body: { claim_ids: claimIds } })

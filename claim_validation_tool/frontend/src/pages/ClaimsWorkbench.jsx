@@ -1,40 +1,99 @@
-import { useState } from 'react'
-import { useClaims, usePayerLookup } from '../hooks/useClaims'
+import { Fragment, useState } from 'react'
+import ClaimDetailPanel from '../components/ClaimDetailPanel'
+import ClaimFilters from '../components/ClaimFilters'
+import Pagination from '../components/Pagination'
+import RiskScore from '../components/RiskScore'
+import { ClaimStatusBadge, ValidationBadge } from '../components/StatusBadge'
+import { EMPTY_FILTERS, VALIDATION_STATUSES } from '../constants'
+import {
+  useClaimValidations,
+  useClaims,
+  useDebouncedValue,
+  usePayerLookup,
+} from '../hooks/useClaims'
+import { currency } from '../utils/format'
 
 const PAGE_SIZE = 25
 
-const currency = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' })
-
-const STATUS_STYLES = {
-  Paid: 'bg-emerald-50 text-emerald-800 border-emerald-200',
-  Denied: 'bg-red-50 text-red-800 border-red-200',
-}
-
-function ClaimStatusBadge({ status }) {
-  return (
-    <span
-      className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold ${STATUS_STYLES[status] ?? 'bg-gray-50 text-gray-700 border-gray-200'}`}
-    >
-      {status}
-    </span>
-  )
-}
-
+// `sort` is the API sort_by field; `firstDesc` is the direction of the first click
 const COLUMNS = [
-  { label: 'Claim ID' },
-  { label: 'Service Date' },
+  { label: 'Claim ID', sort: 'claim_id', firstDesc: false },
+  { label: 'Service Date', sort: 'service_date', firstDesc: true },
   { label: 'Patient' },
   { label: 'Payer' },
   { label: 'Type' },
-  { label: 'Status' },
-  { label: 'Charge', align: 'right' },
-  { label: 'Paid', align: 'right' },
-  { label: 'Days in AR', align: 'right' },
+  { label: 'Claim Status' },
+  { label: 'Validation' },
+  { label: 'Risk', align: 'right' },
+  { label: 'Charge', align: 'right', sort: 'total_charge', firstDesc: true },
+  { label: 'Paid', align: 'right', sort: 'total_paid', firstDesc: true },
+  { label: 'Days in AR', align: 'right', sort: 'days_in_ar', firstDesc: true },
 ]
+const COLUMN_COUNT = COLUMNS.length + 1 // + expand toggle
 
-function ClaimRow({ claim, payerName }) {
+function SortableHeader({ column, sort, onSort }) {
+  const alignClass = column.align === 'right' ? 'text-right' : 'text-left'
+  const headerClass = `px-4 py-3 text-xs font-semibold uppercase text-gray-500 ${alignClass}`
+  if (!column.sort) {
+    return (
+      <th scope="col" className={headerClass}>
+        {column.label}
+      </th>
+    )
+  }
+  const active = sort.by === column.sort
   return (
-    <tr className="border-b border-gray-50 hover:bg-gray-50">
+    <th
+      scope="col"
+      className={headerClass}
+      aria-sort={active ? (sort.desc ? 'descending' : 'ascending') : 'none'}
+    >
+      <button
+        className={`inline-flex items-center gap-1 uppercase hover:text-gray-900 ${active ? 'text-gray-900' : ''}`}
+        onClick={() => onSort(column)}
+      >
+        {column.label}
+        <span aria-hidden="true" className={active ? '' : 'text-gray-300'}>
+          {active ? (sort.desc ? '↓' : '↑') : '↕'}
+        </span>
+      </button>
+    </th>
+  )
+}
+
+function ClaimRow({ claim, payerName, validation, validating, expanded, onToggle }) {
+  return (
+    <tr
+      className={`cursor-pointer border-b border-gray-50 hover:bg-gray-50 ${expanded ? 'bg-gray-50' : ''}`}
+      onClick={onToggle}
+    >
+      <td className="w-10 py-3 pl-4">
+        <button
+          aria-expanded={expanded}
+          aria-label={`${expanded ? 'Collapse' : 'Expand'} claim ${claim.claim_id}`}
+          className="flex h-6 w-6 items-center justify-center rounded text-gray-400 hover:bg-gray-200 hover:text-gray-700"
+          onClick={(event) => {
+            event.stopPropagation()
+            onToggle()
+          }}
+        >
+          <svg
+            aria-hidden="true"
+            viewBox="0 0 20 20"
+            fill="currentColor"
+            className="h-4 w-4 transition-transform"
+            // Inline rather than Tailwind's rotate-90, which applies both `rotate` and
+            // `transform` here and turns the chevron 180°
+            style={{ transform: expanded ? 'rotate(90deg)' : 'none' }}
+          >
+            <path
+              fillRule="evenodd"
+              d="M7.2 14.8a.75.75 0 0 1 0-1.06L10.94 10 7.2 6.26a.75.75 0 1 1 1.06-1.06l4.27 4.27a.75.75 0 0 1 0 1.06l-4.27 4.27a.75.75 0 0 1-1.06 0Z"
+              clipRule="evenodd"
+            />
+          </svg>
+        </button>
+      </td>
       <td className="px-4 py-3 text-sm font-medium text-gray-900">{claim.claim_id}</td>
       <td className="px-4 py-3 text-sm text-gray-600">{claim.service_date}</td>
       <td className="px-4 py-3 text-sm text-gray-600">{claim.patient_id}</td>
@@ -43,107 +102,173 @@ function ClaimRow({ claim, payerName }) {
       <td className="px-4 py-3">
         <ClaimStatusBadge status={claim.status} />
       </td>
-      <td className="px-4 py-3 text-right text-sm font-medium text-gray-900">
+      <td className="px-4 py-3">
+        {validation ? (
+          <ValidationBadge status={validation.status} />
+        ) : (
+          <span className="text-xs text-gray-400">{validating ? 'Validating…' : '—'}</span>
+        )}
+      </td>
+      <td className="px-4 py-3">
+        <RiskScore score={validation?.risk_score} />
+      </td>
+      <td className="px-4 py-3 text-right text-sm font-medium tabular-nums text-gray-900">
         {currency.format(claim.total_charge)}
       </td>
-      <td className="px-4 py-3 text-right text-sm text-gray-600">
+      <td className="px-4 py-3 text-right text-sm tabular-nums text-gray-600">
         {currency.format(claim.total_paid)}
       </td>
-      <td className="px-4 py-3 text-right text-sm text-gray-600">{claim.days_in_ar}</td>
+      <td className="px-4 py-3 text-right text-sm tabular-nums text-gray-600">
+        {claim.days_in_ar}
+      </td>
     </tr>
   )
 }
 
-function Pagination({ page, pages, total, pageSize, onPageChange, disabled }) {
-  const first = total === 0 ? 0 : (page - 1) * pageSize + 1
-  const last = Math.min(page * pageSize, total)
-  const buttonClass =
-    'px-3 py-1.5 text-sm border border-gray-200 rounded-lg bg-white hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed'
-
+/** Counts of each validation status on the current page. */
+function PageSummary({ claims, validations }) {
+  const counts = {}
+  for (const claim of claims) {
+    const status = validations[claim.claim_id]?.status
+    if (status) counts[status] = (counts[status] ?? 0) + 1
+  }
+  const entries = Object.keys(VALIDATION_STATUSES).filter((status) => counts[status])
+  if (entries.length === 0) return null
   return (
-    <div className="flex items-center justify-between">
-      <div className="text-sm text-gray-500">
-        Showing {first.toLocaleString()}–{last.toLocaleString()} of {total.toLocaleString()}
-      </div>
-      <div className="flex items-center gap-2">
-        <button
-          className={buttonClass}
-          onClick={() => onPageChange(page - 1)}
-          disabled={disabled || page <= 1}
-        >
-          Previous
-        </button>
-        <span className="text-sm text-gray-600">
-          Page {page.toLocaleString()} of {pages.toLocaleString()}
+    <div className="flex flex-wrap items-center gap-2 text-sm text-gray-500">
+      <span>This page:</span>
+      {entries.map((status) => (
+        <span key={status} className="inline-flex items-center gap-1">
+          <ValidationBadge status={status} />
+          <span className="tabular-nums text-gray-700">{counts[status]}</span>
         </span>
-        <button
-          className={buttonClass}
-          onClick={() => onPageChange(page + 1)}
-          disabled={disabled || page >= pages}
-        >
-          Next
-        </button>
-      </div>
+      ))}
     </div>
   )
 }
 
+function MessageRow({ children }) {
+  return (
+    <tr>
+      <td colSpan={COLUMN_COUNT} className="px-4 py-10 text-center text-sm text-gray-500">
+        {children}
+      </td>
+    </tr>
+  )
+}
+
 export default function ClaimsWorkbench() {
-  const [page, setPage] = useState(1)
-  const { data, loading, error } = useClaims({ page, page_size: PAGE_SIZE })
+  const [filters, setFilters] = useState(EMPTY_FILTERS)
+  const [sort, setSort] = useState({ by: 'service_date', desc: true })
+  const [expanded, setExpanded] = useState(() => new Set())
+
+  // The page belongs to the query it was chosen for: when the (debounced) search,
+  // filters, or sort change, we're back on page 1 without an extra request.
+  const search = useDebouncedValue(filters.search.trim())
+  const query = { ...filters, search, sort_by: sort.by, sort_desc: sort.desc }
+  const queryKey = JSON.stringify(query)
+  const [paging, setPaging] = useState({ queryKey, page: 1 })
+  const page = paging.queryKey === queryKey ? paging.page : 1
+  const setPage = (nextPage) => setPaging({ queryKey, page: nextPage })
+
+  const { data, loading, error } = useClaims({ ...query, page, page_size: PAGE_SIZE })
+  const claims = data?.items ?? []
+  const validations = useClaimValidations(claims.map((claim) => claim.claim_id))
   const payers = usePayerLookup()
+
+  const updateFilters = (changes) => setFilters((prev) => ({ ...prev, ...changes }))
+
+  const handleSort = (column) => {
+    setSort((prev) =>
+      prev.by === column.sort
+        ? { by: prev.by, desc: !prev.desc }
+        : { by: column.sort, desc: column.firstDesc },
+    )
+  }
+
+  const toggleExpanded = (claimId) => {
+    setExpanded((prev) => {
+      const next = new Set(prev)
+      if (next.has(claimId)) next.delete(claimId)
+      else next.add(claimId)
+      return next
+    })
+  }
 
   return (
     <div className="space-y-4 p-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">Claims Workbench</h1>
+      <div className="flex flex-wrap items-end justify-between gap-2">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Claims Workbench</h1>
+          <p className="text-sm text-gray-500">
+            Each claim is checked against the enabled validation rules and scored for denial risk.
+          </p>
+        </div>
         {data && (
-          <div className="text-sm text-gray-500">{data.total.toLocaleString()} claims</div>
+          <div className="text-sm text-gray-500">
+            {data.total.toLocaleString()} claim{data.total === 1 ? '' : 's'}
+          </div>
         )}
       </div>
+
+      <ClaimFilters
+        filters={filters}
+        payers={payers}
+        onChange={updateFilters}
+        onClear={() => updateFilters(EMPTY_FILTERS)}
+      />
 
       {error && (
         <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
           Could not load claims — {error}
         </div>
       )}
+      {validations.error && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+          Could not validate claims — {validations.error}
+        </div>
+      )}
+
+      <PageSummary claims={claims} validations={validations.byId} />
 
       <div className="overflow-x-auto rounded-xl border border-gray-100 bg-white shadow-sm">
-        <table className={`w-full transition-opacity ${loading && data ? 'opacity-50' : ''}`}>
+        <table className={`w-full whitespace-nowrap transition-opacity ${loading && data ? 'opacity-50' : ''}`}>
           <thead>
             <tr className="border-b border-gray-100">
-              {COLUMNS.map(({ label, align }) => (
-                <th
-                  key={label}
-                  className={`px-4 py-3 text-xs font-semibold uppercase text-gray-500 ${align === 'right' ? 'text-right' : 'text-left'}`}
-                >
-                  {label}
-                </th>
+              <th scope="col" className="w-10">
+                <span className="sr-only">Expand</span>
+              </th>
+              {COLUMNS.map((column) => (
+                <SortableHeader key={column.label} column={column} sort={sort} onSort={handleSort} />
               ))}
             </tr>
           </thead>
           <tbody>
-            {data?.items.map((claim) => (
-              <ClaimRow
-                key={claim.claim_id}
-                claim={claim}
-                payerName={payers[claim.payer_id]?.payer_name}
-              />
-            ))}
-            {!data && loading && (
-              <tr>
-                <td colSpan={COLUMNS.length} className="px-4 py-10 text-center text-sm text-gray-500">
-                  Loading claims…
-                </td>
-              </tr>
-            )}
-            {data?.items.length === 0 && (
-              <tr>
-                <td colSpan={COLUMNS.length} className="px-4 py-10 text-center text-sm text-gray-500">
-                  No claims found.
-                </td>
-              </tr>
-            )}
+            {claims.map((claim) => {
+              const isExpanded = expanded.has(claim.claim_id)
+              const validation = validations.byId[claim.claim_id]
+              return (
+                <Fragment key={claim.claim_id}>
+                  <ClaimRow
+                    claim={claim}
+                    payerName={payers[claim.payer_id]?.payer_name}
+                    validation={validation}
+                    validating={validations.loading}
+                    expanded={isExpanded}
+                    onToggle={() => toggleExpanded(claim.claim_id)}
+                  />
+                  {isExpanded && (
+                    <tr className="border-b border-gray-100">
+                      <td colSpan={COLUMN_COUNT} className="p-0">
+                        <ClaimDetailPanel claim={claim} validation={validation} />
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
+              )
+            })}
+            {!data && loading && <MessageRow>Loading claims…</MessageRow>}
+            {data?.items.length === 0 && <MessageRow>No claims match these filters.</MessageRow>}
           </tbody>
         </table>
       </div>

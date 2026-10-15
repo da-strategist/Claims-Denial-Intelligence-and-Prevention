@@ -32,11 +32,11 @@
 - [x] Engine, risk scorer, and rules/validate API tests
 
 ## Phase 4: Claims Workbench (Frontend)
-- [ ] Build Claims table component with search, filter, sort
-- [ ] Build expandable row with validation details
-- [ ] Build status badges (Pass, Warning, Error, AI Fix)
-- [ ] Connect to validation API
-- [ ] Add pagination
+- [x] Build Claims table component with search, filter, sort
+- [x] Build expandable row with validation details
+- [x] Build status badges (Pass, Warning, Error, AI Fix)
+- [x] Connect to validation API
+- [x] Add pagination
 
 ## Phase 5: Rule Manager & Custom Rule Builder (Frontend)
 - [ ] Build rule list view with toggle/edit/delete
@@ -79,7 +79,7 @@
 | 1. Environment & Skeleton | Complete |
 | 2. Data Layer & Claims API | Complete |
 | 3. Validation Engine | Complete |
-| 4. Claims Workbench | Pending |
+| 4. Claims Workbench | Complete |
 | 5. Rule Manager & Builder | Pending |
 | 6. AI Fix Workflow | Pending |
 | 7. Executive Dashboard | Pending |
