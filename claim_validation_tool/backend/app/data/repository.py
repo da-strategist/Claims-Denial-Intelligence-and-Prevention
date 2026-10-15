@@ -34,9 +34,6 @@ _NUMERIC_COLUMNS: dict[str, dict[str, str]] = {
         "total_paid": "float64",
         "patient_responsibility": "float64",
         "days_in_ar": "int64",
-        "is_clean_claim": "int64",
-        "pa_required": "int64",
-        "pa_obtained": "int64",
     },
     "fact_claim_lines": {
         "line_number": "int64",
@@ -47,15 +44,23 @@ _NUMERIC_COLUMNS: dict[str, dict[str, str]] = {
     },
     "fact_denials": {
         "denial_amount": "float64",
-        "is_preventable": "int64",
         "days_to_denial": "int64",
     },
+}
+
+# 0/1 flag columns, loaded as real booleans
+_BOOL_COLUMNS: dict[str, list[str]] = {
+    "fact_claims": ["is_clean_claim", "pa_required", "pa_obtained"],
+    "fact_denials": ["is_preventable"],
 }
 
 
 def _read_table(data_dir: Path, name: str) -> pd.DataFrame:
     df = pd.read_csv(data_dir / f"{name}.csv", dtype=str, keep_default_na=False)
-    return df.astype(_NUMERIC_COLUMNS.get(name, {}))
+    df = df.astype(_NUMERIC_COLUMNS.get(name, {}))
+    for column in _BOOL_COLUMNS.get(name, []):
+        df[column] = df[column].astype("int64").astype(bool)
+    return df
 
 
 class ClaimsRepository:
@@ -64,6 +69,13 @@ class ClaimsRepository:
         self._claims = _read_table(data_dir, "fact_claims")
         self._lines = _read_table(data_dir, "fact_claim_lines")
         self._denials = _read_table(data_dir, "fact_denials")
+
+        # Derived columns used by validation rules and risk scoring
+        self._claims["days_to_submission"] = (
+            pd.to_datetime(self._claims["submission_date"])
+            - pd.to_datetime(self._claims["service_date"])
+        ).dt.days
+        self._add_prior_denial_flags()
 
         self._claim_pos = pd.Index(self._claims["claim_id"]).get_indexer
         self._lines_by_claim = self._lines.groupby("claim_id", sort=False).indices
@@ -113,6 +125,21 @@ class ClaimsRepository:
             }
         )
 
+    def claims_frame(self, claim_ids: list[str] | None = None) -> pd.DataFrame:
+        """Typed claim rows (plus derived columns) for the validation engine.
+
+        With `claim_ids`, returns those claims in the order given, skipping unknown IDs.
+        Without, returns every claim. Callers must not mutate the result.
+        """
+        if claim_ids is None:
+            return self._claims
+        positions = self._claim_pos(claim_ids)
+        return self._claims.iloc[positions[positions != -1]]
+
+    def missing_claim_ids(self, claim_ids: list[str]) -> list[str]:
+        positions = self._claim_pos(claim_ids)
+        return [claim_id for claim_id, pos in zip(claim_ids, positions) if pos == -1]
+
     def get_claim_lines(self, claim_id: str) -> list[ClaimLine]:
         rows = self._rows(self._lines, self._lines_by_claim.get(claim_id))
         return [ClaimLine.model_validate(row) for row in rows]
@@ -137,6 +164,26 @@ class ClaimsRepository:
 
     # --- Internals ----------------------------------------------------------
 
+    def _add_prior_denial_flags(self) -> None:
+        """Flag claims whose patient had a denial issued before this claim was submitted.
+
+        Only denials known at submission time count, so a claim's own denial (always
+        dated after its submission) never feeds its own risk score.
+        """
+        denials = self._denials.merge(
+            self._claims[["claim_id", "patient_id"]], on="claim_id", how="inner"
+        )
+        for column, rows in (
+            ("has_prior_denial", denials),
+            ("has_prior_preventable_denial", denials[denials["is_preventable"]]),
+        ):
+            first_denial = rows.groupby("patient_id")["denial_date"].min()
+            first_for_claim = self._claims["patient_id"].map(first_denial)
+            # ISO dates compare correctly as text; patients with no denials map to NaN -> False
+            self._claims[column] = (
+                first_for_claim.notna() & (first_for_claim < self._claims["submission_date"])
+            )
+
     @staticmethod
     def _rows(df: pd.DataFrame, positions) -> list[dict]:
         if positions is None:
@@ -159,9 +206,9 @@ class ClaimsRepository:
             if value is not None:
                 mask &= df[column] == value
         if q.is_clean_claim is not None:
-            mask &= df["is_clean_claim"] == int(q.is_clean_claim)
+            mask &= df["is_clean_claim"] == q.is_clean_claim
         if q.missing_prior_auth is not None:
-            missing = (df["pa_required"] == 1) & (df["pa_obtained"] == 0)
+            missing = df["pa_required"] & ~df["pa_obtained"]
             mask &= missing if q.missing_prior_auth else ~missing
         if q.service_date_from is not None:
             mask &= df["service_date"] >= q.service_date_from.isoformat()

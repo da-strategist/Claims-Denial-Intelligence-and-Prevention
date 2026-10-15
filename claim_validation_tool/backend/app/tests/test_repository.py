@@ -81,3 +81,14 @@ def test_get_claim_without_denials(repo):
 
 def test_get_unknown_claim_returns_none(repo):
     assert repo.get_claim("CLM9999999") is None
+
+
+def test_prior_denial_flags_only_count_denials_known_at_submission(repo):
+    flags = repo.claims_frame().set_index("claim_id")[
+        ["has_prior_denial", "has_prior_preventable_denial"]
+    ]
+    # CLM0000002 and CLM0000004 are denied, but their own denials come after submission
+    assert flags.loc["CLM0000001"].tolist() == [False, False]
+    assert flags.loc["CLM0000002"].tolist() == [False, False]
+    assert flags.loc["CLM0000003"].tolist() == [True, True]
+    assert flags.loc["CLM0000004"].tolist() == [False, False]

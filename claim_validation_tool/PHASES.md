@@ -23,12 +23,13 @@
 - [x] Backend tests for the data layer and claims API (fixture dataset)
 
 ## Phase 3: Validation Engine (Backend)
-- [ ] Create Rule Pydantic model (conditions, scope, severity, category)
-- [ ] Build validation engine service (evaluate conditions against claims)
-- [ ] Build risk scoring service
-- [ ] Create `/api/rules` endpoints (CRUD)
-- [ ] Create `/api/validate` endpoint (run rules against claims)
-- [ ] Create default rule set (seed data)
+- [x] Create Rule Pydantic model (conditions, scope, severity, category)
+- [x] Build validation engine service (evaluate conditions against claims)
+- [x] Build risk scoring service
+- [x] Create `/api/rules` endpoints (CRUD, plus `/fields` catalog and `/test` for draft rules)
+- [x] Create `/api/validate` endpoint (run rules against claims)
+- [x] Create default rule set (seed data)
+- [x] Engine, risk scorer, and rules/validate API tests
 
 ## Phase 4: Claims Workbench (Frontend)
 - [ ] Build Claims table component with search, filter, sort
@@ -77,7 +78,7 @@
 |-------|--------|
 | 1. Environment & Skeleton | Complete |
 | 2. Data Layer & Claims API | Complete |
-| 3. Validation Engine | Pending |
+| 3. Validation Engine | Complete |
 | 4. Claims Workbench | Pending |
 | 5. Rule Manager & Builder | Pending |
 | 6. AI Fix Workflow | Pending |

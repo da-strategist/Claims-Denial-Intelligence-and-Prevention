@@ -3,14 +3,15 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.data import get_repository
-from app.routers import claims, payers
+from app.data import get_repository, get_rule_repository
+from app.routers import claims, payers, rules, validation
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Load the CSVs once at startup so the first request isn't slow
     get_repository()
+    get_rule_repository()
     yield
 
 
@@ -32,6 +33,8 @@ app.add_middleware(
 
 app.include_router(claims.router)
 app.include_router(payers.router)
+app.include_router(rules.router)
+app.include_router(validation.router)
 
 
 @app.get("/api/health")
