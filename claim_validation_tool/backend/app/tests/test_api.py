@@ -26,7 +26,7 @@ def test_malformed_claim_id_is_422(client):
 
 
 def test_invalid_query_params_are_422(client):
-    for params in ({"status": "Pending"}, {"page_size": 500}, {"sort_by": "patient_id"}):
+    for params in ({"status": "Approved"}, {"page_size": 500}, {"sort_by": "patient_id"}):
         assert client.get("/api/claims", params=params).status_code == 422
 
 

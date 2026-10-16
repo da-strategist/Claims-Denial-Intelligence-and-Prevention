@@ -12,6 +12,7 @@ import {
   usePayerLookup,
 } from '../hooks/useClaims'
 import { currency } from '../utils/format'
+import { hashParams } from '../utils/route'
 
 const PAGE_SIZE = 25
 
@@ -110,7 +111,7 @@ function ClaimRow({ claim, payerName, validation, validating, expanded, onToggle
       <td className="px-4 py-3 text-sm text-gray-700">{payerName ?? claim.payer_id}</td>
       <td className="px-4 py-3 text-sm text-gray-600">{claim.claim_type}</td>
       <td className="px-4 py-3">
-        <ClaimStatusBadge status={claim.status} />
+        <ClaimStatusBadge status={claim.status} overdue={claim.is_overdue} />
       </td>
       <td className="px-4 py-3">
         {validation ? (
@@ -168,9 +169,13 @@ function MessageRow({ children }) {
 }
 
 export default function ClaimsWorkbench() {
-  const [filters, setFilters] = useState(EMPTY_FILTERS)
+  // #/claims?search=CLM0120001 opens the workbench on that claim, expanded
+  const [linkedSearch] = useState(() => hashParams().get('search') ?? '')
+  const [filters, setFilters] = useState({ ...EMPTY_FILTERS, search: linkedSearch })
   const [sort, setSort] = useState({ by: 'service_date', desc: true })
-  const [expanded, setExpanded] = useState(() => new Set())
+  const [expanded, setExpanded] = useState(
+    () => new Set(/^CLM\d{7}$/.test(linkedSearch) ? [linkedSearch] : []),
+  )
 
   // The page belongs to the query it was chosen for: when the (debounced) search,
   // filters, or sort change, we're back on page 1 without an extra request.

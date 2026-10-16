@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { VALIDATION_STATUSES } from '../constants'
-import { useClaimDetail, useClaimFixes } from '../hooks/useClaims'
+import { useClaimDetail, useClaimFixes, usePayerLookup } from '../hooks/useClaims'
 import { applyFix, undoCorrections } from '../services/api'
+import SubmitClaim from './SubmitClaim'
 import { currency } from '../utils/format'
 import FixSuggestion from './FixSuggestion'
 import { SeverityBadge, ValidationBadge } from './StatusBadge'
@@ -88,7 +89,7 @@ function Field({ label, children }) {
   )
 }
 
-function ClaimFacts({ claim, detail }) {
+function ClaimFacts({ claim, detail, payers }) {
   const paLabel = claim.pa_required
     ? claim.pa_obtained
       ? `Obtained${claim.pa_number ? ` (${claim.pa_number})` : ''}`
@@ -96,6 +97,12 @@ function ClaimFacts({ claim, detail }) {
     : 'Not required'
   return (
     <dl className="grid grid-cols-2 gap-x-4 gap-y-2 rounded-lg border border-gray-200 bg-white p-3">
+      <Field label="Patient">
+        {detail?.patient
+          ? `${detail.patient.first_name} ${detail.patient.last_name} · ${detail.patient.age} ${detail.patient.gender}`
+          : claim.patient_id}
+      </Field>
+      <Field label="Patient ID">{claim.patient_id}</Field>
       <Field label="Provider">
         {detail?.provider
           ? `${detail.provider.provider_name}, ${detail.provider.credential}`
@@ -103,6 +110,14 @@ function ClaimFacts({ claim, detail }) {
       </Field>
       <Field label="Specialty">{detail?.provider?.specialty}</Field>
       <Field label="Primary ICD-10">{claim.primary_icd10}</Field>
+      {claim.additional_icd10?.length > 0 && (
+        <Field label="Other diagnoses">{claim.additional_icd10.join(', ')}</Field>
+      )}
+      {claim.other_payer_ids?.length > 0 && (
+        <Field label="Other coverage">
+          {claim.other_payer_ids.map((id) => payers?.[id]?.payer_name ?? id).join(' → ')}
+        </Field>
+      )}
       <Field label="Place of service">{claim.place_of_service}</Field>
       <Field label="Submitted">{claim.submission_date}</Field>
       <Field label="Prior auth">{paLabel}</Field>
@@ -281,6 +296,7 @@ function suggestionsByTarget(fixes) {
 export default function ClaimDetailPanel({ claim, validation: pageValidation, onClaimChanged }) {
   const { data: detail, loading, error } = useClaimDetail(claim.claim_id)
   const fixes = useClaimFixes(claim.claim_id)
+  const payers = usePayerLookup()
   const [result, setResult] = useState(null)
   const [undoError, setUndoError] = useState(null)
 
@@ -310,6 +326,14 @@ export default function ClaimDetailPanel({ claim, validation: pageValidation, on
     <div className="grid gap-6 whitespace-normal bg-gray-50 px-6 py-5 lg:grid-cols-2">
       <div className="space-y-5">
         <Section title="Validation">
+          <SubmitClaim
+            claim={claim}
+            validation={validation}
+            onSubmitted={() => {
+              fixes.reload()
+              onClaimChanged?.()
+            }}
+          />
           <div className="flex items-center gap-2">
             <ValidationBadge status={validation?.status} />
             {validation && (
@@ -337,7 +361,7 @@ export default function ClaimDetailPanel({ claim, validation: pageValidation, on
 
       <div className="space-y-5">
         <Section title="Claim detail">
-          <ClaimFacts claim={claim} detail={detail} />
+          <ClaimFacts claim={claim} detail={detail} payers={payers} />
         </Section>
         {error && <p className="text-sm text-red-700">Could not load claim detail — {error}</p>}
         {loading && !detail && <p className="text-sm text-gray-500">Loading claim lines…</p>}

@@ -510,7 +510,14 @@ def resolve_changes(
             typed[change.field] = parse_condition_value(RULE_FIELDS[change.field], raw)
         except ValueError as err:
             raise SuggestionError(str(err)) from None
-        changes[change.field] = (change.current_value, _as_str(typed[change.field]))
+        new_value = _as_str(typed[change.field])
+        if new_value != change.current_value:
+            changes[change.field] = (change.current_value, new_value)
+
+    # A fix that leaves every field as it was would mark the claim corrected for nothing
+    if not changes:
+        labels = ", ".join(f"{c.label} is already {c.current_value}" for c in suggestion.changes)
+        raise SuggestionError(f"Nothing to change: {labels}. Enter a different value to apply.")
 
     # Re-validate the corrected claim header (e.g. ICD-10 format)
     try:

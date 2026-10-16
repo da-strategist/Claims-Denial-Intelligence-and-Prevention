@@ -13,7 +13,7 @@ from pydantic import (
     model_validator,
 )
 
-from app.models.claim import ClaimType, ClaimStatus, PlaceOfService
+from app.models.claim import ClaimDetail, ClaimType, ClaimStatus, PlaceOfService
 from app.models.common import ClaimId, DomainModel
 
 RuleId = Annotated[str, StringConstraints(pattern=r"^RULE-\d{3,}$")]
@@ -104,6 +104,17 @@ RULE_FIELDS: dict[str, RuleField] = {
         RuleField(field="pa_required", label="Prior Auth Required", type=FieldType.BOOLEAN),
         RuleField(field="pa_obtained", label="Prior Auth Obtained", type=FieldType.BOOLEAN),
         RuleField(field="pa_number", label="Prior Auth Number", type=FieldType.STRING),
+        RuleField(field="is_overdue", label="Overdue (pending)", type=FieldType.BOOLEAN),
+        RuleField(
+            field="payer_is_patient_primary",
+            label="Billed to Patient's Primary Payer",
+            type=FieldType.BOOLEAN,
+        ),
+        RuleField(
+            field="patient_primary_on_claim",
+            label="Patient's Primary Payer on Claim",
+            type=FieldType.BOOLEAN,
+        ),
     ]
 }
 
@@ -297,6 +308,13 @@ class ClaimValidation(DomainModel):
     risk_score: int = Field(ge=0, le=100)
     risk_factors: list[RiskFactor]
     findings: list[RuleFinding]
+
+
+class ClaimCreated(BaseModel):
+    """Response to POST /api/claims: the new claim and its validation result."""
+
+    claim: ClaimDetail
+    validation: ClaimValidation
 
 
 class ValidateRequest(BaseModel):

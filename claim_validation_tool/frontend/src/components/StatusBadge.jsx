@@ -4,17 +4,29 @@ const BADGE_BASE =
   'inline-flex items-center gap-1 whitespace-nowrap rounded-full border px-2.5 py-0.5 text-xs font-semibold'
 
 const CLAIM_STATUS_STYLES = {
+  Draft: 'bg-gray-50 text-gray-700 border-gray-300 border-dashed',
+  Pending: 'bg-sky-50 text-sky-800 border-sky-200',
   Paid: 'bg-emerald-50 text-emerald-800 border-emerald-200',
   Denied: 'bg-red-50 text-red-800 border-red-200',
 }
 
-/** Payer adjudication outcome (Paid / Denied). */
-export function ClaimStatusBadge({ status }) {
+/** Where the claim is with the payer: Draft → Pending → Paid / Denied. */
+export function ClaimStatusBadge({ status, overdue = false }) {
   return (
-    <span
-      className={`${BADGE_BASE} ${CLAIM_STATUS_STYLES[status] ?? 'border-gray-200 bg-gray-50 text-gray-700'}`}
-    >
-      {status}
+    <span className="inline-flex items-center gap-1">
+      <span
+        className={`${BADGE_BASE} ${CLAIM_STATUS_STYLES[status] ?? 'border-gray-200 bg-gray-50 text-gray-700'}`}
+      >
+        {status}
+      </span>
+      {overdue && (
+        <span
+          className={`${BADGE_BASE} border-amber-200 bg-amber-50 text-amber-800`}
+          title="Pending longer than this payer's average days to pay"
+        >
+          Overdue
+        </span>
+      )}
     </span>
   )
 }

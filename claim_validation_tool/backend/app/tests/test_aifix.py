@@ -252,3 +252,23 @@ def test_overlay_round_trip_restores_originals(repo, claim_id):
     assert (row["is_clean_claim"], row["pa_number"], row["has_corrections"]) == (True, "Z1", True)
     repo.apply_overrides({})
     assert repo.claims_frame([claim_id]).iloc[0].to_dict() == before
+
+
+def test_fix_that_changes_nothing_is_refused(client):
+    client.post(
+        "/api/rules",
+        json={
+            "name": "GERD specificity",
+            "category": "Coding",
+            "severity": "error",
+            "conditions": [{"field": "primary_icd10", "operator": "contains", "value": "K21"}],
+        },
+    )
+    res = apply(client, "RULE-010", {"primary_icd10": "K21.0"})  # the claim's current code
+    assert res.status_code == 422
+    assert res.json()["detail"] == (
+        "Nothing to change: Primary ICD-10 is already K21.0. Enter a different value to apply."
+    )
+    assert fixes(client)["corrections"] == []
+    assert client.get(f"/api/claims/{CLAIM}").json()["has_corrections"] is False
+

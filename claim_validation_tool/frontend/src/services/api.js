@@ -48,6 +48,13 @@ export const listClaims = (params, options) => request('/claims', { ...options, 
 export const getClaim = (claimId, options) =>
   request(`/claims/${encodeURIComponent(claimId)}`, options)
 
+/** Enter a claim by hand. Returns { claim, validation }. */
+export const createClaim = (claim) => request('/claims', { method: 'POST', body: claim })
+
+/** Mark a Draft as submitted today (it becomes Pending). Refused while rule errors remain. */
+export const submitClaim = (claimId) =>
+  request(`/claims/${encodeURIComponent(claimId)}/submit`, { method: 'POST' })
+
 export const listPayers = (options) => request('/payers', options)
 
 /** Validate up to 200 claims against the enabled rules. Results keep the order of `claimIds`. */
@@ -55,6 +62,21 @@ export const validateClaims = (claimIds, options) =>
   request('/validate', { ...options, method: 'POST', body: { claim_ids: claimIds } })
 
 export const listDepartments = (options) => request('/departments', options)
+
+// --- Claim entry: registered patients and reference lists -------------------------
+
+/** Registered patients by ID prefix or name words, with claim and denial counts. */
+export const searchPatients = (params, options) => request('/patients', { ...options, params })
+
+export const listProviders = (options) => request('/providers', options)
+
+export const listFacilities = (options) => request('/facilities', options)
+
+/** CPT codes with standard charges. */
+export const listProcedureCodes = (options) => request('/codes/procedures', options)
+
+/** Common ICD-10 codes, for suggestions. */
+export const listDiagnosisCodes = (options) => request('/codes/diagnoses', options)
 
 // --- Validation rules ---------------------------------------------------------
 

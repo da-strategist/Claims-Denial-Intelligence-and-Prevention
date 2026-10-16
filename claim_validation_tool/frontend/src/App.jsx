@@ -1,7 +1,9 @@
 import { lazy, Suspense, useEffect, useState } from 'react'
 import ClaimsWorkbench from './pages/ClaimsWorkbench'
 import JabAudit from './pages/JabAudit'
+import NewClaim from './pages/NewClaim'
 import RuleManager from './pages/RuleManager'
+import { hashPath } from './utils/route'
 
 // Loaded on demand: the chart library is most of its weight
 const Dashboard = lazy(() => import('./pages/Dashboard'))
@@ -10,6 +12,7 @@ const Dashboard = lazy(() => import('./pages/Dashboard'))
 const ROUTES = [
   { hash: '#/dashboard', label: 'Dashboard', Page: Dashboard },
   { hash: '#/claims', label: 'Claims Workbench', Page: ClaimsWorkbench },
+  { hash: '#/new-claim', label: 'New Claim', Page: NewClaim },
   { hash: '#/rules', label: 'Rule Manager', Page: RuleManager },
   { hash: '#/jab', label: 'JAB Audit', Page: JabAudit },
 ]
@@ -21,11 +24,12 @@ function useHashRoute() {
     window.addEventListener('hashchange', onChange)
     return () => window.removeEventListener('hashchange', onChange)
   }, [])
-  return ROUTES.find((route) => route.hash === hash) ?? ROUTES[0]
+  const route = ROUTES.find((r) => r.hash === hashPath(hash)) ?? ROUTES[0]
+  return { route, hash }
 }
 
 function App() {
-  const route = useHashRoute()
+  const { route, hash } = useHashRoute()
   const { Page } = route
 
   return (
@@ -40,7 +44,7 @@ function App() {
             <div className="text-xs text-gray-500">Claim Validation</div>
           </div>
         </div>
-        <nav aria-label="Main" className="flex gap-1">
+        <nav aria-label="Main" className="flex flex-wrap gap-1">
           {ROUTES.map(({ hash, label }) => (
             <a
               key={hash}
@@ -55,7 +59,8 @@ function App() {
       </header>
       <main>
         <Suspense fallback={<div className="p-6 text-sm text-gray-500">Loading…</div>}>
-          <Page />
+          {/* Keyed by the full hash so a new query (e.g. ?search=) starts the page fresh */}
+          <Page key={hash} />
         </Suspense>
       </main>
     </div>

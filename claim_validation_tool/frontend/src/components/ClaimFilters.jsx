@@ -1,4 +1,4 @@
-import { EMPTY_FILTERS } from '../constants'
+import { CLAIM_STATUSES, EMPTY_FILTERS } from '../constants'
 
 const SELECT_CLASS =
   'rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 focus:border-red-400 focus:outline-none focus:ring-2 focus:ring-red-100'
@@ -47,11 +47,7 @@ export default function ClaimFilters({ filters, payers, onChange, onClear }) {
         label="Claim status"
         value={filters.status}
         onChange={(status) => onChange({ status })}
-        options={[
-          ['', 'Any status'],
-          ['Paid', 'Paid'],
-          ['Denied', 'Denied'],
-        ]}
+        options={[['', 'Any status'], ...CLAIM_STATUSES.map((status) => [status, status])]}
       />
       <FilterSelect
         label="Claim type"
@@ -81,6 +77,15 @@ export default function ClaimFilters({ filters, payers, onChange, onClear }) {
           onChange={(event) => onChange({ missing_prior_auth: event.target.checked ? 'true' : '' })}
         />
         Missing prior auth
+      </label>
+      <label className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700">
+        <input
+          type="checkbox"
+          className="accent-red-600"
+          checked={filters.overdue === 'true'}
+          onChange={(event) => onChange({ overdue: event.target.checked ? 'true' : '' })}
+        />
+        Overdue
       </label>
       {isFiltered && (
         <button

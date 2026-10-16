@@ -6,6 +6,8 @@ models, so listing a page of claims never materializes all 120K records.
 """
 
 import os
+import re
+from datetime import date
 from functools import lru_cache
 from pathlib import Path
 from threading import Lock
@@ -21,9 +23,14 @@ from app.models import (
     ClaimDetail,
     ClaimLine,
     ClaimQuery,
+    ClaimStatus,
     Denial,
     Department,
+    Facility,
     Page,
+    Patient,
+    PatientQuery,
+    PatientSummary,
     Payer,
     Provider,
 )
@@ -61,6 +68,11 @@ _BOOL_COLUMNS: dict[str, list[str]] = {
 }
 
 
+def _today() -> date:
+    """Today's date; a function so tests can pin it."""
+    return date.today()
+
+
 def _read_table(data_dir: Path, name: str) -> pd.DataFrame:
     df = pd.read_csv(data_dir / f"{name}.csv", dtype=str, keep_default_na=False)
     df = df.astype(_NUMERIC_COLUMNS.get(name, {}))
@@ -82,6 +94,13 @@ class ClaimsRepository:
             - pd.to_datetime(self._claims["service_date"])
         ).dt.days
         self._add_prior_denial_flags()
+
+        # Only manually entered claims can be pending, or carry more than one diagnosis
+        # or payer on the header; the source data is single-payer and adjudicated
+        self._claims["is_overdue"] = False
+        self._claims["additional_icd10"] = ""
+        self._claims["other_payer_ids"] = ""
+        self._pending_ids: set[str] = set()
 
         # AI Fix corrections are layered over these columns; keep the originals to restore
         self._claims["has_corrections"] = False
@@ -107,6 +126,32 @@ class ClaimsRepository:
             Department.model_validate(row)
             for row in _read_table(data_dir, "dim_departments").to_dict("records")
         ]
+        self._facilities = {
+            row["facility_id"]: Facility.model_validate(row)
+            for row in _read_table(data_dir, "dim_facilities").to_dict("records")
+        }
+
+        # Registered patients. Claims can only be entered for these.
+        self._patients = _read_table(data_dir, "dim_patients")
+        self._patients["search_name"] = (
+            self._patients["first_name"] + " " + self._patients["last_name"]
+        ).str.lower()
+        self._patient_pos = pd.Index(self._patients["patient_id"]).get_indexer
+        self._claims_per_patient = self._claims["patient_id"].value_counts()
+        self._denials_per_patient = self._denials["claim_id"].map(
+            self._claims.set_index("claim_id")["patient_id"]
+        ).value_counts()
+        primary_payer = self._patients.set_index("patient_id")["primary_payer_id"]
+        claim_primary = self._claims["patient_id"].map(primary_payer)
+        self._claims["payer_is_patient_primary"] = self._claims["payer_id"] == claim_primary
+        # Billed to the primary, or listing it as other coverage (secondary billing)
+        self._claims["patient_primary_on_claim"] = self._claims["payer_is_patient_primary"] | pd.Series(
+            [
+                primary in others.split("|")
+                for primary, others in zip(claim_primary, self._claims["other_payer_ids"])
+            ],
+            index=self._claims.index,
+        )
 
     # --- Corrections overlay ------------------------------------------------
 
@@ -119,6 +164,8 @@ class ClaimsRepository:
         with self._overlay_lock:
             for claim_id in self._corrected_ids - overrides.keys():
                 pos = self._claim_pos([claim_id])[0]
+                if pos == -1:
+                    continue
                 for field in CORRECTABLE_FIELDS:
                     self._claims.loc[pos, field] = self._original.loc[pos, field]
                 self._claims.loc[pos, "has_corrections"] = False
@@ -138,6 +185,7 @@ class ClaimsRepository:
     # --- Claims -------------------------------------------------------------
 
     def list_claims(self, query: ClaimQuery) -> Page[Claim]:
+        self._age_pending()
         df = self._filter_claims(query)
         df = df.sort_values(
             [query.sort_by, "claim_id"],
@@ -154,6 +202,7 @@ class ClaimsRepository:
         )
 
     def get_claim(self, claim_id: str) -> ClaimDetail | None:
+        self._age_pending()
         pos = self._claim_pos([claim_id])[0]
         if pos == -1:
             return None
@@ -165,6 +214,7 @@ class ClaimsRepository:
                 **row,
                 "lines": sorted(lines, key=lambda line: line["line_number"]),
                 "denials": denials,
+                "patient": self._patient(row["patient_id"]),
                 "payer": self._payers.get(row["payer_id"]),
                 "provider": self._providers.get(row["provider_id"]),
             }
@@ -176,10 +226,97 @@ class ClaimsRepository:
         With `claim_ids`, returns those claims in the order given, skipping unknown IDs.
         Without, returns every claim. Callers must not mutate the result.
         """
+        self._age_pending()
         if claim_ids is None:
             return self._claims
         positions = self._claim_pos(claim_ids)
         return self._claims.iloc[positions[positions != -1]]
+
+    def add_claim(self, fields: dict[str, Any], lines: list[dict[str, Any]]) -> ClaimDetail:
+        """Append a new claim and its service lines to the in-memory data.
+
+        `fields` holds every fact_claims column (dates as ISO strings; additional_icd10
+        and other_payer_ids as lists). `lines` hold cpt_code, cpt_category, modifier,
+        units, charge_amount, and icd10_pointer; IDs and numbering are assigned here.
+        New claims live until the server restarts. Raises ValueError if the claim_id
+        is taken or the patient isn't registered.
+        """
+        claim_id = fields["claim_id"]
+        patient = self._patient(fields["patient_id"])
+        if patient is None:
+            raise ValueError(f"Patient {fields['patient_id']} is not registered")
+        prior, prior_preventable = self._prior_denials(
+            fields["patient_id"], fields["submission_date"]
+        )
+        row = {
+            **fields,
+            "pa_number": fields.get("pa_number") or "",  # source data stores blanks as ""
+            "additional_icd10": "|".join(fields.get("additional_icd10", [])),
+            "other_payer_ids": "|".join(fields.get("other_payer_ids", [])),
+            "days_to_submission": (
+                date.fromisoformat(fields["submission_date"])
+                - date.fromisoformat(fields["service_date"])
+            ).days,
+            "has_prior_denial": prior,
+            "has_prior_preventable_denial": prior_preventable,
+            "payer_is_patient_primary": fields["payer_id"] == patient.primary_payer_id,
+            "patient_primary_on_claim": patient.primary_payer_id
+            in [fields["payer_id"], *fields.get("other_payer_ids", [])],
+            "has_corrections": False,
+            "is_overdue": False,
+        }
+        with self._overlay_lock:
+            if self._claim_pos([claim_id])[0] != -1:
+                raise ValueError(f"Claim {claim_id} already exists")
+            new = pd.DataFrame([row], columns=self._claims.columns).astype(
+                self._claims.dtypes.to_dict()
+            )
+            self._claims = pd.concat([self._claims, new], ignore_index=True)
+            self._original = pd.concat(
+                [self._original, new[list(CORRECTABLE_FIELDS)]], ignore_index=True
+            )
+            self._claim_pos = pd.Index(self._claims["claim_id"]).get_indexer
+            self._append_lines(claim_id, lines)
+            self._claims_per_patient[fields["patient_id"]] = (
+                self._claims_per_patient.get(fields["patient_id"], 0) + 1
+            )
+            if fields["status"] == ClaimStatus.PENDING:
+                self._pending_ids.add(claim_id)
+            self.version += 1
+        claim = self.get_claim(claim_id)
+        assert claim is not None
+        return claim
+
+    def submit_claim(self, claim_id: str) -> ClaimDetail:
+        """Mark a Draft as submitted today: it becomes Pending and starts aging in AR.
+
+        Raises LookupError for an unknown claim, ValueError if it isn't a Draft or its
+        service date is still in the future.
+        """
+        today = _today()
+        with self._overlay_lock:
+            pos = self._claim_pos([claim_id])[0]
+            if pos == -1:
+                raise LookupError(f"Claim {claim_id} not found")
+            row = self._claims.iloc[pos]
+            if row["status"] != ClaimStatus.DRAFT:
+                raise ValueError(f"Only draft claims can be submitted; {claim_id} is {row['status']}")
+            if row["service_date"] > today.isoformat():
+                raise ValueError("A claim can't be submitted before its service date")
+            self._claims.loc[pos, "status"] = ClaimStatus.PENDING.value
+            self._claims.loc[pos, "submission_date"] = today.isoformat()
+            self._claims.loc[pos, "days_to_submission"] = (
+                today - date.fromisoformat(row["service_date"])
+            ).days
+            self._claims.loc[pos, "days_in_ar"] = 0
+            prior, prior_preventable = self._prior_denials(row["patient_id"], today.isoformat())
+            self._claims.loc[pos, "has_prior_denial"] = prior
+            self._claims.loc[pos, "has_prior_preventable_denial"] = prior_preventable
+            self._pending_ids.add(claim_id)
+            self.version += 1
+        claim = self.get_claim(claim_id)
+        assert claim is not None
+        return claim
 
     def denials_frame(self) -> pd.DataFrame:
         """All denials, unfiltered. Treat as read-only."""
@@ -214,7 +351,111 @@ class ClaimsRepository:
     def list_departments(self) -> list[Department]:
         return self._departments
 
+    def list_facilities(self) -> list[Facility]:
+        return list(self._facilities.values())
+
+    def get_facility(self, facility_id: str) -> Facility | None:
+        return self._facilities.get(facility_id)
+
+    # --- Patients -----------------------------------------------------------
+
+    def list_patients(self, query: PatientQuery) -> Page[PatientSummary]:
+        """Registered patients matching an ID prefix or every word of the search."""
+        df = self._patients
+        order = ["last_name", "first_name", "patient_id"]
+        term = (query.search or "").strip().lower()
+        if re.fullmatch(r"pat\d*", term):  # an ID, not a name like "Patricia"
+            df = df[df["patient_id"].str.lower().str.startswith(term)]
+            order = ["patient_id"]
+        elif term:
+            mask = pd.Series(True, index=df.index)
+            for word in term.split():
+                mask &= df["search_name"].str.contains(word, regex=False)
+            df = df[mask]
+        df = df.sort_values(order)
+        start = (query.page - 1) * query.page_size
+        rows = df.iloc[start : start + query.page_size]
+        return Page[PatientSummary](
+            items=[self._patient_summary(row) for row in rows.to_dict("records")],
+            total=len(df),
+            page=query.page,
+            page_size=query.page_size,
+        )
+
+    def get_patient(self, patient_id: str) -> PatientSummary | None:
+        pos = self._patient_pos([patient_id])[0]
+        if pos == -1:
+            return None
+        return self._patient_summary(self._patients.iloc[pos].to_dict())
+
     # --- Internals ----------------------------------------------------------
+
+    def _patient(self, patient_id: str) -> Patient | None:
+        pos = self._patient_pos([patient_id])[0]
+        return None if pos == -1 else Patient.model_validate(self._patients.iloc[pos].to_dict())
+
+    def _patient_summary(self, row: dict[str, Any]) -> PatientSummary:
+        patient_id = row["patient_id"]
+        return PatientSummary.model_validate(
+            {
+                **row,
+                "claim_count": int(self._claims_per_patient.get(patient_id, 0)),
+                "denial_count": int(self._denials_per_patient.get(patient_id, 0)),
+            }
+        )
+
+    def _prior_denials(self, patient_id: str, submission_date: str) -> tuple[bool, bool]:
+        """(any, any preventable) denial of this patient's claims issued before `submission_date`."""
+        claim_ids = self._claims.loc[self._claims["patient_id"] == patient_id, "claim_id"]
+        denials = self._denials[self._denials["claim_id"].isin(claim_ids)]
+        earlier = denials[denials["denial_date"] < submission_date]
+        return bool(len(earlier)), bool(earlier["is_preventable"].any())
+
+    def _append_lines(self, claim_id: str, lines: list[dict[str, Any]]) -> None:
+        """Add a new claim's service lines. Caller holds the overlay lock."""
+        next_number = int(self._lines["line_id"].str.removeprefix("LN").astype("int64").max()) + 1
+        rows = [
+            {
+                **line,
+                "line_id": f"LN{next_number + index:08d}",
+                "claim_id": claim_id,
+                "line_number": index + 1,
+                "modifier": line.get("modifier") or "",
+                "allowed_amount": 0.0,
+                "paid_amount": 0.0,
+            }
+            for index, line in enumerate(lines)
+        ]
+        new = pd.DataFrame(rows, columns=self._lines.columns).astype(self._lines.dtypes.to_dict())
+        self._lines = pd.concat([self._lines, new], ignore_index=True)
+        self._lines_by_claim = self._lines.groupby("claim_id", sort=False).indices
+
+    def _age_pending(self) -> None:
+        """Bring pending claims' days in AR and overdue flag up to today.
+
+        Pending claims age with the calendar, so this runs before every read. It only
+        touches pending rows and only bumps `version` when a value actually changes.
+        """
+        if not self._pending_ids:
+            return
+        today = _today()
+        with self._overlay_lock:
+            positions = self._claim_pos(sorted(self._pending_ids))
+            rows = self._claims.iloc[positions]
+            days = rows["submission_date"].map(
+                lambda submitted: max((today - date.fromisoformat(submitted)).days, 0)
+            )
+            limits = rows["payer_id"].map(
+                lambda payer_id: self._payers[payer_id].avg_days_to_pay
+                if payer_id in self._payers
+                else None
+            )
+            overdue = limits.notna() & (days > limits.fillna(0))
+            if days.equals(rows["days_in_ar"]) and overdue.equals(rows["is_overdue"]):
+                return
+            self._claims.loc[rows.index, "days_in_ar"] = days.astype("int64")
+            self._claims.loc[rows.index, "is_overdue"] = overdue.astype(bool)
+            self.version += 1
 
     def _add_prior_denial_flags(self) -> None:
         """Flag claims whose patient had a denial issued before this claim was submitted.
@@ -259,6 +500,8 @@ class ClaimsRepository:
                 mask &= df[column] == value
         if q.is_clean_claim is not None:
             mask &= df["is_clean_claim"] == q.is_clean_claim
+        if q.overdue is not None:
+            mask &= df["is_overdue"] == q.overdue
         if q.missing_prior_auth is not None:
             missing = df["pa_required"] & ~df["pa_obtained"]
             mask &= missing if q.missing_prior_auth else ~missing
@@ -279,5 +522,10 @@ def get_repository() -> ClaimsRepository:
     """Process-wide repository, usable as a FastAPI dependency."""
     data_dir = Path(os.environ.get("RCM_DATA_DIR", DEFAULT_DATA_DIR))
     repo = ClaimsRepository(data_dir)
-    repo.apply_overrides(get_correction_store().overrides())
+    corrections = get_correction_store()
+    # Corrections to manually entered claims outlive them (those claims are in-memory);
+    # drop them so a new claim reusing the ID doesn't inherit them
+    for claim_id in repo.missing_claim_ids(list(corrections.overrides())):
+        corrections.clear_claim(claim_id)
+    repo.apply_overrides(corrections.overrides())
     return repo

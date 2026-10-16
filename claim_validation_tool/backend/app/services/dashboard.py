@@ -9,7 +9,9 @@ from datetime import date
 import pandas as pd
 
 from app.models import (
+    ADJUDICATED_STATUSES,
     AgingBucket,
+    ClaimStatus,
     Dashboard,
     DashboardQuery,
     DenialReason,
@@ -128,19 +130,29 @@ def _ratio(numerator: float, denominator: float) -> float:
     return numerator / denominator if denominator else 0.0
 
 
+def _submitted(claims: pd.DataFrame) -> pd.DataFrame:
+    """Claims sent to a payer: drafts aren't in accounts receivable yet."""
+    return claims[claims["status"] != ClaimStatus.DRAFT]
+
+
 def _measures(claims: pd.DataFrame, denials: pd.DataFrame, status: pd.Series) -> dict[str, float]:
-    denied = claims["status"] == "Denied"
+    denied = claims["status"] == ClaimStatus.DENIED
+    adjudicated = claims["status"].isin(ADJUDICATED_STATUSES)
+    submitted = _submitted(claims)
     return {
         "claims": len(claims),
         "charges": float(claims["total_charge"].sum()),
         "paid": float(claims["total_paid"].sum()),
-        "denial_rate": _ratio(denied.sum(), len(claims)),
+        "drafts": int((claims["status"] == ClaimStatus.DRAFT).sum()),
+        "pending": int((claims["status"] == ClaimStatus.PENDING).sum()),
+        "overdue": int(claims["is_overdue"].sum()),
+        "denial_rate": _ratio(denied.sum(), adjudicated.sum()),
         "denied_claims": int(denied.sum()),
         "denied_amount": float(denials["denial_amount"].sum()),
         "preventable_share": _ratio(denials["is_preventable"].sum(), len(denials)),
         "clean_claim_rate": _ratio(claims["is_clean_claim"].sum(), len(claims)),
-        "avg_days_in_ar": float(claims["days_in_ar"].mean()) if len(claims) else 0.0,
-        "over_60_days": int((claims["days_in_ar"] > 60).sum()),
+        "avg_days_in_ar": float(submitted["days_in_ar"].mean()) if len(submitted) else 0.0,
+        "over_60_days": int((submitted["days_in_ar"] > 60).sum()),
         "net_collection_rate": _ratio(claims["total_paid"].sum(), claims["total_allowed"].sum()),
         "at_risk": int(status.isin(AT_RISK_STATUSES).sum()),
         "aifix": int((status == ValidationStatus.AI_FIX.value).sum()),
@@ -176,7 +188,7 @@ def _kpis(
         )
 
     return [
-        kpi("claims", "Total Claims", KpiFormat.COUNT, None, f"{_money(now['charges'])} billed"),
+        kpi("claims", "Total Claims", KpiFormat.COUNT, None, _claims_detail(now)),
         kpi(
             "denial_rate",
             "Denial Rate",
@@ -197,7 +209,8 @@ def _kpis(
             "Avg Days in AR",
             KpiFormat.DAYS,
             False,
-            f"{now['over_60_days']:,} claims over 60 days",
+            f"{now['over_60_days']:,} claims over 60 days"
+            + (f" · {now['overdue']:,} pending overdue" if now["overdue"] else ""),
         ),
         kpi(
             "net_collection_rate",
@@ -214,6 +227,15 @@ def _kpis(
             f"Errors under current rules · {now['aifix']:,} need an AI fix",
         ),
     ]
+
+
+def _claims_detail(now: dict[str, float]) -> str:
+    parts = [f"{_money(now['charges'])} billed"]
+    if now["drafts"]:
+        parts.append(f"{now['drafts']:,} draft")
+    if now["pending"]:
+        parts.append(f"{now['pending']:,} pending")
+    return " · ".join(parts)
 
 
 def _money(amount: float) -> str:
@@ -258,6 +280,7 @@ def _denial_reasons(denials: pd.DataFrame) -> list[DenialReason]:
 
 
 def _ar_aging(claims: pd.DataFrame) -> list[AgingBucket]:
+    claims = _submitted(claims)
     days = claims["days_in_ar"]
     buckets = []
     for label, low, high in AR_BUCKETS:
@@ -275,11 +298,22 @@ def _ar_aging(claims: pd.DataFrame) -> list[AgingBucket]:
 
 
 def _payers(claims: pd.DataFrame, payers: dict[str, Payer]) -> list[PayerSummary]:
-    grouped = claims.assign(denied=claims["status"] == "Denied").groupby("payer_id").agg(
-        claims=("claim_id", "size"),
-        denial_rate=("denied", "mean"),
-        avg_days_in_ar=("days_in_ar", "mean"),
-        paid=("total_paid", "sum"),
+    # Rates only over claims they apply to (NaN rows are skipped by mean)
+    adjudicated = claims["status"].isin(ADJUDICATED_STATUSES)
+    submitted = claims["status"] != ClaimStatus.DRAFT
+    grouped = (
+        claims.assign(
+            denied=(claims["status"] == ClaimStatus.DENIED).astype(float).where(adjudicated),
+            ar_days=claims["days_in_ar"].where(submitted),
+        )
+        .groupby("payer_id")
+        .agg(
+            claims=("claim_id", "size"),
+            denial_rate=("denied", "mean"),
+            avg_days_in_ar=("ar_days", "mean"),
+            paid=("total_paid", "sum"),
+        )
+        .fillna(0.0)
     )
     return [
         PayerSummary(

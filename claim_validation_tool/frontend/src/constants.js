@@ -35,7 +35,10 @@ export const EMPTY_FILTERS = {
   claim_type: '',
   is_clean_claim: '',
   missing_prior_auth: '',
+  overdue: '',
 }
+
+export const CLAIM_STATUSES = ['Draft', 'Pending', 'Paid', 'Denied']
 
 export const RULE_CATEGORIES = [
   'Coding',
@@ -83,6 +86,12 @@ export const SCOPE_TYPES = [
 ]
 
 export const CLAIM_TYPES = ['Professional', 'Institutional']
+
+export const PLACES_OF_SERVICE = [
+  { value: '11', label: '11 · Office' },
+  { value: '22', label: '22 · Outpatient hospital' },
+  { value: '23', label: '23 · Emergency room' },
+]
 
 // Without a width, so callers can size it (Tailwind ignores class order when two widths clash)
 export const FIELD_CLASS =

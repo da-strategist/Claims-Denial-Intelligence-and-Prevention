@@ -12,14 +12,20 @@ from app.models.aifix import (
     SuggestionAction,
 )
 from app.models.claim import (
+    ADJUDICATED_STATUSES,
+    MAX_DIAGNOSES,
+    MAX_OTHER_PAYERS,
     Claim,
+    ClaimCreate,
     ClaimDetail,
     ClaimLine,
+    ClaimLineCreate,
     ClaimQuery,
     ClaimStatus,
     ClaimType,
     PlaceOfService,
 )
+from app.models.codes import DiagnosisCode, ProcedureCode
 from app.models.common import Page, RecordStatus
 from app.models.dashboard import (
     AgingBucket,
@@ -35,10 +41,13 @@ from app.models.dashboard import (
 )
 from app.models.department import Department
 from app.models.denial import Denial, DenialCategory, WorkflowStep
+from app.models.facility import Facility
+from app.models.patient import Patient, PatientQuery, PatientSummary
 from app.models.payer import Payer, PayerType
 from app.models.provider import Credential, Provider
 from app.models.rule import (
     RULE_FIELDS,
+    ClaimCreated,
     ClaimValidation,
     Condition,
     ConditionLogic,
@@ -61,15 +70,21 @@ from app.models.rule import (
 )
 
 __all__ = [
+    "ADJUDICATED_STATUSES",
+    "MAX_DIAGNOSES",
+    "MAX_OTHER_PAYERS",
     "RULE_FIELDS",
     "AgingBucket",
     "ApplyFixRequest",
     "ApplyFixResult",
     "Citation",
     "Claim",
+    "ClaimCreate",
+    "ClaimCreated",
     "ClaimDetail",
     "ClaimFixes",
     "ClaimLine",
+    "ClaimLineCreate",
     "ClaimQuery",
     "ClaimStatus",
     "ClaimType",
@@ -86,6 +101,8 @@ __all__ = [
     "DenialCategory",
     "DenialReason",
     "Department",
+    "DiagnosisCode",
+    "Facility",
     "FieldType",
     "FixSuggestion",
     "Kpi",
@@ -93,11 +110,15 @@ __all__ = [
     "MonthlyRevenue",
     "Operator",
     "Page",
+    "Patient",
+    "PatientQuery",
+    "PatientSummary",
     "Payer",
     "PayerSummary",
     "PayerType",
     "Period",
     "PlaceOfService",
+    "ProcedureCode",
     "ProposedChange",
     "Provider",
     "RecordStatus",
