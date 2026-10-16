@@ -56,10 +56,10 @@
 - Deferred: LCD/NCD, MUE, and NCCI checks — the synthetic claim lines aren't generated consistently with those reference tables (checks would flag 20–95% of claims). Revisit with Phase 10 once the data generator is aligned.
 
 ## Phase 7: Executive Dashboard
-- [ ] Create `/api/dashboard` endpoints (KPIs, chart data)
-- [ ] Build KPI cards component
-- [ ] Build charts (Revenue Trends, Denial Reasons, AR Aging, Claim Status)
-- [ ] Connect to dashboard API
+- [x] Create `/api/dashboard` endpoint (KPIs, chart data) — filters by trailing months, payer, department; KPIs compared with the preceding period of equal length
+- [x] Build KPI cards component (change vs prior period, colored by whether it's an improvement)
+- [x] Build charts (Revenue Trends, Denial Reasons, AR Aging, Claim Validation Status) plus a Payer Performance table
+- [x] Connect to dashboard API — validation status for all claims is cached server-side and refreshed when rules or corrections change
 
 ## Phase 8: JAB Audit Integration (Conceptual)
 - [ ] Build workflow diagram component
@@ -106,7 +106,7 @@ Tasks:
 | 4. Claims Workbench | Complete |
 | 5. Rule Manager & Builder | Complete |
 | 6. AI Fix Workflow | Complete |
-| 7. Executive Dashboard | Pending |
+| 7. Executive Dashboard | Complete |
 | 8. JAB Audit | Pending |
 | 9. Polish & Testing | Pending |
 | 10. RAG Clarification Assistant | Pending |

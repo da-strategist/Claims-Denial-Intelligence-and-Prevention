@@ -8,6 +8,7 @@ from app.data.reference import get_reference_data
 from app.data.repository import ClaimsRepository, get_repository
 from app.data.rules import get_rule_repository
 from app.main import app
+from app.services.status_snapshot import get_status_snapshot
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
@@ -24,7 +25,13 @@ def client(monkeypatch, tmp_path) -> TestClient:
     monkeypatch.setenv("RCM_DATA_DIR", str(FIXTURES_DIR))
     monkeypatch.setenv("RCM_RULES_FILE", str(tmp_path / "rules.json"))
     monkeypatch.setenv("RCM_CORRECTIONS_FILE", str(tmp_path / "corrections.json"))
-    caches = (get_repository, get_rule_repository, get_correction_store, get_reference_data)
+    caches = (
+        get_repository,
+        get_rule_repository,
+        get_correction_store,
+        get_reference_data,
+        get_status_snapshot,
+    )
     for cache in caches:
         cache.cache_clear()
     with TestClient(app) as test_client:

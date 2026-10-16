@@ -1,9 +1,32 @@
+// `color` is the matching chart fill (Tailwind 500 shade)
 export const VALIDATION_STATUSES = {
-  pass: { label: 'Pass', icon: '✓', style: 'bg-emerald-50 text-emerald-800 border-emerald-200' },
-  warning: { label: 'Warning', icon: '!', style: 'bg-amber-50 text-amber-800 border-amber-200' },
-  error: { label: 'Error', icon: '✕', style: 'bg-red-50 text-red-800 border-red-200' },
-  aifix: { label: 'AI Fix', icon: '✦', style: 'bg-violet-50 text-violet-800 border-violet-200' },
+  pass: {
+    label: 'Pass',
+    icon: '✓',
+    style: 'bg-emerald-50 text-emerald-800 border-emerald-200',
+    color: '#10b981',
+  },
+  warning: {
+    label: 'Warning',
+    icon: '!',
+    style: 'bg-amber-50 text-amber-800 border-amber-200',
+    color: '#f59e0b',
+  },
+  error: { label: 'Error', icon: '✕', style: 'bg-red-50 text-red-800 border-red-200', color: '#ef4444' },
+  aifix: {
+    label: 'AI Fix',
+    icon: '✦',
+    style: 'bg-violet-50 text-violet-800 border-violet-200',
+    color: '#8b5cf6',
+  },
 }
+
+export const DASHBOARD_PERIODS = [
+  { months: 12, label: 'Last 12 months' },
+  { months: 6, label: 'Last 6 months' },
+  { months: 3, label: 'Last 3 months' },
+  { months: '', label: 'All time' },
+]
 
 export const EMPTY_FILTERS = {
   search: '',

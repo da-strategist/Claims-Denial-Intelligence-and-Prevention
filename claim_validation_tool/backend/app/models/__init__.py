@@ -21,6 +21,18 @@ from app.models.claim import (
     PlaceOfService,
 )
 from app.models.common import Page, RecordStatus
+from app.models.dashboard import (
+    AgingBucket,
+    Dashboard,
+    DashboardQuery,
+    DenialReason,
+    Kpi,
+    KpiFormat,
+    MonthlyRevenue,
+    Period,
+    PayerSummary,
+    StatusCount,
+)
 from app.models.department import Department
 from app.models.denial import Denial, DenialCategory, WorkflowStep
 from app.models.payer import Payer, PayerType
@@ -50,6 +62,7 @@ from app.models.rule import (
 
 __all__ = [
     "RULE_FIELDS",
+    "AgingBucket",
     "ApplyFixRequest",
     "ApplyFixResult",
     "Citation",
@@ -67,15 +80,23 @@ __all__ = [
     "Confidence",
     "Correction",
     "Credential",
+    "Dashboard",
+    "DashboardQuery",
     "Denial",
     "DenialCategory",
+    "DenialReason",
     "Department",
     "FieldType",
     "FixSuggestion",
+    "Kpi",
+    "KpiFormat",
+    "MonthlyRevenue",
     "Operator",
     "Page",
     "Payer",
+    "PayerSummary",
     "PayerType",
+    "Period",
     "PlaceOfService",
     "ProposedChange",
     "Provider",
@@ -93,6 +114,7 @@ __all__ = [
     "ScopeType",
     "Severity",
     "SourceType",
+    "StatusCount",
     "SuggestionAction",
     "ValidateRequest",
     "ValidationStatus",

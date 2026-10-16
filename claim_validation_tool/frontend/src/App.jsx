@@ -1,9 +1,13 @@
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import ClaimsWorkbench from './pages/ClaimsWorkbench'
 import RuleManager from './pages/RuleManager'
 
+// Loaded on demand: the chart library is most of its weight
+const Dashboard = lazy(() => import('./pages/Dashboard'))
+
 // Hash-based routes, so a refresh keeps the current page without a router library
 const ROUTES = [
+  { hash: '#/dashboard', label: 'Dashboard', Page: Dashboard },
   { hash: '#/claims', label: 'Claims Workbench', Page: ClaimsWorkbench },
   { hash: '#/rules', label: 'Rule Manager', Page: RuleManager },
 ]
@@ -48,7 +52,9 @@ function App() {
         </nav>
       </header>
       <main>
-        <Page />
+        <Suspense fallback={<div className="p-6 text-sm text-gray-500">Loading…</div>}>
+          <Page />
+        </Suspense>
       </main>
     </div>
   )

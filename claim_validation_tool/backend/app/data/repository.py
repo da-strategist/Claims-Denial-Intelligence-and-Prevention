@@ -88,6 +88,8 @@ class ClaimsRepository:
         self._original = self._claims[list(CORRECTABLE_FIELDS)].copy()
         self._corrected_ids: set[str] = set()
         self._overlay_lock = Lock()
+        # Bumped whenever the overlay changes, so caches of claim-derived results can expire
+        self.version = 0
 
         self._claim_pos = pd.Index(self._claims["claim_id"]).get_indexer
         self._lines_by_claim = self._lines.groupby("claim_id", sort=False).indices
@@ -131,6 +133,7 @@ class ClaimsRepository:
                     self._claims.loc[pos, field] = value
                 self._claims.loc[pos, "has_corrections"] = True
             self._corrected_ids = set(overrides)
+            self.version += 1
 
     # --- Claims -------------------------------------------------------------
 
@@ -177,6 +180,10 @@ class ClaimsRepository:
             return self._claims
         positions = self._claim_pos(claim_ids)
         return self._claims.iloc[positions[positions != -1]]
+
+    def denials_frame(self) -> pd.DataFrame:
+        """All denials, unfiltered. Treat as read-only."""
+        return self._denials
 
     def missing_claim_ids(self, claim_ids: list[str]) -> list[str]:
         positions = self._claim_pos(claim_ids)

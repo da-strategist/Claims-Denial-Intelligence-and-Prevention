@@ -4,7 +4,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.data import get_reference_data, get_repository, get_rule_repository
-from app.routers import aifix, claims, departments, payers, rules, validation
+from app.routers import aifix, claims, dashboard, departments, payers, rules, validation
+from app.services.status_snapshot import get_status_snapshot
 
 
 @asynccontextmanager
@@ -13,6 +14,8 @@ async def lifespan(app: FastAPI):
     get_repository()
     get_rule_repository()
     get_reference_data()
+    # Validate every claim up front so the first dashboard load is fast
+    get_status_snapshot().get(get_repository(), get_rule_repository().list())
     yield
 
 
@@ -38,6 +41,7 @@ app.include_router(departments.router)
 app.include_router(rules.router)
 app.include_router(validation.router)
 app.include_router(aifix.router)
+app.include_router(dashboard.router)
 
 
 @app.get("/api/health")

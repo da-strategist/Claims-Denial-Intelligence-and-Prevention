@@ -94,3 +94,8 @@ export const applyFix = (claimId, suggestionId, values = {}) =>
 /** Undo every correction on a claim, restoring its source values. */
 export const undoCorrections = (claimId) =>
   request(`/aifix/${encodeURIComponent(claimId)}/corrections`, { method: 'DELETE' })
+
+// --- Executive dashboard ---------------------------------------------------------
+
+/** KPIs and chart data. Params: months (trailing, omit for all time), payer_id, department_id. */
+export const getDashboard = (params, options) => request('/dashboard', { ...options, params })
