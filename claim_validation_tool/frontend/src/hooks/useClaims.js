@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { getClaim, listClaims, listPayers, validateClaims } from '../services/api'
+import { getClaim, getClaimFixes, listClaims, listPayers, validateClaims } from '../services/api'
 import { useApi } from './useApi'
 
 export function useClaims(params) {
@@ -12,6 +12,11 @@ export function useClaimDetail(claimId) {
     (options) => (claimId ? getClaim(claimId, options) : Promise.resolve(null)),
     claimId ?? '',
   )
+}
+
+/** AI Fix suggestions and corrections for a claim. */
+export function useClaimFixes(claimId) {
+  return useApi((options) => getClaimFixes(claimId, options), claimId)
 }
 
 /** Validation results for the given claims, keyed by claim_id. */

@@ -3,6 +3,8 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
+from app.data.corrections import get_correction_store
+from app.data.reference import get_reference_data
 from app.data.repository import ClaimsRepository, get_repository
 from app.data.rules import get_rule_repository
 from app.main import app
@@ -18,12 +20,14 @@ def repo() -> ClaimsRepository:
 @pytest.fixture
 def client(monkeypatch, tmp_path) -> TestClient:
     # Point both the startup preload and the request dependency at the fixtures,
-    # and give each test a freshly seeded rule store saved to a temp file
+    # and give each test fresh rule and correction stores saved to temp files
     monkeypatch.setenv("RCM_DATA_DIR", str(FIXTURES_DIR))
     monkeypatch.setenv("RCM_RULES_FILE", str(tmp_path / "rules.json"))
-    get_repository.cache_clear()
-    get_rule_repository.cache_clear()
+    monkeypatch.setenv("RCM_CORRECTIONS_FILE", str(tmp_path / "corrections.json"))
+    caches = (get_repository, get_rule_repository, get_correction_store, get_reference_data)
+    for cache in caches:
+        cache.cache_clear()
     with TestClient(app) as test_client:
         yield test_client
-    get_repository.cache_clear()
-    get_rule_repository.cache_clear()
+    for cache in caches:
+        cache.cache_clear()

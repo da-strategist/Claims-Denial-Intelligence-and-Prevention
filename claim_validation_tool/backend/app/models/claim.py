@@ -79,6 +79,9 @@ class Claim(DomainModel):
     pa_required: bool
     pa_obtained: bool
     pa_number: OptionalStr = None
+    has_corrections: bool = Field(
+        default=False, description="True if AI Fix corrections are layered over the source data"
+    )
 
     @model_validator(mode="after")
     def _check_dates(self) -> "Claim":

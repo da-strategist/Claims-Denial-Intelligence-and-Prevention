@@ -48,10 +48,12 @@
 - [x] `/api/departments` and per-field operators in `/api/rules/fields` for the builder
 
 ## Phase 6: AI Fix Workflow
-- [ ] Build AI fix suggestion service (backend)
-- [ ] Create `/api/aifix` endpoint
-- [ ] Add AI Fix actions to Claims Workbench expanded rows
-- [ ] Apply fix and re-validate flow
+- [x] Build AI fix suggestion service (backend) — rule-based, behind a swappable `FixSuggester` interface, with citations from reference data
+- [x] Create `/api/aifix` endpoint (suggestions, apply, undo corrections)
+- [x] Add AI Fix actions to Claims Workbench expanded rows
+- [x] Apply fix and re-validate flow — corrections layered over source data in `backend/claim_corrections.json` (gitignored), undoable
+- [x] Suggestions tag clarification topics for the Phase 10 assistant ("Ask the assistant" placeholder)
+- Deferred: LCD/NCD, MUE, and NCCI checks — the synthetic claim lines aren't generated consistently with those reference tables (checks would flag 20–95% of claims). Revisit with Phase 10 once the data generator is aligned.
 
 ## Phase 7: Executive Dashboard
 - [ ] Create `/api/dashboard` endpoints (KPIs, chart data)
@@ -72,6 +74,26 @@
 - [ ] Error handling and loading states
 - [ ] Final documentation
 
+## Phase 10: RAG Clarification Assistant
+Works alongside the rule-based engine: rules handle clear-cut cases; the assistant
+answers a billing specialist's clarification questions with cited sources where
+rules can't resolve the ambiguity.
+
+Use cases, in priority order:
+1. Medical necessity — LCD/NCD coverage for a CPT + ICD-10 combination
+2. NCCI / modifiers — PTP edits, modifier eligibility, MUE limits
+3. Payer prior authorization rules — requirements, retro-auth, contract terms
+4. Appeal wording — draft appeal language from CARC/RARC codes and claim context
+
+Tasks:
+- [ ] Choose LLM provider, embedding model, and vector store
+- [ ] Build knowledge base from reference data (`ref_lcd_ncd_policies`, `ref_ncci_ptp_edits`, `ref_mue_limits`, `ref_carc_codes`, `ref_rarc_codes`, `dim_payer_contracts`) plus payer policy documents
+- [ ] Ingestion and chunking pipeline with source metadata for citations
+- [ ] Retrieval service and `/api/assistant` endpoint (question + claim context → answer with citations)
+- [ ] Data-handling review: what claim/PHI fields may be sent to the LLM
+- [ ] "Ask the assistant" action on findings flagged as needing clarification (from Phase 6)
+- [ ] Evaluation set of billing questions to measure answer accuracy and citation quality
+
 ---
 
 ## Summary
@@ -83,9 +105,10 @@
 | 3. Validation Engine | Complete |
 | 4. Claims Workbench | Complete |
 | 5. Rule Manager & Builder | Complete |
-| 6. AI Fix Workflow | Pending |
+| 6. AI Fix Workflow | Complete |
 | 7. Executive Dashboard | Pending |
 | 8. JAB Audit | Pending |
 | 9. Polish & Testing | Pending |
+| 10. RAG Clarification Assistant | Pending |
 
 *Created: 2026-10-16*

@@ -66,3 +66,16 @@ export const FIELD_CLASS =
   'rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 focus:border-red-400 focus:outline-none focus:ring-2 focus:ring-red-100'
 
 export const INPUT_CLASS = `w-full ${FIELD_CLASS}`
+
+export const SUGGESTION_ACTIONS = {
+  apply: { label: 'Fix available', style: 'bg-violet-50 text-violet-800 border-violet-200' },
+  manual: { label: 'Manual task', style: 'bg-gray-50 text-gray-700 border-gray-200' },
+  clarify: { label: 'Needs clarification', style: 'bg-sky-50 text-sky-800 border-sky-200' },
+}
+
+export const CLARIFICATION_TOPICS = {
+  medical_necessity: 'Medical necessity',
+  ncci_modifiers: 'NCCI / modifiers',
+  payer_prior_auth: 'Payer prior auth rules',
+  appeal: 'Appeal wording',
+}

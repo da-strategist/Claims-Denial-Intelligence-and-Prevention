@@ -94,7 +94,17 @@ function ClaimRow({ claim, payerName, validation, validating, expanded, onToggle
           </svg>
         </button>
       </td>
-      <td className="px-4 py-3 text-sm font-medium text-gray-900">{claim.claim_id}</td>
+      <td className="px-4 py-3 text-sm font-medium text-gray-900">
+        {claim.claim_id}
+        {claim.has_corrections && (
+          <span
+            title="AI Fix corrections applied"
+            className="ml-2 rounded-full bg-violet-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-700"
+          >
+            Corrected
+          </span>
+        )}
+      </td>
       <td className="px-4 py-3 text-sm text-gray-600">{claim.service_date}</td>
       <td className="px-4 py-3 text-sm text-gray-600">{claim.patient_id}</td>
       <td className="px-4 py-3 text-sm text-gray-700">{payerName ?? claim.payer_id}</td>
@@ -171,7 +181,7 @@ export default function ClaimsWorkbench() {
   const page = paging.queryKey === queryKey ? paging.page : 1
   const setPage = (nextPage) => setPaging({ queryKey, page: nextPage })
 
-  const { data, loading, error } = useClaims({ ...query, page, page_size: PAGE_SIZE })
+  const { data, loading, error, reload } = useClaims({ ...query, page, page_size: PAGE_SIZE })
   const claims = data?.items ?? []
   const validations = useClaimValidations(claims.map((claim) => claim.claim_id))
   const payers = usePayerLookup()
@@ -260,7 +270,14 @@ export default function ClaimsWorkbench() {
                   {isExpanded && (
                     <tr className="border-b border-gray-100">
                       <td colSpan={COLUMN_COUNT} className="p-0">
-                        <ClaimDetailPanel claim={claim} validation={validation} />
+                        <ClaimDetailPanel
+                          claim={claim}
+                          validation={validation}
+                          onClaimChanged={() => {
+                            reload()
+                            validations.reload()
+                          }}
+                        />
                       </td>
                     </tr>
                   )}

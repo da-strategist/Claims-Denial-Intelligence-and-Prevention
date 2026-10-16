@@ -77,3 +77,20 @@ export const deleteRule = (ruleId) =>
 /** Count the claims a draft rule ({ scope, conditions, condition_logic }) would flag. */
 export const testRule = (definition, options) =>
   request('/rules/test', { ...options, method: 'POST', body: definition })
+
+// --- AI Fix ------------------------------------------------------------------------
+
+/** Validation, fix suggestions (with citations), and applied corrections for a claim. */
+export const getClaimFixes = (claimId, options) =>
+  request(`/aifix/${encodeURIComponent(claimId)}`, options)
+
+/** Apply a suggestion; `values` supplies or overrides field values. Re-validates the claim. */
+export const applyFix = (claimId, suggestionId, values = {}) =>
+  request(`/aifix/${encodeURIComponent(claimId)}/apply`, {
+    method: 'POST',
+    body: { suggestion_id: suggestionId, values },
+  })
+
+/** Undo every correction on a claim, restoring its source values. */
+export const undoCorrections = (claimId) =>
+  request(`/aifix/${encodeURIComponent(claimId)}/corrections`, { method: 'DELETE' })

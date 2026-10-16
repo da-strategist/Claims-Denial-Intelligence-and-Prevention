@@ -1,5 +1,9 @@
-import { useClaimDetail } from '../hooks/useClaims'
+import { useState } from 'react'
+import { VALIDATION_STATUSES } from '../constants'
+import { useClaimDetail, useClaimFixes } from '../hooks/useClaims'
+import { applyFix, undoCorrections } from '../services/api'
 import { currency } from '../utils/format'
+import FixSuggestion from './FixSuggestion'
 import { SeverityBadge, ValidationBadge } from './StatusBadge'
 
 function Section({ title, children }) {
@@ -11,7 +15,7 @@ function Section({ title, children }) {
   )
 }
 
-function Findings({ validation }) {
+function Findings({ validation, suggestions, onApply }) {
   if (!validation) return <p className="text-sm text-gray-500">Validating…</p>
   if (validation.findings.length === 0) {
     return <p className="text-sm text-emerald-700">All enabled rules passed.</p>
@@ -33,6 +37,11 @@ function Findings({ validation }) {
               <span className="font-medium">Recommended: </span>
               {finding.recommended_action}
             </p>
+          )}
+          {suggestions?.[finding.rule_id] && (
+            <div className="mt-3">
+              <FixSuggestion suggestion={suggestions[finding.rule_id]} onApply={onApply} />
+            </div>
           )}
         </li>
       ))}
@@ -142,29 +151,163 @@ function ClaimLines({ lines }) {
   )
 }
 
-function Denials({ denials }) {
+function Denials({ denials, suggestions, onApply }) {
   return (
     <ul className="space-y-2">
       {denials.map((denial) => (
-        <li key={denial.denial_id} className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm">
-          <div className="font-semibold text-red-900">{denial.denial_reason_text}</div>
-          <div className="mt-1 text-red-800">
-            {denial.denial_date} · CARC {denial.carc_code} / RARC {denial.rarc_code} ·{' '}
-            {currency.format(denial.denial_amount)}
-            {denial.is_preventable && ' · Preventable'}
+        <li key={denial.denial_id} className="space-y-3">
+          <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm">
+            <div className="font-semibold text-red-900">{denial.denial_reason_text}</div>
+            <div className="mt-1 text-red-800">
+              {denial.denial_date} · CARC {denial.carc_code} / RARC {denial.rarc_code} ·{' '}
+              {currency.format(denial.denial_amount)}
+              {denial.is_preventable && ' · Preventable'}
+            </div>
           </div>
+          {suggestions?.[`appeal:${denial.denial_id}`] && (
+            <FixSuggestion suggestion={suggestions[`appeal:${denial.denial_id}`]} onApply={onApply} />
+          )}
         </li>
       ))}
     </ul>
   )
 }
 
-/** Expanded-row content: validation findings, risk breakdown, and claim detail. */
-export default function ClaimDetailPanel({ claim, validation }) {
+const FIELD_LABELS = {
+  primary_icd10: 'Primary ICD-10',
+  pa_obtained: 'Prior auth obtained',
+  pa_number: 'Prior auth number',
+  is_clean_claim: 'Clean claim',
+}
+
+function describeCorrection({ field, old_value, new_value }) {
+  const show = (v) => (v === 'true' ? 'Yes' : v === 'false' ? 'No' : (v ?? '—'))
+  return `${FIELD_LABELS[field] ?? field}: ${show(old_value)} → ${show(new_value)}`
+}
+
+function statusLabel(validation) {
+  return `${VALIDATION_STATUSES[validation.status]?.label ?? validation.status} (risk ${validation.risk_score})`
+}
+
+/** Result of the last applied fix: what changed and the re-validated status. */
+function ApplyResult({ result, onDismiss }) {
+  const { before, after, applied } = result
+  return (
+    <div
+      role="status"
+      className="flex items-start justify-between gap-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900"
+    >
+      <div>
+        <div className="font-semibold">
+          Fix applied: {statusLabel(before)} → {statusLabel(after.validation)}
+        </div>
+        <div className="text-emerald-800">
+          {applied.map(describeCorrection).join(' · ')}
+        </div>
+      </div>
+      <button onClick={onDismiss} aria-label="Dismiss" className="text-emerald-700 hover:text-emerald-900">
+        ✕
+      </button>
+    </div>
+  )
+}
+
+function Corrections({ corrections, onUndo }) {
+  const [confirming, setConfirming] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const undo = async () => {
+    setBusy(true)
+    try {
+      await onUndo()
+    } finally {
+      setBusy(false)
+      setConfirming(false)
+    }
+  }
+  return (
+    <div className="rounded-lg border border-gray-200 bg-white p-3">
+      <ul className="space-y-1 text-sm">
+        {corrections.map((c) => (
+          <li key={c.id} className="flex flex-wrap justify-between gap-x-3 text-gray-700">
+            <span>{describeCorrection(c)}</span>
+            <span className="text-xs text-gray-400">
+              {c.id} · {new Date(c.applied_at).toLocaleString()}
+            </span>
+          </li>
+        ))}
+      </ul>
+      <div className="mt-2 flex items-center gap-2 border-t border-gray-100 pt-2 text-sm">
+        {confirming ? (
+          <>
+            <span className="text-gray-600">Restore the claim's original values?</span>
+            <button
+              onClick={undo}
+              disabled={busy}
+              className="rounded-lg bg-red-600 px-2.5 py-1 font-medium text-white hover:bg-red-700 disabled:opacity-50"
+            >
+              Undo all
+            </button>
+            <button
+              onClick={() => setConfirming(false)}
+              className="rounded-lg px-2.5 py-1 text-gray-600 hover:bg-gray-100"
+            >
+              Cancel
+            </button>
+          </>
+        ) : (
+          <button
+            onClick={() => setConfirming(true)}
+            className="font-medium text-red-700 hover:text-red-800"
+          >
+            Undo corrections
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
+/** Suggestions keyed by what they address: a rule ID, or `appeal:<denial_id>`. */
+function suggestionsByTarget(fixes) {
+  return Object.fromEntries(
+    (fixes?.suggestions ?? []).map((s) => [s.id.slice(s.claim_id.length + 1), s]),
+  )
+}
+
+/**
+ * Expanded-row content: findings with AI Fix suggestions, risk breakdown, corrections,
+ * and claim detail. `onClaimChanged` runs after a fix is applied or undone.
+ */
+export default function ClaimDetailPanel({ claim, validation: pageValidation, onClaimChanged }) {
   const { data: detail, loading, error } = useClaimDetail(claim.claim_id)
+  const fixes = useClaimFixes(claim.claim_id)
+  const [result, setResult] = useState(null)
+  const [undoError, setUndoError] = useState(null)
+
+  const validation = fixes.data?.validation ?? pageValidation
+  const suggestions = suggestionsByTarget(fixes.data)
+
+  const handleApply = async (suggestion, values) => {
+    const applied = await applyFix(claim.claim_id, suggestion.id, values)
+    setResult(applied)
+    fixes.reload()
+    onClaimChanged?.()
+  }
+
+  const handleUndo = async () => {
+    setUndoError(null)
+    try {
+      await undoCorrections(claim.claim_id)
+      setResult(null)
+      fixes.reload()
+      onClaimChanged?.()
+    } catch (err) {
+      setUndoError(err.message)
+    }
+  }
 
   return (
-    <div className="grid gap-6 bg-gray-50 px-6 py-5 lg:grid-cols-2">
+    <div className="grid gap-6 whitespace-normal bg-gray-50 px-6 py-5 lg:grid-cols-2">
       <div className="space-y-5">
         <Section title="Validation">
           <div className="flex items-center gap-2">
@@ -175,11 +318,21 @@ export default function ClaimDetailPanel({ claim, validation }) {
               </span>
             )}
           </div>
-          <Findings validation={validation} />
+          {result && <ApplyResult result={result} onDismiss={() => setResult(null)} />}
+          {fixes.error && (
+            <p className="text-sm text-amber-700">Could not load suggested fixes — {fixes.error}</p>
+          )}
+          <Findings validation={validation} suggestions={suggestions} onApply={handleApply} />
         </Section>
         <Section title="Risk breakdown">
           <RiskBreakdown validation={validation} />
         </Section>
+        {fixes.data?.corrections.length > 0 && (
+          <Section title="Corrections applied">
+            <Corrections corrections={fixes.data.corrections} onUndo={handleUndo} />
+            {undoError && <p className="text-sm text-red-700">Could not undo — {undoError}</p>}
+          </Section>
+        )}
       </div>
 
       <div className="space-y-5">
@@ -195,7 +348,7 @@ export default function ClaimDetailPanel({ claim, validation }) {
         )}
         {detail?.denials.length > 0 && (
           <Section title="Payer denial">
-            <Denials denials={detail.denials} />
+            <Denials denials={detail.denials} suggestions={suggestions} onApply={handleApply} />
           </Section>
         )}
       </div>

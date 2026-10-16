@@ -8,9 +8,14 @@ models, so listing a page of claims never materializes all 120K records.
 import os
 from functools import lru_cache
 from pathlib import Path
+from threading import Lock
+from typing import Any
 
 import pandas as pd
 
+from app.data.corrections import get_correction_store
+from app.models.aifix import CORRECTABLE_FIELDS
+from app.models.rule import RULE_FIELDS, parse_condition_value
 from app.models import (
     Claim,
     ClaimDetail,
@@ -78,6 +83,12 @@ class ClaimsRepository:
         ).dt.days
         self._add_prior_denial_flags()
 
+        # AI Fix corrections are layered over these columns; keep the originals to restore
+        self._claims["has_corrections"] = False
+        self._original = self._claims[list(CORRECTABLE_FIELDS)].copy()
+        self._corrected_ids: set[str] = set()
+        self._overlay_lock = Lock()
+
         self._claim_pos = pd.Index(self._claims["claim_id"]).get_indexer
         self._lines_by_claim = self._lines.groupby("claim_id", sort=False).indices
         self._denials_by_claim = self._denials.groupby("claim_id", sort=False).indices
@@ -94,6 +105,32 @@ class ClaimsRepository:
             Department.model_validate(row)
             for row in _read_table(data_dir, "dim_departments").to_dict("records")
         ]
+
+    # --- Corrections overlay ------------------------------------------------
+
+    def apply_overrides(self, overrides: dict[str, dict[str, str]]) -> None:
+        """Layer corrected field values ({claim_id: {field: value}}) over the source claims.
+
+        Replaces any previous overlay: claims no longer in `overrides` get their
+        original values back. Values are strings, typed per the rule field catalog.
+        """
+        with self._overlay_lock:
+            for claim_id in self._corrected_ids - overrides.keys():
+                pos = self._claim_pos([claim_id])[0]
+                for field in CORRECTABLE_FIELDS:
+                    self._claims.loc[pos, field] = self._original.loc[pos, field]
+                self._claims.loc[pos, "has_corrections"] = False
+            for claim_id, fields in overrides.items():
+                pos = self._claim_pos([claim_id])[0]
+                if pos == -1:
+                    continue
+                for field in CORRECTABLE_FIELDS:
+                    value: Any = self._original.loc[pos, field]
+                    if field in fields:
+                        value = parse_condition_value(RULE_FIELDS[field], fields[field])
+                    self._claims.loc[pos, field] = value
+                self._claims.loc[pos, "has_corrections"] = True
+            self._corrected_ids = set(overrides)
 
     # --- Claims -------------------------------------------------------------
 
@@ -234,4 +271,6 @@ class ClaimsRepository:
 def get_repository() -> ClaimsRepository:
     """Process-wide repository, usable as a FastAPI dependency."""
     data_dir = Path(os.environ.get("RCM_DATA_DIR", DEFAULT_DATA_DIR))
-    return ClaimsRepository(data_dir)
+    repo = ClaimsRepository(data_dir)
+    repo.apply_overrides(get_correction_store().overrides())
+    return repo
