@@ -27,6 +27,9 @@ Data/raw_data/
 
 # Sensitive / credentials
 *.json
+# ...but the frontend's npm manifests are needed to install it
+!claim_validation_tool/frontend/package.json
+!claim_validation_tool/frontend/package-lock.json
 *.p8
 *.pem
 .env
