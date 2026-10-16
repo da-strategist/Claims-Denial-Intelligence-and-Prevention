@@ -62,9 +62,10 @@
 - [x] Connect to dashboard API — validation status for all claims is cached server-side and refreshed when rules or corrections change
 
 ## Phase 8: JAB Audit Integration (Conceptual)
-- [ ] Build workflow diagram component
-- [ ] Build integration architecture cards
-- [ ] Design future API contracts
+- [x] Build workflow diagram component — six steps, marked Live / Needed / Proposed, closing the loop back into Rule Manager
+- [x] Build integration architecture cards — ClaustraRCM, JAB Audit, clearinghouse, EHR/PM, contract repository, security & compliance
+- [x] Design future API contracts — claim handoff (out), underpayment findings, recovery status, rule suggestions (in). Pydantic models in `models/jab.py`, served by `GET /api/jab/contracts` as field tables, JSON Schema, and validated examples
+- Not built: a live underpayment preview. The synthetic allowed amounts aren't generated from contract rates (allowed/expected ranges 0.5–1.9×), so variance figures would be noise. Revisit once the data generator is aligned.
 
 ## Phase 9: Polish & Testing
 - [ ] Backend unit tests (validation engine, risk scorer, AI fix)
@@ -107,7 +108,7 @@ Tasks:
 | 5. Rule Manager & Builder | Complete |
 | 6. AI Fix Workflow | Complete |
 | 7. Executive Dashboard | Complete |
-| 8. JAB Audit | Pending |
+| 8. JAB Audit | Complete |
 | 9. Polish & Testing | Pending |
 | 10. RAG Clarification Assistant | Pending |
 

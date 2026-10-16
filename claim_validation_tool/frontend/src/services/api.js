@@ -99,3 +99,8 @@ export const undoCorrections = (claimId) =>
 
 /** KPIs and chart data. Params: months (trailing, omit for all time), payer_id, department_id. */
 export const getDashboard = (params, options) => request('/dashboard', { ...options, params })
+
+// --- JAB Audit (conceptual) ------------------------------------------------------
+
+/** Proposed ClaustraRCM <-> JAB Audit API contracts, with field tables, schemas, and examples. */
+export const listJabContracts = (options) => request('/jab/contracts', options)

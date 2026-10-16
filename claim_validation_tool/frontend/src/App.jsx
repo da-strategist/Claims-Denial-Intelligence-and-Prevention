@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect, useState } from 'react'
 import ClaimsWorkbench from './pages/ClaimsWorkbench'
+import JabAudit from './pages/JabAudit'
 import RuleManager from './pages/RuleManager'
 
 // Loaded on demand: the chart library is most of its weight
@@ -10,6 +11,7 @@ const ROUTES = [
   { hash: '#/dashboard', label: 'Dashboard', Page: Dashboard },
   { hash: '#/claims', label: 'Claims Workbench', Page: ClaimsWorkbench },
   { hash: '#/rules', label: 'Rule Manager', Page: RuleManager },
+  { hash: '#/jab', label: 'JAB Audit', Page: JabAudit },
 ]
 
 function useHashRoute() {

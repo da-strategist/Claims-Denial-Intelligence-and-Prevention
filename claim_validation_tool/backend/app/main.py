@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.data import get_reference_data, get_repository, get_rule_repository
-from app.routers import aifix, claims, dashboard, departments, payers, rules, validation
+from app.routers import aifix, claims, dashboard, departments, jab, payers, rules, validation
 from app.services.status_snapshot import get_status_snapshot
 
 
@@ -42,6 +42,7 @@ app.include_router(rules.router)
 app.include_router(validation.router)
 app.include_router(aifix.router)
 app.include_router(dashboard.router)
+app.include_router(jab.router)
 
 
 @app.get("/api/health")
