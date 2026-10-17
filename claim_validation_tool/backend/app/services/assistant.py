@@ -335,6 +335,14 @@ def build_prompt(question: str, facts: ClaimFacts | None, sources: list[Assistan
     return "\n\n".join(parts)
 
 
+def _api_error_message(err: Exception) -> str:
+    """Anthropic's own message (e.g. "Your credit balance is too low…"), not the raw JSON."""
+    body = getattr(err, "body", None)
+    if isinstance(body, dict) and isinstance(body.get("error"), dict):
+        return body["error"].get("message") or str(err)
+    return getattr(err, "message", None) or str(err)
+
+
 class ClaudeWriter:
     mode = AssistantMode.CLAUDE
 
@@ -356,7 +364,7 @@ class ClaudeWriter:
                 messages=[{"role": "user", "content": build_prompt(question, facts, sources)}],
             )
         except self._errors as err:
-            raise AssistantUnavailable(str(err)) from err
+            raise AssistantUnavailable(_api_error_message(err)) from err
         return "".join(block.text for block in response.content if block.type == "text").strip()
 
 

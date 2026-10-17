@@ -346,3 +346,23 @@ def test_eval_set_retrieves_every_expected_source():
     results = [evaluate(case, retriever, None) for case in CASES]
     misses = {r.case.id: r.retrieved for r in results if not r.recall}
     assert misses == {}
+
+
+def test_claude_api_errors_show_anthropics_message(retriever):
+    import anthropic
+    import httpx2
+
+    request = httpx2.Request("POST", "https://api.anthropic.com/v1/messages")
+    response = httpx2.Response(400, request=request)
+    message = "Your credit balance is too low to access the Anthropic API."
+    error = anthropic.BadRequestError(
+        "Error code: 400 - {...}",
+        response=response,
+        body={"type": "error", "error": {"type": "invalid_request_error", "message": message}},
+    )
+    writer = ClaudeWriter(api_key="test-key")
+    writer._client = SimpleNamespace(messages=FakeMessages(error))
+    result = assistant.answer_question("What does CARC 197 mean?", None, None, retriever, writer)
+    assert result.notice == (
+        f"Claude couldn't be reached ({message}), so these are the matching sources."
+    )

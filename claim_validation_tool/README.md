@@ -66,6 +66,10 @@ cd claim_validation_tool/backend
 uv run uvicorn app.main:app --reload --port 8000
 ```
 
+To have Claude answer the clarification assistant's questions, put the key in
+`backend/.env` (git-ignored) as `ANTHROPIC_API_KEY=...` and start the API with
+`uv run --env-file .env uvicorn app.main:app --reload --port 8000`.
+
 API docs: http://localhost:8000/docs. Loading the data takes a few seconds at startup.
 
 ```bash
@@ -107,7 +111,7 @@ Assistant evaluation, 17 billing questions with expected sources and answer fact
 ```bash
 cd claim_validation_tool/backend
 uv run python -m app.evals.assistant          # retrieval recall and MRR (free, offline)
-uv run python -m app.evals.assistant --llm    # also grades Claude's answers and citations
+uv run --env-file .env python -m app.evals.assistant --llm   # also grades Claude's answers
 ```
 
 Backend tests run against small fixture CSVs in `backend/app/tests/fixtures/`, never the real
