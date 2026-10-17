@@ -30,6 +30,7 @@ PERMISSION_LABELS = {
     Permission.CLAIMS_WRITE: "change claims",
     Permission.RULES_WRITE: "change validation rules",
     Permission.AUDIT_READ: "read the audit log",
+    Permission.USERS_MANAGE: "manage user accounts",
 }
 
 

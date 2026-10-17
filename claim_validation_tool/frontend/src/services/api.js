@@ -75,6 +75,17 @@ export const getMe = (options) => request('/auth/me', options)
 // --- Audit log (admins) ------------------------------------------------------------
 
 /** Recent API requests, newest first. Params: username, record_id, outcome, limit. */
+/** User accounts (administrators). Passwords go in, never come back. */
+export const listUsers = (options) => request('/users', options)
+
+export const createUser = (user) => request('/users', { method: 'POST', body: user })
+
+export const updateUser = (username, changes) =>
+  request(`/users/${encodeURIComponent(username)}`, { method: 'PATCH', body: changes })
+
+export const resetUserPassword = (username, password) =>
+  request(`/users/${encodeURIComponent(username)}/password`, { method: 'POST', body: { password } })
+
 export const listAuditEvents = (params, options) => request('/audit', { ...options, params })
 
 /** Whether the audit log's hash chain is intact: { ok, events, first_bad_seq }. */

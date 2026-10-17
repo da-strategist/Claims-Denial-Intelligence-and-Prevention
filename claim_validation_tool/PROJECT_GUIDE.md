@@ -26,6 +26,7 @@ This tool validates healthcare claims against configurable rules, identifies den
   - `payers.py`, `departments.py`, `reference.py` — lookups for the UI
   - `jab.py` — JAB Audit integration contracts (conceptual)
   - `auth.py`, `audit.py` — sign-in and out; reading and verifying the audit log
+  - `users.py` — account management for administrators (the Users page), with self-lockout guards
 - `app/models/` — Pydantic schemas for request/response contracts
 - `app/services/` — business logic, decoupled from HTTP:
   - `validation_engine.py` — evaluates rules against claims (vectorized over pandas)
@@ -65,6 +66,7 @@ This tool validates healthcare claims against configurable rules, identifies den
   - `RuleManager.jsx` — rule list + rule builder panel
   - `JabAudit.jsx` — conceptual audit workflow
   - `AuditLog.jsx` — the audit log (admins)
+  - `Users.jsx` — add accounts, change roles, reset passwords, disable / enable (admins)
   - `UserGuide.jsx` — task-by-task help, filtered to the signed-in role
 - `src/components/` — reusable pieces (StatusBadge, KpiCard, ConditionBuilder, etc.)
 - `src/index.css` — the design system: colour tokens (one blue accent for actions; green for good, amber for review, red for problems: Paid, Pass and low risk are green; warnings and medium risk amber; errors, denials and high risk red), and the shared `btn-primary`, `btn-secondary`, `btn-quiet`, `btn-danger`, `card`, `field` and `eyebrow` classes. New UI should use these rather than one-off colours.

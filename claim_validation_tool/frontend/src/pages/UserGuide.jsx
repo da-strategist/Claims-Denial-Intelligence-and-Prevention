@@ -222,9 +222,12 @@ const SECTIONS = [
             Every request: who, what, which records, and the outcome. Filter by user, record, or
             outcome; the hash check shows whether the log has been altered.
           </Term>
-          <Term name="Accounts">
-            Created and managed on the server with <code className="font-mono text-xs">python -m app.users</code>{' '}
-            (add, password, role, disable).
+          <Term name="Users">
+            Add people, change their role, reset a password, or disable an account (which signs
+            them out). You can’t change your own role or disable yourself, and the last active
+            administrator can’t be removed. Every change is in the audit log. Give new passwords
+            in person or by phone, not by email. The same can be done on the server with{' '}
+            <code className="font-mono text-xs">python -m app.users</code>.
           </Term>
         </dl>
       </>

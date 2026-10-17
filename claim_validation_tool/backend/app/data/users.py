@@ -113,8 +113,11 @@ class UserStore:
         password: str | None = None,
         role: Role | None = None,
         active: bool | None = None,
+        display_name: str | None = None,
     ) -> User:
         changes: dict = {}
+        if display_name is not None:
+            changes["display_name"] = display_name
         if password is not None:
             check_password_strength(password)
             changes |= {

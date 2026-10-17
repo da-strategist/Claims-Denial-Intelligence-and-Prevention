@@ -49,7 +49,7 @@ Every route except `/api/health` needs a signed-in user, and each role gets only
 |---|---|
 | `analyst` | View claims, validation, suggestions, dashboard, assistant. No patient names or demographics. |
 | `biller` | Also see patient details and search patients, enter and submit claims, apply and undo fixes |
-| `admin` | Also create and edit validation rules, and read the audit log |
+| `admin` | Also create and edit validation rules, manage user accounts, and read the audit log |
 
 Sessions are an HttpOnly, SameSite=Strict cookie. They end after 15 minutes without a request,
 after 8 hours, at sign-out, or when the account is disabled; the API restarting also ends
@@ -118,9 +118,14 @@ uv run python -m app.users add yourname --name "Your Name" --role admin   # prom
 uv run uvicorn app.main:app --reload --port 8000
 ```
 
-Manage accounts with `uv run python -m app.users` (`list`, `add`, `password`, `role`,
-`disable`, `enable`); changes apply while the API runs. Accounts live in `backend/users.json`
-(git-ignored, readable only by you).
+The first administrator is created on the command line, as above. After that, administrators
+manage accounts on the **Users** page (Admin section): add people, change roles, reset
+passwords, and disable or re-enable accounts. Disabling or resetting a password signs that
+person out; administrators can't change their own role or disable themselves, and the last
+active administrator can't be demoted or disabled. Every change is audited (never the
+password). The same is possible with `uv run python -m app.users` (`list`, `add`, `password`,
+`role`, `disable`, `enable`); changes apply while the API runs. Accounts live in
+`backend/users.json` (git-ignored, readable only by you).
 
 To have Claude answer the clarification assistant's questions, put the key in
 `backend/.env` (git-ignored) as `ANTHROPIC_API_KEY=...` and start the API with
@@ -192,6 +197,7 @@ All routes are under `/api`; full schemas at `/docs`.
 |---|---|
 | Sign-in | `POST /auth/login` · `POST /auth/logout` · `GET /auth/me` |
 | Audit | `GET /audit` (username, record_id, outcome, limit) · `GET /audit/verify` |
+| Users | `GET /users` · `POST /users` · `PATCH /users/{username}` · `POST /users/{username}/password` (administrators) |
 | Claims | `GET /claims` (search, filter, sort, page) · `POST /claims` · `GET /claims/{id}` · `POST /claims/{id}/submit` · `GET /claims/{id}/837` · `GET /claims/{id}/claim-form.pdf` · `GET /claims/{id}/837-readable.pdf` |
 | Saved drafts | `GET /drafts` · `POST /drafts` · `GET /drafts/{id}` · `PUT /drafts/{id}` · `DELETE /drafts/{id}` (billers and admins) |
 | Validation | `GET /validate/{id}` · `POST /validate` (up to 200 claims) |
@@ -225,7 +231,7 @@ claim_validation_tool/
 │   └── tests/              # pytest suite and fixture CSVs
 └── frontend/src/
     ├── App.jsx             # Shell and hash routes
-    ├── pages/              # Login, Dashboard, ClaimsWorkbench, NewClaim, RuleManager, JabAudit, AuditLog, UserGuide
+    ├── pages/              # Login, Dashboard, ClaimsWorkbench, NewClaim, RuleManager, JabAudit, AuditLog, Users, UserGuide
     ├── components/         # Shared UI (badges, panels, builders, error boundary)
     ├── hooks/              # Data hooks built on useApi
     ├── services/api.js     # The only place that calls fetch

@@ -2,7 +2,7 @@
 
 Each role gets the minimum it needs (HIPAA's "minimum necessary" standard): analysts see
 claims and dashboards but not patient demographics, billers also work claims for named
-patients, and admins also manage rules and read the audit log.
+patients, and admins also manage rules, user accounts, and read the audit log.
 """
 
 from datetime import datetime
@@ -29,6 +29,7 @@ class Permission(StrEnum):
     CLAIMS_WRITE = "claims:write"  # enter and submit claims, apply and undo fixes
     RULES_WRITE = "rules:write"  # create, edit, test, and delete validation rules
     AUDIT_READ = "audit:read"
+    USERS_MANAGE = "users:manage"  # create accounts, change roles, reset passwords, disable
 
 
 ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
@@ -57,6 +58,38 @@ class User(BaseModel):
 
     def can(self, permission: Permission) -> bool:
         return permission in self.permissions
+
+
+class UserSummary(BaseModel):
+    """An account as the Users page shows it (never the password hash)."""
+
+    username: str
+    display_name: str
+    role: Role
+    active: bool
+    created_at: datetime
+    password_changed_at: datetime
+
+
+class UserCreate(BaseModel):
+    username: Username
+    display_name: Annotated[str, StringConstraints(min_length=1, max_length=80, strip_whitespace=True)]
+    role: Role
+    password: str = Field(min_length=1, max_length=256)
+
+
+class UserUpdate(BaseModel):
+    """Fields to change; omitted ones stay as they are."""
+
+    display_name: Annotated[
+        str, StringConstraints(min_length=1, max_length=80, strip_whitespace=True)
+    ] | None = None
+    role: Role | None = None
+    active: bool | None = None
+
+
+class PasswordReset(BaseModel):
+    password: str = Field(min_length=1, max_length=256)
 
 
 class CurrentUser(BaseModel):

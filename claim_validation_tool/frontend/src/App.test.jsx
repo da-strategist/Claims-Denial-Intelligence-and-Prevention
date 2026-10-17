@@ -14,7 +14,7 @@ const user = (role, permissions) => ({
   session_expires_at: '2026-10-17T20:00:00Z',
 })
 const ANALYST = user('analyst', ['claims:read'])
-const ADMIN = user('admin', ['audit:read', 'claims:read', 'claims:write', 'patients:read', 'rules:write'])
+const ADMIN = user('admin', ['audit:read', 'claims:read', 'claims:write', 'patients:read', 'rules:write', 'users:manage'])
 
 const PAGE = { 'GET /jab/contracts': () => [] }
 const signedOut = { 'GET /auth/me': () => reply(401, { detail: 'Sign in to continue' }) }
@@ -72,6 +72,7 @@ describe('signing in', () => {
       'Rules',
       'JAB Audit',
       'User Guide',
+      'Users',
       'Audit Log',
     ])
   })

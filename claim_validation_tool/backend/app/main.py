@@ -21,6 +21,7 @@ from app.routers import (
     payers,
     reference,
     rules,
+    users,
     validation,
 )
 from app.services.assistant import get_retriever
@@ -61,6 +62,7 @@ app.add_middleware(
 
 app.include_router(auth.router)
 app.include_router(audit.router)
+app.include_router(users.router)
 app.include_router(claims.router)
 app.include_router(drafts.router)
 app.include_router(payers.router)

@@ -23,6 +23,10 @@ from app.models.auth import (
     Permission,
     Role,
     User,
+    PasswordReset,
+    UserCreate,
+    UserSummary,
+    UserUpdate,
 )
 from app.models.assistant import (
     AssistantAnswer,
@@ -115,6 +119,10 @@ from app.models.rule import (
 )
 
 __all__ = [
+    "PasswordReset",
+    "UserCreate",
+    "UserSummary",
+    "UserUpdate",
     "RELATIONSHIP_CODES",
     "Address",
     "ClaimBilling",

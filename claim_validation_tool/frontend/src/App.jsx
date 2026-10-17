@@ -10,6 +10,7 @@ import Login from './pages/Login'
 import NewClaim from './pages/NewClaim'
 import RuleManager from './pages/RuleManager'
 import UserGuide from './pages/UserGuide'
+import Users from './pages/Users'
 import { hashPath } from './utils/route'
 
 // Loaded on demand: the chart library is most of its weight
@@ -25,6 +26,7 @@ const ROUTES = [
   { hash: '#/rules', label: 'Rules', icon: 'rules', Page: RuleManager, permission: 'rules:write' },
   { hash: '#/jab', label: 'JAB Audit', icon: 'loop', Page: JabAudit, permission: 'claims:read' },
   { hash: '#/guide', label: 'User Guide', icon: 'book', Page: UserGuide, permission: 'claims:read' },
+  { hash: '#/users', label: 'Users', icon: 'users', Page: Users, permission: 'users:manage', admin: true },
   { hash: '#/audit', label: 'Audit Log', icon: 'shield', Page: AuditLog, permission: 'audit:read', admin: true },
 ]
 
