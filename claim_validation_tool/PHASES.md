@@ -87,13 +87,13 @@ Use cases, in priority order:
 4. Appeal wording — draft appeal language from CARC/RARC codes and claim context
 
 Tasks:
-- [ ] Choose LLM provider, embedding model, and vector store
-- [ ] Build knowledge base from reference data (`ref_lcd_ncd_policies`, `ref_ncci_ptp_edits`, `ref_mue_limits`, `ref_carc_codes`, `ref_rarc_codes`, `dim_payer_contracts`) plus payer policy documents
-- [ ] Ingestion and chunking pipeline with source metadata for citations
-- [ ] Retrieval service and `/api/assistant` endpoint (question + claim context → answer with citations)
-- [ ] Data-handling review: what claim/PHI fields may be sent to the LLM
-- [ ] "Ask the assistant" action on findings flagged as needing clarification (from Phase 6)
-- [ ] Evaluation set of billing questions to measure answer accuracy and citation quality
+- [x] Choose LLM provider, embedding model, and vector store — Claude API (Sonnet 5.5); no embeddings or vector store: the ~370 structured records are looked up by code, plus BM25 keyword search
+- [x] Build knowledge base from reference data (`ref_lcd_ncd_policies`, `ref_ncci_ptp_edits`, `ref_mue_limits`, `ref_carc_codes`, `ref_rarc_codes`, `dim_payer_contracts`), plus `dim_payers` and `ref_physician_fee_schedule` — existing tables only; no payer policy documents exist
+- [x] Ingestion and chunking pipeline with source metadata for citations — one source per table row, keyed by its codes
+- [x] Retrieval service and `/api/assistant` endpoint (question + claim context → answer with citations)
+- [x] Data-handling review: what claim/PHI fields may be sent to the LLM
+- [x] "Ask the assistant" action on findings flagged as needing clarification (from Phase 6)
+- [x] Evaluation set of billing questions to measure answer accuracy and citation quality — 17 cases; retrieval 17/17, MRR 1.00; answer grading needs `ANTHROPIC_API_KEY` and hasn't been run yet
 
 ---
 
@@ -109,7 +109,7 @@ Tasks:
 | 6. AI Fix Workflow | Complete |
 | 7. Executive Dashboard | Complete |
 | 8. JAB Audit | Complete |
-| 9. Polish & Testing | Pending |
-| 10. RAG Clarification Assistant | Pending |
+| 9. Polish & Testing | Complete |
+| 10. RAG Clarification Assistant | Complete |
 
 *Created: 2026-10-16*

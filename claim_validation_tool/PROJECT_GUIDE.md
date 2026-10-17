@@ -18,6 +18,7 @@ This tool validates healthcare claims against configurable rules, identifies den
   - `rules.py` — CRUD and dry-run testing for validation rules
   - `validation.py` — run the validation engine against claims
   - `aifix.py` — fix suggestions, applying them, and undoing corrections
+  - `assistant.py` — clarification questions answered with cited reference records
   - `dashboard.py` — aggregated KPIs and chart data
   - `patients.py`, `payers.py`, `departments.py`, `reference.py` — lookups for the UI
   - `jab.py` — JAB Audit integration contracts (conceptual)
@@ -26,10 +27,13 @@ This tool validates healthcare claims against configurable rules, identifies den
   - `validation_engine.py` — evaluates rules against claims (vectorized over pandas)
   - `risk_scorer.py` — composite risk score calculation
   - `aifix.py` — rule-based fix suggestions with citations
+  - `assistant.py` — clarification assistant: claim facts, retrieval, Claude answer writer
   - `status_snapshot.py` — cached validation of every claim, invalidated on data or rule changes
   - `dashboard.py`, `jab.py` — dashboard aggregates and JAB contract schemas
 - `app/data/` — data access: in-memory claims repository over the synthetic CSVs, JSON-backed
-  rule and correction stores, reference data (CPT, ICD-10, contracts, CARC/RARC)
+  rule and correction stores, reference data (CPT, ICD-10, contracts, CARC/RARC), and the
+  assistant's knowledge base (`knowledge.py`: one citable source per reference-table row)
+- `app/evals/` — the assistant's evaluation set and runner
 
 **Conventions:**
 - All API routes prefixed with `/api/`
@@ -101,6 +105,25 @@ Factors:
 - Missing prior auth: 15 pts
 - Missing diagnosis: 10 pts
 - Non-clean claim: 5 pts
+
+## Clarification Assistant: Data Handling
+
+Rules handle the clear-cut cases; the assistant answers clarification questions where they
+can't. It reads only the reference tables, and only `ClaimFacts` leaves the system:
+
+| Sent to Claude | Never sent |
+|---|---|
+| CPT, category, modifier, units, line charge, ICD-10 pointer | Patient name, ID, age, gender, ZIP |
+| Primary and additional ICD-10 | Claim ID, provider name, provider ID, NPI |
+| Payer ID, name, type; other payer IDs | Exact service, submission, or denial dates |
+| Claim type, place of service, status, service month | Prior auth number (only whether one exists) |
+| Total charge and paid, days in AR, PA required/obtained | Denial reason free text |
+| Denial CARC/RARC, root cause category, amount, preventable | |
+
+Questions are scrubbed of patient/claim/provider IDs, 10-digit numbers, and dates before
+retrieval or sending. Any new field added to `ClaimFacts` must stay within this list; the
+test `test_claim_facts_share_codes_and_amounts_only` checks a real claim's identifiers never
+reach the prompt.
 
 ## Data Flow
 

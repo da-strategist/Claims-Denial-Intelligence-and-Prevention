@@ -5,11 +5,13 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.data.corrections import get_correction_store
+from app.data.knowledge import get_knowledge_base
 from app.data.reference import get_reference_data
 from app.data import repository
 from app.data.repository import ClaimsRepository, get_repository
 from app.data.rules import get_rule_repository
 from app.main import app
+from app.services.assistant import get_answer_writer, get_retriever
 from app.services.status_snapshot import get_status_snapshot
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
@@ -27,12 +29,17 @@ def client(monkeypatch, tmp_path) -> TestClient:
     monkeypatch.setenv("RCM_DATA_DIR", str(FIXTURES_DIR))
     monkeypatch.setenv("RCM_RULES_FILE", str(tmp_path / "rules.json"))
     monkeypatch.setenv("RCM_CORRECTIONS_FILE", str(tmp_path / "corrections.json"))
+    # The assistant never calls Claude in tests; tests that need an LLM inject a fake one
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     caches = (
         get_repository,
         get_rule_repository,
         get_correction_store,
         get_reference_data,
         get_status_snapshot,
+        get_knowledge_base,
+        get_retriever,
+        get_answer_writer,
     )
     for cache in caches:
         cache.cache_clear()

@@ -20,7 +20,7 @@ class SuggestionAction(StrEnum):
 
 
 class ClarificationTopic(StrEnum):
-    """What the Phase 10 RAG assistant would research. Ordered by priority."""
+    """What the clarification assistant researches for a suggestion. Ordered by priority."""
 
     MEDICAL_NECESSITY = "medical_necessity"
     NCCI_MODIFIERS = "ncci_modifiers"
@@ -42,6 +42,11 @@ class SourceType(StrEnum):
     ICD10 = "icd10"
     CLAIM_DATA = "claim_data"
     RULE = "rule"
+    # Reference tables the clarification assistant also retrieves from
+    NCCI_EDIT = "ncci_edit"
+    MUE = "mue"
+    COVERAGE_POLICY = "coverage_policy"  # LCD / NCD
+    FEE_SCHEDULE = "fee_schedule"
 
 
 class Citation(BaseModel):

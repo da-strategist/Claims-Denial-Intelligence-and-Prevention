@@ -10,10 +10,34 @@ FastAPI backend and a React frontend over a synthetic 120,000-claim data set.
 | Page | Purpose |
 |---|---|
 | **Dashboard** | KPIs (denial rate, clean claim rate, days in AR, net collection, at-risk claims) against the prior period, revenue trend, validation status, top denial reasons, AR aging, payer performance. Filter by period, payer, department. |
-| **Claims Workbench** | Search and filter all claims; each row shows its validation result and 0–100 risk score. Expand a claim for findings, risk breakdown, lines, denials, and **AI Fix** suggestions that can be applied and undone. |
+| **Claims Workbench** | Search and filter all claims; each row shows its validation result and 0–100 risk score. Expand a claim for findings, risk breakdown, lines, denials, and **AI Fix** suggestions that can be applied and undone. Suggestions that need judgement (medical necessity, NCCI/modifiers, payer prior auth, appeals) offer **Ask the assistant**. |
 | **New Claim** | Enter a draft claim for a registered patient: billed payer (defaults to the registered primary) plus secondary/tertiary coverage, up to 12 diagnoses each supported by a service line, prior authorization. It's validated on creation and can be marked submitted once rule errors are resolved. |
 | **Rule Manager** | Create, edit, enable/disable, and test rules (field + operator + value conditions, AND/OR, scoped to payers, departments, or claim types). Changes apply to every claim immediately. |
 | **JAB Audit** | Conceptual integration with the JAB Audit underpayment recovery platform: workflow, architecture, and the proposed API contracts. |
+
+### Clarification assistant
+
+Answers a billing specialist's questions from the organization's reference tables, citing
+each record it relies on as [S1], [S2]:
+
+| Use case | Sources |
+|---|---|
+| Medical necessity | LCD/NCD coverage policies (`ref_lcd_ncd_policies`) |
+| NCCI / modifiers | NCCI PTP edits, MUE limits (`ref_ncci_ptp_edits`, `ref_mue_limits`) |
+| Payer prior auth and terms | Payer profiles and contracts (`dim_payers`, `dim_payer_contracts`) |
+| Appeal wording | CARC/RARC codes (`ref_carc_codes`, `ref_rarc_codes`), plus the above |
+| Expected payment | Medicare fee schedule (`ref_physician_fee_schedule`) |
+
+Retrieval is deterministic: the claim's CPT, ICD-10, payer, and CARC/RARC codes look up the
+records that govern them (e.g. an NCCI edit when both of its codes are billed, an MUE when units
+exceed the limit, a coverage policy noting whether the diagnosis is on its covered list), and
+keyword search handles free-typed questions. Claude then writes the answer from those records
+only. Without `ANTHROPIC_API_KEY` the assistant returns the matching records instead.
+
+**Shared with Claude:** codes and amounts only (CPT, ICD-10, modifiers, units, payer, claim
+type, place of service, charges, prior auth status, CARC/RARC, service month). Never patient
+or provider names, IDs, age, gender, ZIP, NPI, PA numbers, exact dates, or denial free text;
+identifiers typed into the question are masked. The panel shows exactly what was shared.
 
 ### Claim lifecycle
 
@@ -60,6 +84,9 @@ App: http://localhost:5173. The Vite dev server proxies `/api` to port 8000.
 | `RCM_DATA_DIR` | `Data/raw_data` at the repository root | Directory with the source CSVs |
 | `RCM_RULES_FILE` | `backend/rules.json` | Saved rules (seeded with 9 defaults on first run) |
 | `RCM_CORRECTIONS_FILE` | `backend/claim_corrections.json` | Applied AI Fix corrections |
+| `ANTHROPIC_API_KEY` | unset | Enables Claude for the clarification assistant |
+| `RCM_ASSISTANT_MODEL` | `claude-sonnet-5-5` | Claude model the assistant uses |
+| `RCM_ASSISTANT_MODE` | | Set to `retrieval` to keep Claude off even with a key |
 | `VITE_API_BASE` | `/api` | API base URL for the frontend |
 
 Rules and corrections persist in those JSON files (git-ignored). Claims entered on the New
@@ -72,6 +99,15 @@ cd claim_validation_tool/backend && uv run python -m pytest   # API, engine, ris
 cd claim_validation_tool/frontend && npm test                 # components, pages, hooks, API client
 npm run lint                                                  # oxlint
 npm run build                                                 # production build
+```
+
+Assistant evaluation, 17 billing questions with expected sources and answer facts
+(`backend/app/evals/assistant_cases.py`):
+
+```bash
+cd claim_validation_tool/backend
+uv run python -m app.evals.assistant          # retrieval recall and MRR (free, offline)
+uv run python -m app.evals.assistant --llm    # also grades Claude's answers and citations
 ```
 
 Backend tests run against small fixture CSVs in `backend/app/tests/fixtures/`, never the real
@@ -90,6 +126,7 @@ All routes are under `/api`; full schemas at `/docs`.
 | AI Fix | `GET /aifix/{id}` · `POST /aifix/{id}/apply` · `DELETE /aifix/{id}/corrections` |
 | Dashboard | `GET /dashboard` (months, payer_id, department_id) |
 | Reference | `/patients`, `/patients/{id}`, `/payers`, `/departments`, `/providers`, `/facilities`, `/codes/procedures`, `/codes/diagnoses` |
+| Assistant | `POST /assistant` (question, optional claim_id and topic) · `GET /assistant/status` |
 | JAB Audit | `GET /jab/contracts` |
 | Health | `GET /health` |
 
@@ -106,8 +143,9 @@ claim_validation_tool/
 │   ├── main.py             # FastAPI app, CORS, routers, data preload
 │   ├── routers/            # One module per API area
 │   ├── models/             # Pydantic request/response schemas
-│   ├── services/           # Validation engine, risk scorer, AI fix, dashboard, JAB
-│   ├── data/               # In-memory claims repository, rule and correction stores
+│   ├── services/           # Validation engine, risk scorer, AI fix, assistant, dashboard, JAB
+│   ├── data/               # Claims repository, rule/correction stores, assistant knowledge base
+│   ├── evals/              # Assistant evaluation set and runner
 │   └── tests/              # pytest suite and fixture CSVs
 └── frontend/src/
     ├── App.jsx             # Shell and hash routes
@@ -123,4 +161,6 @@ claim_validation_tool/
 
 - Synthetic data: payer, coding (LCD/NCCI/MUE), and contract checks are limited to what it contains.
 - No authentication or audit log; intended for local use.
-- AI Fix is rule-based. A retrieval-augmented clarification assistant is planned (Phase 10).
+- AI Fix is rule-based; the assistant handles the ambiguous cases. Its knowledge is limited to
+  the reference tables: there are no payer policy manuals, so it can't say which services a
+  payer requires prior authorization for, or quote filing limits, and says so.

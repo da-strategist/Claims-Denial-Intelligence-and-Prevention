@@ -137,3 +137,10 @@ export const getDashboard = (params, options) => request('/dashboard', { ...opti
 
 /** Proposed ClaustraRCM <-> JAB Audit API contracts, with field tables, schemas, and examples. */
 export const listJabContracts = (options) => request('/jab/contracts', options)
+
+/** Ask the clarification assistant. Returns { answer, sources, mode, notice, claim_facts }. */
+export const askAssistant = ({ question, claimId, topic }) =>
+  request('/assistant', {
+    method: 'POST',
+    body: { question, claim_id: claimId ?? null, topic: topic ?? null },
+  })

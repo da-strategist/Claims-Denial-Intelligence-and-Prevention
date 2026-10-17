@@ -1,5 +1,6 @@
 import { useId, useState } from 'react'
 import { CLARIFICATION_TOPICS, INPUT_CLASS, SUGGESTION_ACTIONS } from '../constants'
+import AssistantPanel from './AssistantPanel'
 
 const CONFIDENCE_LABELS = { high: 'High confidence', medium: 'Medium confidence', low: 'Needs judgement' }
 
@@ -75,6 +76,7 @@ export default function FixSuggestion({ suggestion, onApply }) {
   )
   const [applying, setApplying] = useState(false)
   const [error, setError] = useState(null)
+  const [asking, setAsking] = useState(false)
   const action = SUGGESTION_ACTIONS[suggestion.action]
 
   const submit = async (event) => {
@@ -160,18 +162,24 @@ export default function FixSuggestion({ suggestion, onApply }) {
       )}
 
       {suggestion.needs_clarification && (
-        <div className="flex flex-wrap items-center gap-2 border-t border-violet-100 pt-2.5">
-          <button
-            type="button"
-            disabled
-            title="The RAG clarification assistant arrives in Phase 10"
-            className="cursor-not-allowed rounded-lg border border-sky-200 bg-white px-3 py-1.5 text-sm font-medium text-sky-700 opacity-60"
-          >
-            Ask the assistant
-          </button>
-          <span className="text-xs text-gray-500">
-            {CLARIFICATION_TOPICS[suggestion.clarification_topic]} · coming in Phase 10
-          </span>
+        <div className="space-y-2 border-t border-violet-100 pt-2.5">
+          {asking ? (
+            <AssistantPanel claimId={suggestion.claim_id} topic={suggestion.clarification_topic} />
+          ) : (
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setAsking(true)}
+                className="rounded-lg border border-sky-200 bg-white px-3 py-1.5 text-sm font-medium text-sky-700 hover:bg-sky-50"
+              >
+                Ask the assistant
+              </button>
+              <span className="text-xs text-gray-500">
+                {CLARIFICATION_TOPICS[suggestion.clarification_topic]}: researched in coverage
+                policies, NCCI/MUE edits, payer contracts, and CARC/RARC codes
+              </span>
+            </div>
+          )}
         </div>
       )}
     </div>

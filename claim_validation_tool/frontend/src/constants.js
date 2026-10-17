@@ -105,6 +105,17 @@ export const SUGGESTION_ACTIONS = {
   clarify: { label: 'Needs clarification', style: 'bg-sky-50 text-sky-800 border-sky-200' },
 }
 
+// Starting question for each topic; the specialist can edit it before asking
+export const TOPIC_QUESTIONS = {
+  medical_necessity:
+    'Do the diagnoses on this claim support medical necessity for its procedures? What documentation is required?',
+  ncci_modifiers:
+    'Do any NCCI edits or MUE limits apply to the procedures on this claim, and can a modifier be used?',
+  payer_prior_auth:
+    'What do this payer’s profile and contracts say about these services and prior authorization?',
+  appeal: 'Draft appeal wording for this denial based on its CARC/RARC codes and the claim.',
+}
+
 export const CLARIFICATION_TOPICS = {
   medical_necessity: 'Medical necessity',
   ncci_modifiers: 'NCCI / modifiers',

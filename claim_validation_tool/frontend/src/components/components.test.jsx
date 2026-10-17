@@ -99,6 +99,7 @@ describe('SubmitClaim', () => {
 describe('FixSuggestion', () => {
   const suggestion = {
     id: 'CLM0000002:RULE-002',
+    claim_id: 'CLM0000002',
     action: 'apply',
     confidence: 'high',
     title: 'Record the prior authorization',
@@ -147,6 +148,18 @@ describe('FixSuggestion', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Apply fix & re-validate' }))
     expect(await screen.findByRole('alert')).toHaveTextContent('Prior Auth Number is required')
     expect(screen.getByRole('button', { name: 'Apply fix & re-validate' })).toBeEnabled()
+  })
+
+  it('opens the assistant for suggestions that need clarification', async () => {
+    const appeal = {
+      ...suggestion,
+      action: 'clarify',
+      clarification_topic: 'appeal',
+      needs_clarification: true,
+    }
+    render(<FixSuggestion suggestion={appeal} onApply={vi.fn()} />)
+    await userEvent.click(screen.getByRole('button', { name: 'Ask the assistant' }))
+    expect(screen.getByRole('region', { name: 'Clarification assistant' })).toBeInTheDocument()
   })
 
   it('has no form for manual suggestions', () => {
