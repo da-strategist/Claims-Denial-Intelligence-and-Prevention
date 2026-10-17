@@ -54,11 +54,13 @@ This tool validates healthcare claims against configurable rules, identifies den
 
 - `src/pages/` — one component per view:
   - `Dashboard.jsx` — KPI cards, charts
-  - `ClaimsWorkbench.jsx` — searchable/filterable claim table with expandable rows
+  - `ClaimsWorkbench.jsx` — claim table with expandable rows; opens on the Needs attention queue (`needs_attention=true`, sorted by `risk_score`)
   - `NewClaim.jsx` — manual claim entry for registered patients
   - `RuleManager.jsx` — rule list + rule builder panel
   - `JabAudit.jsx` — conceptual audit workflow
 - `src/components/` — reusable pieces (StatusBadge, KpiCard, ConditionBuilder, etc.)
+- `src/index.css` — the design system: colour tokens (one blue accent; red, amber and green only where they mean something), and the shared `btn-primary`, `btn-secondary`, `btn-quiet`, `btn-danger`, `card`, `field` and `eyebrow` classes. New UI should use these rather than one-off colours.
+- `src/components/PageHeader.jsx` — `Page` (width and padding), `PageHeader` (title, one line of context, actions) and `Notice` (inline error/warning); every page uses them
 - `src/services/api.js` — centralized fetch wrapper for all backend calls
 - `src/hooks/` — custom hooks for data fetching and state
 
@@ -109,9 +111,21 @@ Factors:
 - Warning count: 10 pts per warning
 - Denial history: 20-25 pts
 - AR aging over 30 / 60 / 90 days: 5 / 10 / 15 pts
-- Missing prior auth: 15 pts
-- Missing diagnosis: 10 pts
-- Non-clean claim: scored only through rule findings (Non-Clean Claim Review), so it isn't counted twice
+- Missing prior auth: 15 pts, unless a rule testing prior auth (Missing Prior Authorization) already flagged the claim
+- Missing diagnosis: 10 pts, unless a rule testing the primary diagnosis already flagged it
+- Non-clean claim: scored only through rule findings (Non-Clean Claim Review)
+
+A fact is never counted twice: an attribute factor only adds points when no enabled rule covers it.
+
+### Submission
+
+**Saved drafts are not claims.** The New Claim page's **Save draft** stores the form as it was left (`/api/drafts`), with nothing required beyond field formats. Saved drafts aren't validated, scored, listed in Claims, or counted on the Overview. They are shared by everyone who can enter claims, recorded in the audit log, kept in an owner-only file, and deleted 30 days after the last save (data minimisation). Creating the claim from a saved draft removes the draft.
+
+**837 claim files.** `services/edi837.py` builds the 837P/837I from the claim, its `billing` details (`models/billing.py`), the payers, provider, and facility, and the organisation settings (`services/edi_settings.py`). It runs at submission; the text is saved in `new_claims.json` with the claim. Missing organisation settings (or a facility ZIP without +4) mark the file as a test file rather than inventing values. `services/edi_reader.py` reads a saved 837 back into named fields, and `services/claim_pdf.py` (reportlab) renders the CMS-1500/UB-04 and readable-837 PDFs from it. Patients' billing details come from `data/registrations.py`: entered details first, else deterministic sample details for the synthetic patients.
+
+**Draft claims are finished on New Claim, not in Claims.** The workbench asks for `include_drafts=false`; the New Claim page's Drafts panel lists both saved forms and draft claims (`GET /claims?status=Draft`), and opens a draft claim with its findings, fixes, and submission in place. The page is open to every role that can enter claims, so any biller can pick up anyone's draft.
+
+Every new claim starts as a Draft, whether it's entered on the New Claim page or sent to `POST /claims` directly (a `status` in the request is ignored). `POST /claims/{id}/submit` is the only way a claim leaves Draft. It runs the enabled rules again at that moment, judging the claim as if it goes out today (not on its planned date), and refuses it while any **error or warning** remains, naming the rules. A draft whose planned date has passed is already shown as of today, so rules like Timely Filing Risk flag it before anyone tries to submit. Info findings don't block. To submit, fix the claim (e.g. with AI Fix) or, as an administrator, disable or change the rule.
 
 ## Clarification Assistant: Data Handling
 

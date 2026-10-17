@@ -9,11 +9,12 @@ FastAPI backend and a React frontend over a synthetic 120,000-claim data set.
 
 | Page | Purpose |
 |---|---|
-| **Dashboard** | KPIs (denial rate, clean claim rate, days in AR, net collection, at-risk claims) against the prior period, revenue trend, validation status, top denial reasons, AR aging, payer performance. Filter by period, payer, department. |
-| **Claims Workbench** | Search and filter all claims; each row shows its validation result and 0–100 risk score. Expand a claim for findings, risk breakdown, lines, denials, and **AI Fix** suggestions that can be applied and undone. Suggestions that need judgement (medical necessity, NCCI/modifiers, payer prior auth, appeals) offer **Ask the assistant**. |
-| **New Claim** | Enter a draft claim for a registered patient: billed payer (defaults to the registered primary) plus secondary/tertiary coverage, up to 12 diagnoses each supported by a service line, prior authorization. It's validated on creation and can be marked submitted once rule errors are resolved. |
-| **Rule Manager** | Create, edit, enable/disable, and test rules (field + operator + value conditions, AND/OR, scoped to payers, departments, or claim types). Changes apply to every claim immediately. |
+| **Overview** | Opens on the number of claims that need attention, with a button straight to them. Then KPIs (denial rate, clean claim rate, days in AR, net collection, at-risk claims) against the prior period, revenue trend, validation status, top denial reasons, AR aging, payer performance. Filter by period, payer, department. |
+| **Claims** | Opens on the **Needs attention** queue: claims with validation errors (Error or AI Fix), riskiest first. **All claims** shows every submitted claim (drafts are finished on New Claim). Search and filter; each row shows its validation result and 0–100 risk score. Expand a claim for findings, risk breakdown, lines, denials, and **AI Fix** suggestions that can be applied and undone. Suggestions that need judgement (medical necessity, NCCI/modifiers, payer prior auth, appeals) offer **Ask the assistant**. |
+| **New Claim** | Enter a draft claim for a registered patient: billed payer (defaults to the registered primary) plus secondary/tertiary coverage, up to 12 diagnoses each supported by a service line, prior authorization. A **Drafts** panel on the right lists everything waiting to be finished, shared by every biller: **saved forms** (from **Save draft**: unfinished, not validated, deleted 30 days after the last save) and **draft claims** (created and validated, not yet submitted). Opening a draft claim shows its problems, AI fixes, and **Mark as submitted**, which is only allowed once no rule error or warning remains. The same check applies to claims sent through the API. |
+| **Rules** | Create, edit, enable/disable, and test rules (field + operator + value conditions, AND/OR, scoped to payers, departments, or claim types). Changes apply to every claim immediately. |
 | **JAB Audit** | Conceptual integration with the JAB Audit underpayment recovery platform: workflow, architecture, and the proposed API contracts. |
+| **User Guide** | Short task-by-task help for billers, analysts, and administrators. Each person sees only the sections their role can use. |
 
 ### Clarification assistant
 
@@ -68,13 +69,40 @@ Draft ──(Mark as submitted)──▶ Pending ──▶ Paid / Denied
                                   └─ Overdue: pending longer than the payer's average days to pay
 ```
 
-Submission is blocked while a claim has rule errors. Drafts aren't counted in denial rate or AR.
+Submission is blocked while a claim has any rule error or warning, whether it was entered on screen or through the API. Draft claims are finished on the New Claim page, not listed under Claims, and aren't counted in denial rate or AR.
+
+### 837 claim files
+
+Every claim carries what an X12 837 needs, from the New Claim form or the API's `billing`
+object: the patient's date of birth and address, each payer's policy (member ID, group,
+and the policy holder when it isn't the patient), and for institutional claims the type of
+bill, admission type and source, patient status, and a revenue code per line. Selecting a
+patient fills these from their registration: what their last claim captured, or, for the
+synthetic sample patients, generated sample details (marked as such). Creating a claim
+saves its details back to the patient's registration.
+
+**Mark as submitted** creates the 837P (professional) or 837I (institutional) and saves it
+with the claim as the record of what was sent; billers and admins can download it, and each
+download is audited. Self-pay claims are billed to the patient, so they get no 837.
+
+Two PDFs are built from that saved file, so they always match what was sent: the claim on a
+**CMS-1500** (837P) or **UB-04** (837I) layout with the official box numbers (a reference
+copy for reading and printing, not the red-ink OCR form payers scan), and a **readable 837**
+that names each part of the file, shows where every value sits, and ends with the raw file.
+Test files carry a "TEST FILE" mark on every page.
+
+The organisation's identifiers live in `backend/edi_settings.json` (git-ignored): submitter,
+clearinghouse (receiver), billing provider (name, NPI, 9-digit EIN, address with ZIP+4), and
+each payer's electronic payer ID. Until every one is set, `mode` is `production`, and the
+facility address has a ZIP+4, files are marked as test files (ISA15 = T) and the claim lists
+what's missing. See `app/services/edi_settings.py` for the file's shape.
 
 ### Risk score (0–100)
 
 25 points per rule error, 10 per warning, 20 for prior patient denials (+5 if preventable),
 5–15 for AR aging past 30/60/90 days, 15 for missing prior auth, 10 for a missing diagnosis.
-Capped at 100. A non-clean claim counts once, through the Non-Clean Claim Review rule (a
+Capped at 100. A fact is only counted once: missing prior auth or a missing diagnosis adds no extra
+points when a rule already flags it. A non-clean claim counts once, through the Non-Clean Claim Review rule (a
 warning), not again as a risk factor. New claims start clean. A claim with an error and a score of 60+ is routed to AI Fix.
 
 ## Setup
@@ -116,6 +144,10 @@ App: http://localhost:5173. The Vite dev server proxies `/api` to port 8000.
 | `RCM_DATA_DIR` | `Data/raw_data` at the repository root | Directory with the source CSVs |
 | `RCM_RULES_FILE` | `backend/rules.json` | Saved rules (seeded with 9 defaults on first run) |
 | `RCM_CORRECTIONS_FILE` | `backend/claim_corrections.json` | Applied AI Fix corrections |
+| `RCM_NEW_CLAIMS_FILE` | `backend/new_claims.json` | Claims entered in the app, when they were submitted, and their 837 files |
+| `RCM_REGISTRATIONS_FILE` | `backend/patient_registrations.json` | Patients' billing details captured from claims (owner-only) |
+| `RCM_EDI_SETTINGS_FILE` | `backend/edi_settings.json` | Organisation identifiers for 837 files |
+| `RCM_DRAFTS_FILE` | `backend/claim_drafts.json` | Saved drafts of the New Claim form (owner-only file; expire 30 days after the last save) |
 | `ANTHROPIC_API_KEY` | unset | Enables Claude for the clarification assistant |
 | `RCM_ASSISTANT_MODEL` | `claude-sonnet-5-5` | Claude model the assistant uses |
 | `RCM_ASSISTANT_MODE` | | Set to `retrieval` to keep Claude off even with a key |
@@ -126,8 +158,9 @@ App: http://localhost:5173. The Vite dev server proxies `/api` to port 8000.
 | `RCM_COOKIE_SECURE` | off | Set to `1` behind HTTPS so the session cookie is never sent over plain HTTP |
 | `VITE_API_BASE` | `/api` | API base URL for the frontend |
 
-Rules and corrections persist in those JSON files (git-ignored). Claims entered on the New
-Claim page are held in memory and are gone after a restart; their corrections are dropped then too.
+Rules, corrections, saved drafts, and claims entered in the app persist in those JSON files
+(git-ignored; the drafts and new-claims files are readable only by the account running the API).
+The source CSVs are never modified: new claims and their submission dates are replayed on startup.
 
 ## Testing
 
@@ -159,12 +192,13 @@ All routes are under `/api`; full schemas at `/docs`.
 |---|---|
 | Sign-in | `POST /auth/login` · `POST /auth/logout` · `GET /auth/me` |
 | Audit | `GET /audit` (username, record_id, outcome, limit) · `GET /audit/verify` |
-| Claims | `GET /claims` (search, filter, sort, page) · `POST /claims` · `GET /claims/{id}` · `POST /claims/{id}/submit` |
+| Claims | `GET /claims` (search, filter, sort, page) · `POST /claims` · `GET /claims/{id}` · `POST /claims/{id}/submit` · `GET /claims/{id}/837` · `GET /claims/{id}/claim-form.pdf` · `GET /claims/{id}/837-readable.pdf` |
+| Saved drafts | `GET /drafts` · `POST /drafts` · `GET /drafts/{id}` · `PUT /drafts/{id}` · `DELETE /drafts/{id}` (billers and admins) |
 | Validation | `GET /validate/{id}` · `POST /validate` (up to 200 claims) |
 | Rules | `GET/POST /rules` · `GET/PUT/PATCH/DELETE /rules/{id}` · `GET /rules/fields` · `POST /rules/test` |
 | AI Fix | `GET /aifix/{id}` · `POST /aifix/{id}/apply` · `DELETE /aifix/{id}/corrections` |
 | Dashboard | `GET /dashboard` (months, payer_id, department_id) |
-| Reference | `/patients`, `/patients/{id}`, `/payers`, `/departments`, `/providers`, `/facilities`, `/codes/procedures`, `/codes/diagnoses` |
+| Reference | `/patients`, `/patients/{id}`, `/patients/{id}/registration`, `/payers`, `/departments`, `/providers`, `/facilities`, `/codes/procedures`, `/codes/diagnoses` |
 | Assistant | `POST /assistant` (question, optional claim_id and topic) · `GET /assistant/status` |
 | JAB Audit | `GET /jab/contracts` |
 | Health | `GET /health` |
@@ -189,7 +223,7 @@ claim_validation_tool/
 │   └── tests/              # pytest suite and fixture CSVs
 └── frontend/src/
     ├── App.jsx             # Shell and hash routes
-    ├── pages/              # Login, Dashboard, ClaimsWorkbench, NewClaim, RuleManager, JabAudit, AuditLog
+    ├── pages/              # Login, Dashboard, ClaimsWorkbench, NewClaim, RuleManager, JabAudit, AuditLog, UserGuide
     ├── components/         # Shared UI (badges, panels, builders, error boundary)
     ├── hooks/              # Data hooks built on useApi
     ├── services/api.js     # The only place that calls fetch
