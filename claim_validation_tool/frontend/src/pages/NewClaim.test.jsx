@@ -358,6 +358,86 @@ describe('draft claims in the Drafts panel', () => {
   })
 })
 
+describe('editing a draft claim', () => {
+  const DETAIL = {
+    ...CREATED.claim,
+    provider_id: 'PROV001',
+    facility_id: 'FAC001',
+    claim_type: 'Professional',
+    place_of_service: '11',
+    service_date: '2026-01-05',
+    submission_date: '2026-01-06',
+    primary_icd10: 'E11.65',
+    additional_icd10: [],
+    other_payer_ids: [],
+    pa_required: false,
+    pa_obtained: false,
+    pa_number: null,
+    lines: [
+      { line_id: 'LN1', line_number: 1, cpt_code: '99213', units: 1, modifier: null, charge_amount: 115, icd10_pointer: 'E11.65', revenue_code: null },
+    ],
+    denials: [],
+    billing: BILLING,
+  }
+
+  it('reopens the claim in the form, keeps its patient, and saves over it', async () => {
+    const fetchMock = mockApi({
+      ...LISTS,
+      ...OPENED,
+      'GET /claims/CLM0120001': () => DETAIL,
+      'GET /claims': () => ({ items: [DETAIL], total: 1, page: 1, pages: 1, page_size: 100 }),
+      'POST /validate': () => [],
+      'PUT /claims/CLM0120001': ({ body }) => ({ claim: { ...DETAIL, ...body }, validation: CREATED.validation }),
+    })
+    render(<NewClaim />)
+    const panel = await screen.findByRole('complementary', { name: 'Drafts' })
+    await user.click(await within(panel).findByRole('button', { name: 'Open draft claim CLM0120001' }))
+    await user.click(await screen.findByRole('button', { name: 'Edit claim' }))
+
+    const form = screen.getByRole('form', { name: 'Edit CLM0120001' })
+    expect(within(form).getByText('Donald Davis')).toBeInTheDocument()
+    expect(within(form).queryByRole('button', { name: 'Change patient' })).not.toBeInTheDocument()
+    expect(within(form).getByLabelText('Rendering provider')).toHaveValue('PROV001')
+    expect(within(form).getByLabelText('Primary')).toHaveValue('E11.65')
+    expect(within(form).queryByRole('button', { name: 'Save draft' })).not.toBeInTheDocument()
+
+    // The forgotten prior authorization
+    await user.click(within(form).getByRole('switch', { name: 'Prior auth required' }))
+    await user.click(within(form).getByRole('switch', { name: 'Prior auth obtained' }))
+    await user.type(within(form).getByLabelText('Prior auth number'), 'PA-2026-118')
+    await user.click(within(form).getByRole('button', { name: 'Save changes & validate' }))
+
+    expect(await screen.findByRole('heading', { name: 'CLM0120001' })).toBeInTheDocument()
+    const [sent] = sentBodies(fetchMock, 'PUT /claims/CLM0120001')
+    expect(sent).toMatchObject({
+      patient_id: 'PAT000003',
+      pa_required: true,
+      pa_obtained: true,
+      pa_number: 'PA-2026-118',
+      diagnoses: ['E11.65'],
+      lines: [{ cpt_code: '99213', units: 1, charge_amount: 115, icd10_pointer: 'E11.65' }],
+      billing: BILLING,
+    })
+  })
+
+  it('cancelling goes back to the claim unchanged', async () => {
+    const fetchMock = mockApi({
+      ...LISTS,
+      ...OPENED,
+      'GET /claims/CLM0120001': () => DETAIL,
+      'GET /claims': () => ({ items: [DETAIL], total: 1, page: 1, pages: 1, page_size: 100 }),
+      'POST /validate': () => [],
+    })
+    render(<NewClaim />)
+    const panel = await screen.findByRole('complementary', { name: 'Drafts' })
+    await user.click(await within(panel).findByRole('button', { name: 'Open draft claim CLM0120001' }))
+    await user.click(await screen.findByRole('button', { name: 'Edit claim' }))
+    await user.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(await screen.findByRole('heading', { name: 'CLM0120001' })).toBeInTheDocument()
+    expect(sentBodies(fetchMock, 'PUT /claims/CLM0120001')).toEqual([])
+  })
+})
+
 describe('billing details for the 837', () => {
   it('fills the patient’s registered details and policy when they’re selected', async () => {
     mockApi(LISTS)

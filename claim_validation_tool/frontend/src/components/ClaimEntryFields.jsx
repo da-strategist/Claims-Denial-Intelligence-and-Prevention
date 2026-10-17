@@ -46,8 +46,8 @@ function History({ patient }) {
   )
 }
 
-/** Search registered patients and pick one. */
-export function PatientPicker({ patient, payers, onChange }) {
+/** Search registered patients and pick one. `locked`: an existing claim's patient, shown only. */
+export function PatientPicker({ patient, payers, onChange, locked = false }) {
   const inputId = useId()
   const [term, setTerm] = useState('')
   const search = useDebouncedValue(term.trim())
@@ -61,11 +61,17 @@ export function PatientPicker({ patient, payers, onChange }) {
             {patient.first_name} {patient.last_name}
           </div>
           <div className="text-sm text-gray-600">{patientLine(patient, payers)}</div>
-          <History patient={patient} />
+          {locked ? (
+            <span className="text-xs text-gray-500">A claim’s patient can’t change; enter a new claim instead.</span>
+          ) : (
+            <History patient={patient} />
+          )}
         </div>
-        <button type="button" className={SMALL_BUTTON} onClick={() => onChange(null)}>
-          Change patient
-        </button>
+        {!locked && (
+          <button type="button" className={SMALL_BUTTON} onClick={() => onChange(null)}>
+            Change patient
+          </button>
+        )}
       </div>
     )
   }

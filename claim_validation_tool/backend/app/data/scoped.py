@@ -91,6 +91,13 @@ class ScopedClaims:
             raise OutOfScopeError("That provider, department, and facility are outside your access")
         return self.base.add_claim(fields, lines)
 
+    def update_claim(self, fields: dict, lines: list[dict]) -> ClaimDetail:
+        """Both the claim as it is and as edited must be inside the account's access."""
+        self._require(fields["claim_id"])
+        if not self.scope.allows(fields["facility_id"], fields["department_id"], fields["provider_id"]):
+            raise OutOfScopeError("That provider, department, and facility are outside your access")
+        return self.base.update_claim(fields, lines)
+
     def submission_frame(self, claim_id: str) -> pd.DataFrame:
         self._require(claim_id)
         return self.base.submission_frame(claim_id)
@@ -100,8 +107,10 @@ class ScopedClaims:
         return self.base.submit_claim(claim_id, edi=edi)
 
     def apply_overrides(self, overrides: dict[str, dict[str, str]]) -> None:
-        for claim_id in overrides:
-            self._require(claim_id)
+        """Re-layer the organisation's corrections. `overrides` is always the whole
+        correction store (it replaces the overlay), so it holds other people's claims too;
+        what this person may correct is checked when the correction is added (AI Fix looks
+        the claim up through this scoped view first)."""
         self.base.apply_overrides(overrides)
 
     def edi_text(self, claim_id: str) -> str | None:

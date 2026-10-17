@@ -139,3 +139,25 @@ def test_scope_changes_are_audited(client):
     (event,) = [e for e in get_audit_log("meridian").events() if e.action == "PATCH /api/users/{username}"]
     assert event.detail == {"scope": {"facilities": [], "departments": [], "providers": ["PROV001"]}}
     assert re.search("biller1", str(event.records))
+
+
+def test_limited_people_create_and_fix_claims_beside_others_work(client, today):
+    # The newest claim and a correction belong to a department the biller can't see
+    other = client.post("/api/claims", json={**NEW_CLAIM, "pa_required": True}).json()["claim"]["claim_id"]
+    fix = {"suggestion_id": f"{other}:RULE-002", "values": {"pa_number": "A-1"}}
+    assert client.post(f"/api/aifix/{other}/apply", json=fix).status_code == 200
+    limit(client, departments=["DEPT05"])
+    sign_in(client, Role.BILLER)
+    # Their claim still gets the next ID across the organisation…
+    res = client.post("/api/claims", json={**NEW_CLAIM, "provider_id": "PROV002", "pa_required": True})
+    assert res.status_code == 201, res.text
+    mine = res.json()["claim"]["claim_id"]
+    assert int(mine[3:]) == int(other[3:]) + 1
+    # …and AI Fix and undo work on it
+    fix = {"suggestion_id": f"{mine}:RULE-002", "values": {"pa_number": "B-2"}}
+    assert client.post(f"/api/aifix/{mine}/apply", json=fix).status_code == 200
+    assert client.delete(f"/api/aifix/{mine}/corrections").status_code == 200
+    # They can't undo the other department's correction
+    assert client.delete(f"/api/aifix/{other}/corrections").status_code == 404
+    sign_in(client, Role.ADMIN)
+    assert client.get(f"/api/claims/{other}").json()["pa_number"] == "A-1"

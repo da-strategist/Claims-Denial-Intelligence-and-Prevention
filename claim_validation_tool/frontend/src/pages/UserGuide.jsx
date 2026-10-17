@@ -134,6 +134,13 @@ const SECTIONS = [
             It’s checked against the rules and opens right there with any problems and fixes.
           </li>
           <li>
+            Spotted a mistake, like a missing prior authorization? Choose{' '}
+            <strong className="font-medium">Edit claim</strong> at the top of the claim. The form
+            reopens with everything filled in; <strong className="font-medium">Save changes &amp; validate</strong>{' '}
+            keeps the same claim number and checks it again. The patient can’t change, and a claim
+            can’t be edited once it’s submitted.
+          </li>
+          <li>
             Once nothing is flagged, choose <strong className="font-medium">Mark as submitted</strong>.
             The claim becomes Pending and moves to Claims, and its 837 claim file is created; use{' '}
             <strong className="font-medium">Download 837</strong> on the claim to get it, or the{' '}
@@ -163,7 +170,8 @@ const SECTIONS = [
             the last save.
           </Term>
           <Term name="Draft claims">
-            Created and checked, but not submitted. The dot shows what’s left to resolve.
+            Created and checked, but not submitted. The dot shows what’s left to resolve. Open one
+            and choose Edit claim to correct it.
           </Term>
         </dl>
       </>

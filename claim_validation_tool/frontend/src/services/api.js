@@ -127,6 +127,9 @@ export const getClaim = (claimId, options) =>
 
 /** Enter a claim by hand. Returns { claim, validation }. */
 export const createClaim = (claim) => request('/claims', { method: 'POST', body: claim })
+/** Replace a Draft claim's details (same ID and patient); the rules run again. */
+export const updateClaim = (claimId, claim) =>
+  request(`/claims/${encodeURIComponent(claimId)}`, { method: 'PUT', body: claim })
 
 /** Mark a Draft as submitted today (it becomes Pending). Refused while any rule error or warning remains. */
 export const submitClaim = (claimId) =>

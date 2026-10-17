@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Annotated
+from typing import Annotated, Any
 
 import pandas as pd
 from fastapi import APIRouter, HTTPException, Query, Request, status
@@ -33,6 +33,7 @@ from app.services.edi_reader import read_837
 from app.services.edi_settings import load_edi_settings
 from app.services.org_context import (
     OrgClaims,
+    OrgCorrections,
     OrgId,
     OrgReference,
     OrgRegistrations,
@@ -84,6 +85,96 @@ def create_claim(
     patient's registration so their next claim starts from them.
     """
     audit_note(request, patient_id=body.patient_id)
+    # Claim IDs are unique across the organisation, including claims outside this
+    # person's access, so the next one comes from all of them
+    claim_id = _next_id(repo.base.claims_frame()["claim_id"], "CLM", 7)
+    fields, lines, patient = _claim_fields(body, claim_id, repo, reference)
+    try:
+        claim = repo.add_claim(fields, lines)
+    except OutOfScopeError as err:
+        raise HTTPException(status_code=403, detail=str(err)) from err
+    except ValueError as err:  # another request took the same ID first
+        raise HTTPException(status_code=409, detail=str(err)) from err
+    audit_note(request, claim_id=claim.claim_id)
+    _record_registration(registrations, patient, body, user)
+    validation = validation_engine.validate_claims(
+        repo.claims_frame([claim.claim_id]), rules.list()
+    )[0]
+    return ClaimCreated(claim=claim, validation=validation)
+
+
+@router.put("/{claim_id}", response_model=ClaimCreated, dependencies=WRITE)
+def update_claim(
+    claim_id: ClaimId,
+    body: ClaimCreate,
+    request: Request,
+    repo: Claims,
+    rules: Rules,
+    reference: Reference,
+    registrations: Registrations,
+    corrections: OrgCorrections,
+    user: SignedIn,
+) -> ClaimCreated:
+    """Correct a Draft claim entered in the app: the whole claim is given again, checked
+    as when it was created, and replaces what was there (same ID, same patient). Its AI Fix
+    corrections are folded in, since the form starts from the corrected values. Submitted
+    claims can't change. The audit log records which fields changed."""
+    before = repo.get_claim(claim_id)
+    if before is None:
+        raise HTTPException(status_code=404, detail=f"Claim {claim_id} not found")
+    if before.status != ClaimStatus.DRAFT:
+        raise HTTPException(
+            status_code=409, detail=f"Only draft claims can be edited; {claim_id} is {before.status}"
+        )
+    fields, lines, patient = _claim_fields(body, claim_id, repo, reference)
+    try:
+        claim = repo.update_claim(fields, lines)
+    except OutOfScopeError as err:
+        raise HTTPException(status_code=403, detail=str(err)) from err
+    except LookupError as err:
+        raise HTTPException(status_code=404, detail=str(err)) from err
+    except ValueError as err:
+        raise HTTPException(status_code=409, detail=str(err)) from err
+    if corrections.clear_claim(claim_id):
+        repo.apply_overrides(corrections.overrides())
+        claim = repo.get_claim(claim_id)
+    audit_note(request, changed=_changed_fields(before, claim))
+    _record_registration(registrations, patient, body, user)
+    validation = validation_engine.validate_claims(repo.claims_frame([claim_id]), rules.list())[0]
+    return ClaimCreated(claim=claim, validation=validation)
+
+
+# Compared to tell the audit log what an edit changed (names only, never values: PHI)
+_EDITABLE = (
+    "payer_id", "other_payer_ids", "provider_id", "facility_id", "claim_type", "service_date",
+    "submission_date", "primary_icd10", "additional_icd10", "pa_required", "pa_obtained",
+    "pa_number", "total_charge", "billing",
+)
+
+
+def _changed_fields(before: ClaimDetail, after: ClaimDetail) -> list[str]:
+    old, new = before.model_dump(mode="json"), after.model_dump(mode="json")
+    changed = [f for f in _EDITABLE if old.get(f) != new.get(f)]
+    strip = lambda ls: [{k: v for k, v in line.items() if k not in ("line_id", "claim_id")} for line in ls]  # noqa: E731
+    if strip(old["lines"]) != strip(new["lines"]):
+        changed.append("lines")
+    return changed
+
+
+def _record_registration(registrations, patient, body: ClaimCreate, user) -> None:
+    """The billing details update the patient's registration for their next claim."""
+    registrations.record_claim(
+        patient,
+        Sex(patient.gender) if patient.gender in Sex._value2member_map_ else Sex.UNKNOWN,
+        body.billing,
+        [body.payer_id, *body.other_payer_ids],
+        user.username,
+    )
+
+
+def _claim_fields(body: ClaimCreate, claim_id: str, repo, reference) -> tuple[dict, list[dict], Any]:
+    """Check a claim's details against the organisation's registries and code sets, and
+    build its fact_claims fields and lines. Raises 422 on anything unknown or inactive."""
     patient = repo.get_patient(body.patient_id)
     if patient is None or patient.status != RecordStatus.ACTIVE:
         raise HTTPException(
@@ -131,11 +222,10 @@ def create_claim(
             }
         )
 
-    claims = repo.claims_frame()
     header = body.model_dump(mode="json", exclude={"diagnoses", "lines"})
     fields = {
         **header,
-        "claim_id": _next_id(claims["claim_id"], "CLM", 7),
+        "claim_id": claim_id,
         "department_id": provider.department_id,
         "primary_icd10": body.diagnoses[0],
         "additional_icd10": body.diagnoses[1:],
@@ -148,24 +238,7 @@ def create_claim(
         # Nothing is known to be wrong with a new claim; rules and AI Fix flag real problems
         "is_clean_claim": True,
     }
-    try:
-        claim = repo.add_claim(fields, lines)
-    except OutOfScopeError as err:
-        raise HTTPException(status_code=403, detail=str(err)) from err
-    except ValueError as err:  # another request took the same ID first
-        raise HTTPException(status_code=409, detail=str(err)) from err
-    audit_note(request, claim_id=claim.claim_id)
-    registrations.record_claim(
-        patient,
-        Sex(patient.gender) if patient.gender in Sex._value2member_map_ else Sex.UNKNOWN,
-        body.billing,
-        [body.payer_id, *body.other_payer_ids],
-        user.username,
-    )
-    validation = validation_engine.validate_claims(
-        repo.claims_frame([claim.claim_id]), rules.list()
-    )[0]
-    return ClaimCreated(claim=claim, validation=validation)
+    return fields, lines, patient
 
 
 @router.post("/{claim_id}/submit", response_model=ClaimCreated, dependencies=WRITE)

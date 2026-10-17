@@ -297,29 +297,7 @@ class ClaimsRepository:
         if the claim_id is taken or the patient isn't registered.
         """
         claim_id = fields["claim_id"]
-        patient = self._patient(fields["patient_id"])
-        if patient is None:
-            raise ValueError(f"Patient {fields['patient_id']} is not registered")
-        prior, prior_preventable = self._prior_denials(
-            fields["patient_id"], fields["submission_date"]
-        )
-        row = {
-            **fields,
-            "pa_number": fields.get("pa_number") or "",  # source data stores blanks as ""
-            "additional_icd10": "|".join(fields.get("additional_icd10", [])),
-            "other_payer_ids": "|".join(fields.get("other_payer_ids", [])),
-            "days_to_submission": (
-                date.fromisoformat(fields["submission_date"])
-                - date.fromisoformat(fields["service_date"])
-            ).days,
-            "has_prior_denial": prior,
-            "has_prior_preventable_denial": prior_preventable,
-            "payer_is_patient_primary": fields["payer_id"] == patient.primary_payer_id,
-            "patient_primary_on_claim": patient.primary_payer_id
-            in [fields["payer_id"], *fields.get("other_payer_ids", [])],
-            "has_corrections": False,
-            "is_overdue": False,
-        }
+        row = self._claim_row(fields)
         with self._overlay_lock:
             if self._claim_pos([claim_id])[0] != -1:
                 raise ValueError(f"Claim {claim_id} already exists")
@@ -348,6 +326,66 @@ class ClaimsRepository:
         claim = self.get_claim(claim_id)
         assert claim is not None
         return claim
+
+    def update_claim(self, fields: dict[str, Any], lines: list[dict[str, Any]]) -> ClaimDetail:
+        """Replace a Draft claim entered in the app with corrected details (same ID, same
+        patient). Its lines are replaced; the saved claim is updated so it survives
+        restarts. Raises LookupError if there's no such claim, ValueError if it can't be
+        edited (submitted, from the source data, or a different patient)."""
+        claim_id = fields["claim_id"]
+        row = self._claim_row(fields)
+        with self._overlay_lock:
+            pos = self._claim_pos([claim_id])[0]
+            if pos == -1:
+                raise LookupError(f"Claim {claim_id} not found")
+            if claim_id not in self._draft_ids:
+                raise ValueError(f"Only draft claims can be edited; {claim_id} is {self._claims.at[pos, 'status']}")
+            if self._new_claims is None or not self._new_claims.has(claim_id):
+                raise ValueError(f"{claim_id} comes from the source data and can't be edited here")
+            if self._claims.at[pos, "patient_id"] != fields["patient_id"]:
+                raise ValueError("A claim's patient can't change; create a new claim instead")
+            new = pd.DataFrame([row], columns=self._claims.columns).astype(
+                self._claims.dtypes.to_dict()
+            )
+            for column in self._claims.columns:
+                self._claims.at[pos, column] = new.at[0, column]
+            for field in CORRECTABLE_FIELDS:
+                self._original.at[pos, field] = new.at[0, field]
+            self._lines = self._lines[self._lines["claim_id"] != claim_id].reset_index(drop=True)
+            self._append_lines(claim_id, lines)
+            self.version += 1
+        self._billing[claim_id] = fields.get("billing")
+        self._revenue_codes[claim_id] = [line.get("revenue_code") for line in lines]
+        self._new_claims.replace(fields, lines)
+        claim = self.get_claim(claim_id)
+        assert claim is not None
+        return claim
+
+    def _claim_row(self, fields: dict[str, Any]) -> dict[str, Any]:
+        """A fact_claims row for a claim entered in the app."""
+        patient = self._patient(fields["patient_id"])
+        if patient is None:
+            raise ValueError(f"Patient {fields['patient_id']} is not registered")
+        prior, prior_preventable = self._prior_denials(
+            fields["patient_id"], fields["submission_date"]
+        )
+        return {
+            **fields,
+            "pa_number": fields.get("pa_number") or "",  # source data stores blanks as ""
+            "additional_icd10": "|".join(fields.get("additional_icd10", [])),
+            "other_payer_ids": "|".join(fields.get("other_payer_ids", [])),
+            "days_to_submission": (
+                date.fromisoformat(fields["submission_date"])
+                - date.fromisoformat(fields["service_date"])
+            ).days,
+            "has_prior_denial": prior,
+            "has_prior_preventable_denial": prior_preventable,
+            "payer_is_patient_primary": fields["payer_id"] == patient.primary_payer_id,
+            "patient_primary_on_claim": patient.primary_payer_id
+            in [fields["payer_id"], *fields.get("other_payer_ids", [])],
+            "has_corrections": False,
+            "is_overdue": False,
+        }
 
     def submission_frame(self, claim_id: str) -> pd.DataFrame:
         """The claim as it would be if submitted today, for the final rule check.

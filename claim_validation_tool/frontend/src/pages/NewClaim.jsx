@@ -26,6 +26,7 @@ import {
   getPatientRegistration,
   listDrafts,
   saveDraft,
+  updateClaim,
 } from '../services/api'
 import { emptyPolicy } from '../utils/billing'
 import { lineCharge, unsupportedDiagnoses } from '../utils/claimEntry'
@@ -157,6 +158,54 @@ function fromDraft({ form, patient }) {
   }
 }
 
+/** A Draft claim back into the form, to edit it (blank strings rather than nulls). */
+function fromClaim(claim) {
+  const blank = emptyForm()
+  const diagnoses = [claim.primary_icd10, ...claim.additional_icd10]
+  const billing = claim.billing ?? {}
+  const policy = (saved) =>
+    saved
+      ? Object.fromEntries(Object.entries(emptyPolicy()).map(([key, empty]) => [key, saved[key] ?? empty]))
+      : emptyPolicy()
+  return {
+    ...blank,
+    patient: claim.patient,
+    payer_id: claim.payer_id,
+    other_payer_ids: claim.other_payer_ids,
+    provider_id: claim.provider_id,
+    facility_id: claim.facility_id,
+    diagnoses,
+    lines: claim.lines.map((line) => ({
+      ...emptyLine(),
+      cpt_code: line.cpt_code,
+      units: String(line.units),
+      modifier: line.modifier ?? '',
+      charge: String(line.charge_amount),
+      dx: Math.max(0, diagnoses.indexOf(line.icd10_pointer)),
+      revenue_code: line.revenue_code ?? '',
+    })),
+    claim_type: claim.claim_type,
+    place_of_service: claim.place_of_service,
+    service_date: claim.service_date,
+    submission_date: claim.submission_date,
+    pa_required: claim.pa_required,
+    pa_obtained: claim.pa_obtained,
+    pa_number: claim.pa_number ?? '',
+    billing: {
+      ...blank.billing,
+      patient_birth_date: billing.patient_birth_date ?? '',
+      patient_address: {
+        ...blank.billing.patient_address,
+        ...billing.patient_address,
+        line2: billing.patient_address?.line2 ?? '',
+      },
+      policy: policy(billing.policy),
+      other_policies: (billing.other_policies ?? []).map(policy),
+      institutional: billing.institutional ?? blank.billing.institutional,
+    },
+  }
+}
+
 /** Request body. Lines point at diagnoses by position in the form; send the codes. */
 function toRequest(form, procedures, payers) {
   const paObtained = form.pa_required && form.pa_obtained
@@ -257,7 +306,7 @@ function RegistrationNote({ registration, patient }) {
 }
 
 /** A created claim that hasn't been submitted: its problems, fixes, and submission. */
-function DraftClaimView({ claimId, justCreated, onClose, onChanged }) {
+function DraftClaimView({ claimId, justCreated, onClose, onChanged, onEdit }) {
   const { data: claim, error, reload } = useClaimDetail(claimId)
   const changed = () => {
     reload()
@@ -283,10 +332,17 @@ function DraftClaimView({ claimId, justCreated, onClose, onChanged }) {
             {claim.lines.length === 1 ? '' : 's'} · {currency.format(claim.total_charge)}
           </p>
         </div>
-        <button type="button" onClick={onClose} className="btn-secondary btn-sm">
-          <Icon name="plus" className="h-4 w-4" strokeWidth={2} />
-          New claim
-        </button>
+        <div className="flex flex-wrap gap-2">
+          {claim.status === 'Draft' && claim.billing && (
+            <button type="button" onClick={() => onEdit(claim)} className="btn-primary btn-sm">
+              Edit claim
+            </button>
+          )}
+          <button type="button" onClick={onClose} className="btn-secondary btn-sm">
+            <Icon name="plus" className="h-4 w-4" strokeWidth={2} />
+            New claim
+          </button>
+        </div>
       </div>
       {claim.status === 'Draft' ? (
         <ClaimDetailPanel claim={claim} onClaimChanged={changed} stacked />
@@ -317,6 +373,8 @@ export default function NewClaim() {
   const [error, setError] = useState(null)
   // The draft claim shown instead of the form (just created, or opened from the panel)
   const [openClaim, setOpenClaim] = useState(null) // { id, justCreated }
+  // The Draft claim the form is editing (its ID), or null when entering a new claim
+  const [editing, setEditing] = useState(null)
   // The saved draft this form came from or was saved as, and when it was last saved
   const [draft, setDraft] = useState({ id: null, savedAt: null, saving: false, error: null })
   const drafts = useApi((options) => listDrafts(options))
@@ -466,6 +524,21 @@ export default function NewClaim() {
     }
     setSubmitting(true)
     setError(null)
+    if (editing) {
+      try {
+        await updateClaim(editing, toRequest(form, lists.procedures, payers))
+        setForm(emptyForm())
+        setOpenClaim({ id: editing, justCreated: false })
+        setEditing(null)
+        reloadDraftClaims()
+        window.scrollTo?.({ top: 0, behavior: 'smooth' })
+      } catch (err) {
+        setError(err.message)
+      } finally {
+        setSubmitting(false)
+      }
+      return
+    }
     try {
       const { claim } = await createClaim(toRequest(form, lists.procedures, payers))
       // The saved form is now a real claim; it no longer needs keeping
@@ -484,20 +557,38 @@ export default function NewClaim() {
     }
   }
 
+  const editClaim = (claim) => {
+    setForm(fromClaim(claim))
+    setEditing(claim.claim_id)
+    setOpenClaim(null)
+    setError(null)
+    setDraft({ id: null, savedAt: null, saving: false, error: null })
+    window.scrollTo?.({ top: 0, behavior: 'smooth' })
+  }
+
+  const stopEditing = () => {
+    setOpenClaim({ id: editing, justCreated: false })
+    setEditing(null)
+    setForm(emptyForm())
+    setError(null)
+  }
+
   const reset = () => {
     setForm(emptyForm())
+    setEditing(null)
     setOpenClaim(null)
     setError(null)
     setDraft({ id: null, savedAt: null, saving: false, error: null })
   }
 
   const showDraftClaim = (claim) => {
+    setEditing(null)
     setOpenClaim({ id: claim.claim_id, justCreated: false })
     window.scrollTo?.({ top: 0, behavior: 'smooth' })
   }
 
-  const panelOpen = openClaim
-    ? { kind: 'claim', id: openClaim.id }
+  const panelOpen = openClaim || editing
+    ? { kind: 'claim', id: openClaim?.id ?? editing }
     : draft.id
       ? { kind: 'saved', id: draft.id }
       : null
@@ -505,8 +596,12 @@ export default function NewClaim() {
   return (
     <Page>
       <PageHeader
-        title="New claim"
-        subtitle="Enter a claim for a registered patient. Save a draft at any point; it’s checked against the rules when you create it."
+        title={editing ? 'Edit claim' : 'New claim'}
+        subtitle={
+          editing
+            ? 'Correct anything on this unsubmitted claim. It keeps its number, and the rules run again when you save.'
+            : 'Enter a claim for a registered patient. Save a draft at any point; it’s checked against the rules when you create it.'
+        }
       />
 
       <AccessNote />
@@ -522,16 +617,28 @@ export default function NewClaim() {
               justCreated={openClaim.justCreated}
               onClose={reset}
               onChanged={reloadDraftClaims}
+              onEdit={editClaim}
             />
           ) : (
             <form
               onSubmit={submit}
               aria-busy={submitting}
+              aria-label={editing ? `Edit ${editing}` : 'New claim'}
               className="card relative p-6 sm:p-8"
             >
+              {editing && (
+                <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-xl bg-accent-soft px-4 py-3">
+                  <p className="text-sm text-gray-800">
+                    Editing <span className="font-mono font-medium">{editing}</span>. Saving checks it against the rules again.
+                  </p>
+                  <button type="button" className="btn-secondary btn-sm" onClick={stopEditing}>
+                    Cancel
+                  </button>
+                </div>
+              )}
               <fieldset disabled={submitting} className="space-y-5">
                 <FormSection title="Patient" hint="Claims can only be entered for patients registered with the hospital">
-                  <PatientPicker patient={form.patient} payers={payers} onChange={choosePatient} />
+                  <PatientPicker patient={form.patient} payers={payers} onChange={choosePatient} locked={Boolean(editing)} />
                   {form.patient && (
                     <>
                       <RegistrationNote registration={form.registration} patient={form.patient} />
@@ -705,7 +812,7 @@ export default function NewClaim() {
 
               {error && (
                 <p role="alert" className="mt-5 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">
-                  Could not create the claim — {error}
+                  {editing ? 'Could not save the changes' : 'Could not create the claim'} — {error}
                 </p>
               )}
 
@@ -717,17 +824,21 @@ export default function NewClaim() {
 
               <div className="mt-6 flex flex-wrap items-center gap-3">
                 <button type="submit" disabled={submitting || draft.saving} className="btn-primary">
-                  {submitting ? 'Creating & validating…' : 'Create & validate claim'}
+                  {editing
+                    ? submitting ? 'Saving & validating…' : 'Save changes & validate'
+                    : submitting ? 'Creating & validating…' : 'Create & validate claim'}
                 </button>
                 {/* Not a submit button: saving skips the form's required fields */}
-                <button
-                  type="button"
-                  onClick={saveAsDraft}
-                  disabled={submitting || draft.saving}
-                  className="btn-secondary"
-                >
-                  {draft.saving ? 'Saving…' : 'Save draft'}
-                </button>
+                {!editing && (
+                  <button
+                    type="button"
+                    onClick={saveAsDraft}
+                    disabled={submitting || draft.saving}
+                    className="btn-secondary"
+                  >
+                    {draft.saving ? 'Saving…' : 'Save draft'}
+                  </button>
+                )}
                 {draft.savedAt && !draft.saving && (
                   <span role="status" className="text-sm text-gray-500">
                     Saved at{' '}

@@ -566,6 +566,8 @@ def undo_corrections(
     reference: ReferenceData,
     suggester: FixSuggester,
 ) -> ClaimFixes | None:
+    if claims.get_claim(claim_id) is None:  # unknown, or outside this person's access
+        return None
     corrections.clear_claim(claim_id)
     claims.apply_overrides(corrections.overrides())
     return claim_fixes(claim_id, claims, rules, corrections, reference, suggester)

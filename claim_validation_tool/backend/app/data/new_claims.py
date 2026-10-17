@@ -43,6 +43,22 @@ class NewClaimStore:
             self._records.append({"fields": fields, "lines": lines, "submitted_on": None, "edi": None})
             self._save()
 
+    def has(self, claim_id: str) -> bool:
+        with self._lock:
+            return any(r["fields"]["claim_id"] == claim_id for r in self._records)
+
+    def replace(self, fields: dict[str, Any], lines: list[dict[str, Any]]) -> None:
+        """Save an unsubmitted claim's edited details in place (it keeps its position)."""
+        with self._lock:
+            for record in self._records:
+                if record["fields"]["claim_id"] == fields["claim_id"]:
+                    if record["submitted_on"]:
+                        raise ValueError(f"{fields['claim_id']} was submitted; it can't change")
+                    record["fields"], record["lines"] = fields, lines
+                    self._save()
+                    return
+        raise LookupError(f"Claim {fields['claim_id']} isn't a saved new claim")
+
     def next_control_number(self) -> int:
         """A new interchange control number for an 837 (unique, increasing)."""
         with self._lock:

@@ -69,7 +69,7 @@ Draft ──(Mark as submitted)──▶ Pending ──▶ Paid / Denied
                                   └─ Overdue: pending longer than the payer's average days to pay
 ```
 
-Submission is blocked while a claim has any rule error or warning, whether it was entered on screen or through the API. Draft claims are finished on the New Claim page, not listed under Claims, and aren't counted in denial rate or AR.
+Submission is blocked while a claim has any rule error or warning, whether it was entered on screen or through the API. Draft claims are finished on the New Claim page, not listed under Claims, and aren't counted in denial rate or AR. Until it's submitted, a claim entered in the app can be corrected with **Edit claim** (or `PUT /claims/{id}`): it keeps its ID and patient, the rules run again, its AI Fix corrections are folded in, and the audit log names the fields that changed. Submitted claims can't be edited.
 
 ### 837 claim files
 
@@ -282,7 +282,7 @@ All routes are under `/api`; full schemas at `/docs`.
 | Platform | `GET/POST /platform/organisations` · `POST /platform/organisations/{id}/suspend` · `…/reactivate` · `…/admins` · `…/baa` · `…/delete` · `…/emergency-access` · `GET /platform/emergency-access` · `POST /platform/emergency-access/{id}/end` · `GET /platform/audit` (platform accounts) |
 | Organisation | `GET /organisation/export` (administrators: zip of all its data) |
 | Emergency access (organisation side) | `GET /audit/emergency-access` · `POST /audit/emergency-access/{id}/end` (administrators) |
-| Claims | `GET /claims` (search, filter, sort, page) · `POST /claims` · `GET /claims/{id}` · `POST /claims/{id}/submit` · `GET /claims/{id}/837` · `GET /claims/{id}/claim-form.pdf` · `GET /claims/{id}/837-readable.pdf` |
+| Claims | `GET /claims` (search, filter, sort, page) · `POST /claims` · `GET /claims/{id}` · `PUT /claims/{id}` (edit a Draft) · `POST /claims/{id}/submit` · `GET /claims/{id}/837` · `GET /claims/{id}/claim-form.pdf` · `GET /claims/{id}/837-readable.pdf` |
 | Saved drafts | `GET /drafts` · `POST /drafts` · `GET /drafts/{id}` · `PUT /drafts/{id}` · `DELETE /drafts/{id}` (billers and admins) |
 | Validation | `GET /validate/{id}` · `POST /validate` (up to 200 claims) |
 | Rules | `GET/POST /rules` · `GET/PUT/PATCH/DELETE /rules/{id}` · `GET /rules/fields` · `POST /rules/test` |
