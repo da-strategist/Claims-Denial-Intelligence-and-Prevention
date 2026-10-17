@@ -1,6 +1,8 @@
 // Sections of the New Claim form: patient, coverage, diagnoses, and service lines
 import { useId, useState } from 'react'
 import { FIELD_CLASS, INPUT_CLASS } from '../constants'
+import { REVENUE_CODES } from '../utils/billing'
+import { PolicyFields } from './BillingFields'
 import { usePatientSearch } from '../hooks/useClaimEntry'
 import { useDebouncedValue } from '../hooks/useClaims'
 import { lineCharge, MAX_DIAGNOSES, MAX_OTHER_PAYERS } from '../utils/claimEntry'
@@ -9,7 +11,7 @@ import { currency } from '../utils/format'
 const PAYER_ORDER = ['Secondary', 'Tertiary']
 
 const SMALL_BUTTON =
-  'rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40'
+  'btn-secondary btn-sm'
 const REMOVE_BUTTON =
   'rounded-lg px-2 py-1.5 text-sm text-gray-400 hover:bg-red-50 hover:text-red-700 disabled:invisible'
 
@@ -53,7 +55,7 @@ export function PatientPicker({ patient, payers, onChange }) {
 
   if (patient) {
     return (
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-gray-200 bg-gray-50 p-3">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-gray-50 p-4">
         <div>
           <div className="font-semibold text-gray-900">
             {patient.first_name} {patient.last_name}
@@ -94,7 +96,7 @@ export function PatientPicker({ patient, payers, onChange }) {
       />
       {error && <p className="text-sm text-red-700">Could not search patients — {error}</p>}
       {search && data && (
-        <div className="rounded-lg border border-gray-200">
+        <div className="rounded-xl ring-1 ring-gray-200/70">
           {data.items.length === 0 ? (
             <p className="p-3 text-sm text-gray-500">
               No registered patient matches “{search}”. Patients must be registered by the
@@ -138,8 +140,11 @@ function payerOptions(payers) {
   return Object.values(payers).sort((a, b) => a.payer_name.localeCompare(b.payer_name))
 }
 
-/** Billed payer (defaults to the patient's primary) plus secondary/tertiary coverage. */
-export function CoverageFields({ patient, payers, payerId, otherPayerIds, onChange }) {
+/**
+ * Billed payer (defaults to the patient's primary) plus secondary/tertiary coverage, each
+ * with its policy. `policies` is [billed, ...others]; self-pay needs none.
+ */
+export function CoverageFields({ patient, payers, payerId, otherPayerIds, policies, onChange, onPolicyChange }) {
   const baseId = useId()
   const options = payerOptions(payers)
   const primary = patient?.primary_payer_id
@@ -174,6 +179,16 @@ export function CoverageFields({ patient, payers, payerId, otherPayerIds, onChan
           </p>
         )}
       </div>
+      {payerId &&
+        (payers[payerId]?.payer_type === 'Self-Pay' ? (
+          <p className="text-sm text-gray-500">Self-pay is billed to the patient, so no policy is needed.</p>
+        ) : (
+          <PolicyFields
+            payerName={payers[payerId]?.payer_name ?? payerId}
+            policy={policies[0]}
+            onChange={(policy) => onPolicyChange(0, policy)}
+          />
+        ))}
 
       {otherPayerIds.map((id, index) => (
         <div key={index} className="flex items-end gap-2">
@@ -209,7 +224,17 @@ export function CoverageFields({ patient, payers, payerId, otherPayerIds, onChan
             ✕
           </button>
         </div>
-      ))}
+      )).flatMap((row, index) => [
+        row,
+        otherPayerIds[index] && policies[index + 1] ? (
+          <PolicyFields
+            key={`policy-${index}`}
+            payerName={payers[otherPayerIds[index]]?.payer_name ?? otherPayerIds[index]}
+            policy={policies[index + 1]}
+            onChange={(policy) => onPolicyChange(index + 1, policy)}
+          />
+        ) : null,
+      ])}
       {otherPayerIds.length < MAX_OTHER_PAYERS && (
         <button
           type="button"
@@ -278,7 +303,7 @@ export function DiagnosisList({ diagnoses, known, onChange, onRemove }) {
 }
 
 /** Services rendered; each points at the diagnosis it treats. */
-export function ServiceLines({ lines, diagnoses, procedures, onChange, onAdd }) {
+export function ServiceLines({ lines, diagnoses, procedures, institutional = false, onChange, onAdd }) {
   const baseId = useId()
   const codes = Object.values(procedures).sort((a, b) => a.cpt_code.localeCompare(b.cpt_code))
   const update = (key, changes) =>
@@ -287,14 +312,23 @@ export function ServiceLines({ lines, diagnoses, procedures, onChange, onAdd }) 
 
   return (
     <div className="space-y-2">
+      {institutional && (
+        <datalist id={`${baseId}-revenue-codes`}>
+          {REVENUE_CODES.map(([code, label]) => (
+            <option key={code} value={code}>
+              {label}
+            </option>
+          ))}
+        </datalist>
+      )}
       <ol className="space-y-3">
         {lines.map((line, index) => {
           const id = (name) => `${baseId}-${line.key}-${name}`
           const standard = procedures[line.cpt_code]?.standard_charge
           return (
-            <li key={line.key} className="rounded-lg border border-gray-200 p-3">
+            <li key={line.key} className="rounded-xl bg-gray-50 p-4">
               <div className="mb-2 flex items-center justify-between">
-                <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                <span className="eyebrow">
                   Line {index + 1}
                 </span>
                 <button
@@ -307,7 +341,32 @@ export function ServiceLines({ lines, diagnoses, procedures, onChange, onAdd }) 
                   ✕
                 </button>
               </div>
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-[minmax(0,2fr)_5rem_5rem_7rem_minmax(0,1fr)]">
+              <div
+                className={`grid grid-cols-2 gap-2 ${
+                  institutional
+                    ? 'sm:grid-cols-[5.5rem_minmax(0,2fr)_4.5rem_4.5rem_6.5rem_minmax(0,1fr)]'
+                    : 'sm:grid-cols-[minmax(0,2fr)_5rem_5rem_7rem_minmax(0,1fr)]'
+                }`}
+              >
+                {institutional && (
+                  <div className="col-span-2 space-y-1 sm:col-span-1">
+                    <label htmlFor={id('revenue')} className="block text-xs text-gray-600">
+                      Revenue code
+                    </label>
+                    <input
+                      id={id('revenue')}
+                      required
+                      list={`${baseId}-revenue-codes`}
+                      inputMode="numeric"
+                      pattern="\d{4}"
+                      title="Four digits, e.g. 0450"
+                      autoComplete="off"
+                      className={`${INPUT_CLASS} font-mono`}
+                      value={line.revenue_code}
+                      onChange={(e) => update(line.key, { revenue_code: e.target.value.replace(/\D/g, '').slice(0, 4) })}
+                    />
+                  </div>
+                )}
                 <div className="col-span-2 space-y-1 sm:col-span-1">
                   <label htmlFor={id('cpt')} className="block text-xs text-gray-600">
                     Procedure (CPT)

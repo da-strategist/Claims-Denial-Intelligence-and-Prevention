@@ -65,10 +65,31 @@ from app.models.dashboard import (
 from app.models.department import Department
 from app.models.denial import Denial, DenialCategory, WorkflowStep
 from app.models.facility import Facility
+from app.models.billing import (
+    RELATIONSHIP_CODES,
+    Address,
+    ClaimBilling,
+    EdiFile,
+    InstitutionalDetails,
+    PatientRegistration,
+    PolicyHolder,
+    RegistrationSource,
+    Relationship,
+    Sex,
+)
+from app.models.draft import (
+    DRAFT_RETENTION_DAYS,
+    DraftForm,
+    DraftLine,
+    SavedDraft,
+    SavedDraftDetail,
+    SavedDraftSummary,
+)
 from app.models.patient import Patient, PatientQuery, PatientSummary
 from app.models.payer import Payer, PayerType
 from app.models.provider import Credential, Provider
 from app.models.rule import (
+    AT_RISK_STATUSES,
     RULE_FIELDS,
     ClaimCreated,
     ClaimValidation,
@@ -93,6 +114,23 @@ from app.models.rule import (
 )
 
 __all__ = [
+    "RELATIONSHIP_CODES",
+    "Address",
+    "ClaimBilling",
+    "EdiFile",
+    "InstitutionalDetails",
+    "PatientRegistration",
+    "PolicyHolder",
+    "RegistrationSource",
+    "Relationship",
+    "Sex",
+    "DRAFT_RETENTION_DAYS",
+    "DraftForm",
+    "DraftLine",
+    "SavedDraft",
+    "SavedDraftDetail",
+    "SavedDraftSummary",
+    "AT_RISK_STATUSES",
     "MIN_PASSWORD_LENGTH",
     "ROLE_PERMISSIONS",
     "AuditEvent",

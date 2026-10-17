@@ -20,6 +20,7 @@ from app.models.common import (
     PayerId,
     ProviderId,
 )
+from app.models.billing import ClaimBilling, EdiFile
 from app.models.common import _blank_to_none
 from app.models.denial import Denial
 from app.models.patient import Patient
@@ -73,6 +74,7 @@ class ClaimLine(DomainModel):
     allowed_amount: Money
     paid_amount: Money
     icd10_pointer: Icd10Code
+    revenue_code: OptionalStr = Field(default=None, description="UB-04 revenue code (institutional)")
 
 
 class Claim(DomainModel):
@@ -142,6 +144,10 @@ class ClaimLineCreate(DomainModel):
     modifier: Annotated[Modifier | None, BeforeValidator(_blank_to_none)] = None
     charge_amount: Money | None = None
     icd10_pointer: Icd10Code = Field(description="The diagnosis this service treats")
+    revenue_code: Annotated[
+        Annotated[str, StringConstraints(pattern=r"^\d{4}$")] | None,
+        BeforeValidator(_blank_to_none),
+    ] = Field(default=None, description="UB-04 revenue code; required on institutional claims")
 
 
 class ClaimCreate(DomainModel):
@@ -171,6 +177,9 @@ class ClaimCreate(DomainModel):
     pa_required: bool = False
     pa_obtained: bool = False
     pa_number: OptionalStr = None
+    billing: ClaimBilling = Field(
+        description="Patient demographics and policy holders, as the 837 claim file needs them"
+    )
 
     @model_validator(mode="after")
     def _check_fields(self) -> "ClaimCreate":
@@ -185,6 +194,20 @@ class ClaimCreate(DomainModel):
         payers = [self.payer_id, *self.other_payer_ids]
         if len(set(payers)) != len(payers):
             raise ValueError("Each payer can only be listed once")
+
+        if len(self.billing.other_policies) != len(self.other_payer_ids):
+            raise ValueError("Give policy details for each other payer, in the same order")
+        if self.claim_type == ClaimType.INSTITUTIONAL:
+            if self.billing.institutional is None:
+                raise ValueError(
+                    "Institutional claims need the type of bill, admission type and source, "
+                    "and patient status"
+                )
+            missing = [str(n) for n, line in enumerate(self.lines, start=1) if not line.revenue_code]
+            if missing:
+                raise ValueError(f"Institutional claims need a revenue code on line {', '.join(missing)}")
+        elif self.billing.institutional is not None:
+            raise ValueError("Institutional details only apply to institutional claims")
 
         listed = set(self.diagnoses)
         for number, line in enumerate(self.lines, start=1):
@@ -202,7 +225,13 @@ class ClaimCreate(DomainModel):
 
 
 ClaimSortField = Literal[
-    "claim_id", "service_date", "submission_date", "total_charge", "total_paid", "days_in_ar"
+    "claim_id",
+    "service_date",
+    "submission_date",
+    "total_charge",
+    "total_paid",
+    "days_in_ar",
+    "risk_score",
 ]
 
 
@@ -220,6 +249,13 @@ class ClaimQuery(BaseModel):
     is_clean_claim: bool | None = None
     missing_prior_auth: bool | None = None
     overdue: bool | None = None
+    include_drafts: bool = Field(
+        default=True,
+        description="False leaves out Draft claims (the workbench lists them on New Claim instead)",
+    )
+    needs_attention: bool | None = Field(
+        default=None, description="Validation errors under the current rules (Error or AI Fix)"
+    )
     service_date_from: date | None = None
     service_date_to: date | None = None
     min_charge: Money | None = None
@@ -238,3 +274,7 @@ class ClaimDetail(Claim):
     patient: Patient | None = None
     payer: Payer | None = None
     provider: Provider | None = None
+    billing: ClaimBilling | None = Field(
+        default=None, description="Captured with claims entered in the app; PHI"
+    )
+    edi: EdiFile | None = Field(default=None, description="The 837 created at submission")

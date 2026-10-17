@@ -88,9 +88,23 @@ export const getClaim = (claimId, options) =>
 /** Enter a claim by hand. Returns { claim, validation }. */
 export const createClaim = (claim) => request('/claims', { method: 'POST', body: claim })
 
-/** Mark a Draft as submitted today (it becomes Pending). Refused while rule errors remain. */
+/** Mark a Draft as submitted today (it becomes Pending). Refused while any rule error or warning remains. */
 export const submitClaim = (claimId) =>
   request(`/claims/${encodeURIComponent(claimId)}/submit`, { method: 'POST' })
+
+/** Saved drafts: unfinished New Claim forms, shared by everyone who can enter claims. */
+export const listDrafts = (options) => request('/drafts', options)
+
+export const getDraft = (draftId) => request(`/drafts/${encodeURIComponent(draftId)}`)
+
+/** Save the form as a new draft, or over `draftId`. Returns the saved draft. */
+export const saveDraft = (form, draftId = null) =>
+  draftId
+    ? request(`/drafts/${encodeURIComponent(draftId)}`, { method: 'PUT', body: form })
+    : request('/drafts', { method: 'POST', body: form })
+
+export const deleteDraft = (draftId) =>
+  request(`/drafts/${encodeURIComponent(draftId)}`, { method: 'DELETE' })
 
 export const listPayers = (options) => request('/payers', options)
 
@@ -103,6 +117,18 @@ export const listDepartments = (options) => request('/departments', options)
 // --- Claim entry: registered patients and reference lists -------------------------
 
 /** Registered patients by ID prefix or name words, with claim and denial counts. */
+/** A patient's date of birth, address, and policies, to fill a new claim with. */
+export const getPatientRegistration = (patientId) =>
+  request(`/patients/${encodeURIComponent(patientId)}/registration`)
+
+/** Link to download the 837 file a claim was submitted with. */
+export const claim837Url = (claimId) => `${API_BASE}/claims/${encodeURIComponent(claimId)}/837`
+
+/** Links to the PDFs built from that 837: the CMS-1500/UB-04 layout, and the decoded file. */
+export const claimFormPdfUrl = (claimId) => `${API_BASE}/claims/${encodeURIComponent(claimId)}/claim-form.pdf`
+export const readable837PdfUrl = (claimId) =>
+  `${API_BASE}/claims/${encodeURIComponent(claimId)}/837-readable.pdf`
+
 export const searchPatients = (params, options) => request('/patients', { ...options, params })
 
 export const listProviders = (options) => request('/providers', options)
