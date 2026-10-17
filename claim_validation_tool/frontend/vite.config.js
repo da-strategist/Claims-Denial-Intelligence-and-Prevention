@@ -8,7 +8,7 @@ export default defineConfig({
   server: {
     // Forward /api/* to the FastAPI backend so the app can use relative URLs
     proxy: {
-      '/api': 'http://localhost:8000',
+      '/api': process.env.RCM_API_URL ?? 'http://localhost:8000',
     },
   },
   test: {

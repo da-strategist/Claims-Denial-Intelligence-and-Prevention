@@ -27,7 +27,7 @@ function Inline({ text, sourceId }) {
             event.preventDefault()
             document.getElementById(sourceId(label))?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
           }}
-          className="mx-0.5 rounded bg-sky-100 px-1 text-xs font-semibold text-sky-800 hover:bg-sky-200"
+          className="mx-0.5 rounded bg-accent-soft px-1 text-xs font-semibold text-accent hover:bg-accent/15"
         >
           {label}
         </a>
@@ -77,11 +77,11 @@ function Sources({ sources, sourceId, showCited }) {
         <li
           key={source.label}
           id={sourceId(source.label)}
-          className={`scroll-mt-4 rounded-md border px-2.5 py-1.5 ${source.cited || !showCited ? 'border-sky-200 bg-white' : 'border-gray-100 bg-gray-50 opacity-75'}`}
+          className={`scroll-mt-4 rounded-md border px-2.5 py-1.5 ${source.cited || !showCited ? 'border-gray-200 bg-white' : 'border-gray-100 bg-gray-50 opacity-75'}`}
         >
           <details>
             <summary className="cursor-pointer select-none text-xs">
-              <span className="mr-1.5 font-semibold text-sky-800">{source.label}</span>
+              <span className="mr-1.5 font-semibold text-accent">{source.label}</span>
               <span className="font-semibold text-gray-800">{source.title}</span>
               <span className="ml-1.5 uppercase tracking-wide text-gray-400">
                 {SOURCE_TYPE_LABELS[source.source_type] ?? source.source_type}
@@ -148,10 +148,10 @@ export default function AssistantPanel({ claimId, topic }) {
     <section
       aria-label="Clarification assistant"
       aria-busy={asking}
-      className="space-y-3 rounded-lg border border-sky-100 bg-sky-50/40 p-3"
+      className="space-y-3 rounded-2xl bg-white p-4 ring-1 ring-gray-200/70"
     >
       <form onSubmit={ask} className="space-y-2">
-        <label htmlFor={`${baseId}-question`} className="block text-xs font-semibold text-sky-800">
+        <label htmlFor={`${baseId}-question`} className="block text-xs font-semibold text-accent">
           Ask the assistant{topic && ` · ${CLARIFICATION_TOPICS[topic]}`}
         </label>
         <textarea
@@ -168,7 +168,7 @@ export default function AssistantPanel({ claimId, topic }) {
           <button
             type="submit"
             disabled={asking}
-            className="rounded-lg bg-sky-700 px-3 py-1.5 text-sm font-semibold text-white hover:bg-sky-800 disabled:opacity-50"
+            className="btn-primary"
           >
             {asking ? 'Researching…' : 'Ask'}
           </button>
@@ -185,10 +185,10 @@ export default function AssistantPanel({ claimId, topic }) {
       )}
 
       {result && (
-        <div className="space-y-3 border-t border-sky-100 pt-3">
+        <div className="space-y-3 border-t border-gray-100 pt-3">
           <div className="flex flex-wrap items-center gap-2 text-xs">
             <span
-              className={`rounded-full border px-2 py-0.5 font-semibold ${result.mode === 'claude' ? 'border-sky-200 bg-white text-sky-800' : 'border-gray-200 bg-white text-gray-600'}`}
+              className={`rounded-full border px-2 py-0.5 font-semibold ${result.mode === 'claude' ? 'border-transparent bg-accent-soft text-accent' : 'border-gray-200 bg-white text-gray-600'}`}
             >
               {result.mode === 'claude' ? `Claude · ${result.model}` : 'Sources only'}
             </span>
@@ -200,7 +200,7 @@ export default function AssistantPanel({ claimId, topic }) {
           )}
           {result.sources.length > 0 && (
             <div className="space-y-1.5">
-              <h4 className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+              <h4 className="eyebrow">
                 Sources ({result.sources.length})
               </h4>
               <Sources

@@ -1,4 +1,6 @@
 import { useState } from 'react'
+import Icon from '../components/Icon'
+import PageHeader, { Notice, Page } from '../components/PageHeader'
 import RuleBuilder from '../components/RuleBuilder'
 import { SeverityBadge } from '../components/StatusBadge'
 import Toggle from '../components/Toggle'
@@ -16,17 +18,10 @@ function RuleActions({ rule, onEdit, onDelete, busy }) {
     return (
       <div className="flex items-center justify-end gap-2 text-sm">
         <span className="text-gray-600">Delete?</span>
-        <button
-          className="rounded-lg bg-red-600 px-2.5 py-1 font-medium text-white hover:bg-red-700 disabled:opacity-50"
-          disabled={busy}
-          onClick={() => onDelete(rule)}
-        >
+        <button className="btn-danger btn-sm" disabled={busy} onClick={() => onDelete(rule)}>
           Delete
         </button>
-        <button
-          className="rounded-lg px-2.5 py-1 text-gray-600 hover:bg-gray-100"
-          onClick={() => setConfirming(false)}
-        >
+        <button className="btn-secondary btn-sm" onClick={() => setConfirming(false)}>
           Cancel
         </button>
       </div>
@@ -35,14 +30,14 @@ function RuleActions({ rule, onEdit, onDelete, busy }) {
   return (
     <div className="flex items-center justify-end gap-1 text-sm">
       <button
-        className="rounded-lg px-2.5 py-1 font-medium text-gray-700 hover:bg-gray-100"
+        className="btn-quiet btn-sm"
         onClick={() => onEdit(rule)}
         aria-label={`Edit ${rule.name}`}
       >
         Edit
       </button>
       <button
-        className="rounded-lg px-2.5 py-1 font-medium text-red-700 hover:bg-red-50"
+        className="btn btn-sm text-gray-500 hover:bg-red-50 hover:text-red-700"
         onClick={() => setConfirming(true)}
         aria-label={`Delete ${rule.name}`}
       >
@@ -54,8 +49,8 @@ function RuleActions({ rule, onEdit, onDelete, busy }) {
 
 function RuleRow({ rule, fields, payers, departments, busy, onToggle, onEdit, onDelete }) {
   return (
-    <tr className={`border-b border-gray-50 align-top ${rule.enabled ? '' : 'bg-gray-50/60'}`}>
-      <td className="px-4 py-4">
+    <tr className={`border-b border-gray-100 align-top last:border-0 ${rule.enabled ? '' : 'opacity-60'}`}>
+      <td className="px-4 py-5">
         <Toggle
           checked={rule.enabled}
           onChange={(enabled) => onToggle(rule, enabled)}
@@ -63,8 +58,8 @@ function RuleRow({ rule, fields, payers, departments, busy, onToggle, onEdit, on
           disabled={busy}
         />
       </td>
-      <td className="max-w-sm px-4 py-4">
-        <div className={`font-medium ${rule.enabled ? 'text-gray-900' : 'text-gray-500'}`}>
+      <td className="max-w-sm px-4 py-5">
+        <div className="text-[15px] font-medium text-gray-900">
           {rule.name}
         </div>
         <div className="text-xs text-gray-400">
@@ -72,29 +67,29 @@ function RuleRow({ rule, fields, payers, departments, busy, onToggle, onEdit, on
         </div>
         {rule.description && <p className="mt-1 text-sm text-gray-600">{rule.description}</p>}
       </td>
-      <td className="px-4 py-4">
+      <td className="px-4 py-5">
         <SeverityBadge severity={rule.severity} />
       </td>
-      <td className="max-w-xs px-4 py-4 text-sm text-gray-600">
+      <td className="max-w-xs px-4 py-5 text-sm text-gray-600">
         {describeScope(rule.scope, payers, departments)}
       </td>
-      <td className="max-w-sm px-4 py-4">
+      <td className="max-w-sm px-4 py-5">
         <ul className="space-y-1">
           {rule.conditions.map((condition, index) => (
             <li key={index} className="text-sm text-gray-800">
               {index > 0 && (
-                <span className="mr-1 text-xs font-semibold text-gray-400">
+                <span className="mr-1 text-xs font-medium text-gray-400">
                   {rule.condition_logic}
                 </span>
               )}
-              <code className="rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-800">
+              <span className="rounded-md bg-gray-100 px-1.5 py-0.5 text-[13px] text-gray-700 [box-decoration-break:clone]">
                 {describeCondition(condition, fields)}
-              </code>
+              </span>
             </li>
           ))}
         </ul>
       </td>
-      <td className="px-4 py-4">
+      <td className="px-4 py-5">
         <RuleActions rule={rule} onEdit={onEdit} onDelete={onDelete} busy={busy} />
       </td>
     </tr>
@@ -145,34 +140,29 @@ export default function RuleManager() {
   const enabledCount = (rules ?? []).filter((rule) => rule.enabled).length
 
   return (
-    <div className="space-y-4 p-4 sm:p-6">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Rule Manager</h1>
-          <p className="text-sm text-gray-500">
-            Rules run against every claim in the workbench. Changes apply immediately.
-          </p>
-        </div>
-        <button
-          onClick={() => setEditing('new')}
-          className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700"
-        >
-          + New rule
+    <Page wide>
+      <PageHeader
+        title="Rules"
+        subtitle="Every claim is checked against these rules. Changes apply immediately."
+      >
+        <button onClick={() => setEditing('new')} className="btn-primary">
+          <Icon name="plus" className="h-4 w-4" strokeWidth={2} />
+          New rule
         </button>
-      </div>
+      </PageHeader>
 
       <div className="flex flex-wrap items-center gap-2">
         <input
           type="search"
           aria-label="Search rules"
           placeholder="Search rules…"
-          className={`${INPUT_CLASS} sm:w-64`}
+          className={`${INPUT_CLASS} py-1.5 text-[13px] sm:w-64`}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
         <select
           aria-label="Category"
-          className={FIELD_CLASS}
+          className={`${FIELD_CLASS} py-1.5 text-[13px]`}
           value={category}
           onChange={(e) => setCategory(e.target.value)}
         >
@@ -182,22 +172,20 @@ export default function RuleManager() {
           ))}
         </select>
         {rules && (
-          <span className="text-sm text-gray-500">
+          <span className="ml-auto text-sm text-gray-500">
             {enabledCount} of {rules.length} rules enabled
           </span>
         )}
       </div>
 
       {(error || actionError) && (
-        <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-          {error ? `Could not load rules — ${error}` : actionError}
-        </div>
+        <Notice>{error ? `Could not load rules — ${error}` : actionError}</Notice>
       )}
 
-      <div className="relative overflow-x-auto rounded-xl border border-gray-100 bg-white shadow-sm">
+      <div className="card relative overflow-x-auto">
         <table className={`w-full transition-opacity ${loading && rules ? 'opacity-60' : ''}`}>
           <thead>
-            <tr className="border-b border-gray-100 text-left text-xs font-semibold uppercase text-gray-500">
+            <tr className="border-b border-gray-100 text-left text-xs font-medium text-gray-500">
               <th scope="col" className="px-4 py-3">
                 On
               </th>
@@ -263,6 +251,6 @@ export default function RuleManager() {
           }}
         />
       )}
-    </div>
+    </Page>
   )
 }

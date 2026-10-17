@@ -1,6 +1,7 @@
 import { useId, useState } from 'react'
 import { CLARIFICATION_TOPICS, INPUT_CLASS, SUGGESTION_ACTIONS } from '../constants'
 import AssistantPanel from './AssistantPanel'
+import Icon from './Icon'
 
 const CONFIDENCE_LABELS = { high: 'High confidence', medium: 'Medium confidence', low: 'Needs judgement' }
 
@@ -45,18 +46,18 @@ function Citations({ citations }) {
   if (citations.length === 0) return null
   return (
     <details className="group text-sm">
-      <summary className="cursor-pointer select-none text-xs font-medium text-gray-500 hover:text-gray-800">
+      <summary className="cursor-pointer select-none text-xs font-medium text-gray-500 hover:text-gray-900">
         Sources ({citations.length})
       </summary>
       <ul className="mt-2 space-y-1.5">
         {citations.map((citation) => (
           <li
             key={`${citation.source_type}:${citation.reference_id}`}
-            className="rounded-md bg-gray-50 px-2.5 py-1.5"
+            className="rounded-lg bg-white px-3 py-2 ring-1 ring-gray-200/70"
           >
-            <div className="text-xs font-semibold text-gray-700">
+            <div className="text-xs font-medium text-gray-800">
               {citation.title}
-              <span className="ml-1.5 font-normal uppercase tracking-wide text-gray-400">
+              <span className="ml-1.5 font-normal text-gray-400">
                 {citation.source_type.replace('_', ' ')} · {citation.reference_id}
               </span>
             </div>
@@ -94,27 +95,24 @@ export default function FixSuggestion({ suggestion, onApply }) {
   }
 
   return (
-    <div className="space-y-2.5 rounded-lg border border-violet-100 bg-violet-50/40 p-3">
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-xs font-semibold uppercase tracking-wide text-violet-700">
-          ✦ Suggested fix
+    <div className="space-y-3 rounded-2xl bg-violet-50/60 p-4">
+      <div className="flex flex-wrap items-center gap-2 text-xs">
+        <span className="inline-flex items-center gap-1 font-medium text-violet-700">
+          <Icon name="sparkle" className="h-3.5 w-3.5" strokeWidth={2} />
+          Suggested fix
         </span>
-        <span
-          className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${action.style}`}
-        >
-          {action.label}
-        </span>
-        <span className="text-xs text-gray-500">{CONFIDENCE_LABELS[suggestion.confidence]}</span>
+        <span className={`rounded-full px-2 py-0.5 font-medium ${action.style}`}>{action.label}</span>
+        <span className="text-gray-500">{CONFIDENCE_LABELS[suggestion.confidence]}</span>
       </div>
 
       <div>
-        <div className="text-sm font-semibold text-gray-900">{suggestion.title}</div>
-        <p className="text-sm text-gray-700">{suggestion.summary}</p>
+        <div className="text-[15px] font-semibold text-gray-900">{suggestion.title}</div>
+        <p className="mt-0.5 text-sm text-gray-700">{suggestion.summary}</p>
         <p className="mt-1 text-sm text-gray-500">{suggestion.reasoning}</p>
       </div>
 
       {suggestion.steps.length > 0 && (
-        <ol className="list-decimal space-y-0.5 pl-5 text-sm text-gray-700">
+        <ol className="list-decimal space-y-1 pl-5 text-sm text-gray-700 marker:text-gray-400">
           {suggestion.steps.map((step) => (
             <li key={step}>{step}</li>
           ))}
@@ -124,13 +122,13 @@ export default function FixSuggestion({ suggestion, onApply }) {
       <Citations citations={suggestion.citations} />
 
       {suggestion.action === 'apply' && !onApply && (
-        <p className="border-t border-violet-100 pt-2.5 text-xs text-gray-500">
+        <p className="border-t border-violet-100 pt-3 text-xs text-gray-500">
           Your role can view this fix but not apply it.
         </p>
       )}
 
       {suggestion.action === 'apply' && onApply && (
-        <form onSubmit={submit} className="space-y-2 border-t border-violet-100 pt-2.5">
+        <form onSubmit={submit} className="space-y-3 border-t border-violet-100 pt-3">
           {suggestion.changes.map((change) => {
             const inputId = `${formId}-${change.field}`
             return (
@@ -158,27 +156,19 @@ export default function FixSuggestion({ suggestion, onApply }) {
               {error}
             </p>
           )}
-          <button
-            type="submit"
-            disabled={applying}
-            className="rounded-lg bg-violet-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-50"
-          >
+          <button type="submit" disabled={applying} className="btn-primary">
             {applying ? 'Applying…' : 'Apply fix & re-validate'}
           </button>
         </form>
       )}
 
       {suggestion.needs_clarification && (
-        <div className="space-y-2 border-t border-violet-100 pt-2.5">
+        <div className="space-y-2 border-t border-violet-100 pt-3">
           {asking ? (
             <AssistantPanel claimId={suggestion.claim_id} topic={suggestion.clarification_topic} />
           ) : (
             <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setAsking(true)}
-                className="rounded-lg border border-sky-200 bg-white px-3 py-1.5 text-sm font-medium text-sky-700 hover:bg-sky-50"
-              >
+              <button type="button" onClick={() => setAsking(true)} className="btn-secondary btn-sm">
                 Ask the assistant
               </button>
               <span className="text-xs text-gray-500">

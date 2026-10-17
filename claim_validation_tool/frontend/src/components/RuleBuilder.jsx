@@ -3,6 +3,7 @@ import { INPUT_CLASS, RULE_CATEGORIES, SCOPE_TYPES, SEVERITIES } from '../consta
 import { createRule, replaceRule, testRule } from '../services/api'
 import { describeScope, scopeOptions } from '../utils/ruleSummary'
 import ConditionBuilder from './ConditionBuilder'
+import Icon from './Icon'
 import Toggle from './Toggle'
 
 const NEW_RULE = {
@@ -42,7 +43,7 @@ function Label({ htmlFor, children, hint }) {
 function Section({ title, children }) {
   return (
     <section className="space-y-3 border-t border-gray-100 pt-5">
-      <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500">{title}</h3>
+      <h3 className="eyebrow">{title}</h3>
       {children}
     </section>
   )
@@ -71,7 +72,7 @@ function ScopePicker({ scope, payers, departments, onChange }) {
         ))}
       </select>
       {options.length > 0 && (
-        <fieldset className="grid max-h-48 gap-1 overflow-y-auto rounded-lg border border-gray-200 p-2 sm:grid-cols-2">
+        <fieldset className="grid max-h-48 gap-1 overflow-y-auto rounded-xl p-2 ring-1 ring-gray-200/70 sm:grid-cols-2">
           <legend className="sr-only">Choose which ones</legend>
           {options.map(([value, label]) => (
             <label
@@ -80,7 +81,7 @@ function ScopePicker({ scope, payers, departments, onChange }) {
             >
               <input
                 type="checkbox"
-                className="accent-red-600"
+                className="accent-accent"
                 checked={scope.values.includes(value)}
                 onChange={() => toggleValue(value)}
               />
@@ -96,14 +97,14 @@ function ScopePicker({ scope, payers, departments, onChange }) {
 function TestResult({ result }) {
   const share = result.in_scope ? (result.matched / result.in_scope) * 100 : 0
   return (
-    <div className="rounded-lg border border-sky-200 bg-sky-50 p-3 text-sm text-sky-900">
+    <div className="rounded-xl bg-accent-soft p-4 text-sm text-gray-800">
       <p>
         Flags <strong>{result.matched.toLocaleString()}</strong> of{' '}
         {result.in_scope.toLocaleString()} claims in scope ({share.toFixed(1)}%) ·{' '}
         {result.total_claims.toLocaleString()} claims total
       </p>
       {result.sample_claim_ids.length > 0 && (
-        <p className="mt-1 break-words text-xs text-sky-700">
+        <p className="mt-1 break-words text-xs text-gray-500">
           e.g. {result.sample_claim_ids.slice(0, 8).join(', ')}
         </p>
       )}
@@ -166,17 +167,17 @@ export default function RuleBuilder({ rule, fields, payers, departments, onClose
 
   return (
     <div className="fixed inset-0 z-40 flex justify-end">
-      <div className="absolute inset-0 bg-gray-900/30" onClick={onClose} aria-hidden="true" />
+      <div className="absolute inset-0 bg-gray-900/20 backdrop-blur-[2px]" onClick={onClose} aria-hidden="true" />
       <form
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
         onSubmit={save}
-        className="relative flex h-full w-full max-w-2xl flex-col bg-white shadow-xl"
+        className="relative flex h-full w-full max-w-2xl flex-col bg-white shadow-2xl"
       >
-        <header className="flex items-start justify-between border-b border-gray-100 px-6 py-4">
+        <header className="flex items-start justify-between border-b border-gray-100 px-8 py-5">
           <div>
-            <h2 id={titleId} className="text-lg font-semibold text-gray-900">
+            <h2 id={titleId} className="text-xl font-semibold tracking-tight text-gray-900">
               {rule ? 'Edit rule' : 'New rule'}
             </h2>
             {rule && <p className="text-xs text-gray-400">{rule.id}</p>}
@@ -185,13 +186,13 @@ export default function RuleBuilder({ rule, fields, payers, departments, onClose
             type="button"
             onClick={onClose}
             aria-label="Close"
-            className="rounded-lg px-2 py-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+            className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
           >
-            ✕
+            <Icon name="close" className="h-5 w-5" />
           </button>
         </header>
 
-        <div className="flex-1 space-y-5 overflow-y-auto px-6 py-5">
+        <div className="flex-1 space-y-6 overflow-y-auto px-8 py-6">
           <div className="space-y-3">
             <div>
               <Label htmlFor={`${titleId}-name`}>Name</Label>
@@ -250,7 +251,7 @@ export default function RuleBuilder({ rule, fields, payers, departments, onClose
                 {SEVERITIES.map((s) => (
                   <label
                     key={s.value}
-                    className={`cursor-pointer rounded-lg border px-3 py-2 text-sm ${draft.severity === s.value ? 'border-red-400 bg-red-50 ring-2 ring-red-100' : 'border-gray-200 hover:bg-gray-50'}`}
+                    className={`cursor-pointer rounded-xl border px-3 py-2 text-sm ${draft.severity === s.value ? 'border-accent bg-accent-soft ring-4 ring-accent/15' : 'border-gray-200 hover:bg-gray-50'}`}
                   >
                     <input
                       type="radio"
@@ -306,22 +307,22 @@ export default function RuleBuilder({ rule, fields, payers, departments, onClose
               type="button"
               onClick={runTest}
               disabled={test.loading}
-              className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm font-medium text-gray-800 hover:bg-gray-50 disabled:opacity-50"
+              className="btn-secondary btn-sm"
             >
               {test.loading ? 'Testing…' : 'Test rule'}
             </button>
             {test.result && <TestResult result={test.result} />}
             {test.error && (
-              <p className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+              <p className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">
                 {test.error}
               </p>
             )}
           </Section>
         </div>
 
-        <footer className="space-y-3 border-t border-gray-100 px-6 py-4">
+        <footer className="space-y-3 border-t border-gray-100 px-8 py-4">
           {error && (
-            <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+            <p role="alert" className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">
               Could not save — {error}
             </p>
           )}
@@ -329,14 +330,14 @@ export default function RuleBuilder({ rule, fields, payers, departments, onClose
             <button
               type="button"
               onClick={onClose}
-              className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+              className="btn-secondary"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={saving}
-              className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50"
+              className="btn-primary"
             >
               {saving ? 'Saving…' : rule ? 'Save changes' : 'Create rule'}
             </button>

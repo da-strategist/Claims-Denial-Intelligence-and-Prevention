@@ -1,8 +1,8 @@
 import { useId, useState } from 'react'
 
 const DIRECTIONS = {
-  outbound: { label: 'ClaustraRCM → JAB Audit', style: 'bg-sky-50 text-sky-800 border-sky-200' },
-  inbound: { label: 'JAB Audit → ClaustraRCM', style: 'bg-violet-50 text-violet-800 border-violet-200' },
+  outbound: { label: 'ClaustraRCM → JAB Audit', style: 'bg-accent-soft text-accent border-transparent' },
+  inbound: { label: 'JAB Audit → ClaustraRCM', style: 'bg-gray-100 text-gray-700 border-transparent' },
 }
 
 const TABS = [
@@ -16,7 +16,7 @@ function FieldsTable({ fields }) {
     <div className="relative max-h-96 overflow-auto rounded-lg border border-gray-100">
       <table className="w-full text-sm">
         <thead className="sticky top-0 bg-gray-50">
-          <tr className="text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+          <tr className="text-left eyebrow">
             <th scope="col" className="px-3 py-2">Field</th>
             <th scope="col" className="px-3 py-2">Type</th>
             <th scope="col" className="px-3 py-2">Notes</th>
@@ -35,7 +35,7 @@ function FieldsTable({ fields }) {
                     </span>
                   )}
                 </td>
-                <td className="whitespace-nowrap px-3 py-1.5 font-mono text-xs text-violet-700">
+                <td className="whitespace-nowrap px-3 py-1.5 font-mono text-xs text-gray-500">
                   {field.type}
                 </td>
                 <td className="min-w-48 px-3 py-1.5 text-xs text-gray-600">
@@ -74,7 +74,7 @@ export default function ApiContractCard({ contract }) {
     <section
       id={`contract-${contract.id}`}
       aria-labelledby={`${baseId}-title`}
-      className="scroll-mt-4 space-y-3 rounded-xl border border-gray-100 bg-white p-4 shadow-sm"
+      className="scroll-mt-4 space-y-3 card p-5"
     >
       <div className="flex flex-wrap items-center gap-2">
         <h3 id={`${baseId}-title`} className="font-semibold text-gray-900">

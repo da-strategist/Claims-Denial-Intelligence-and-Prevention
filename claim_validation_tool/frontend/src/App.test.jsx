@@ -58,7 +58,7 @@ describe('signing in', () => {
     mockApi({ ...PAGE, 'GET /auth/me': () => ANALYST })
     render(<App />)
     await screen.findByText('Test analyst')
-    expect(navLinks()).toEqual(['Dashboard', 'Claims Workbench', 'JAB Audit'])
+    expect(navLinks()).toEqual(['Overview', 'Claims', 'JAB Audit', 'User Guide'])
   })
 
   it('shows admins every page, including the audit log', async () => {
@@ -66,11 +66,12 @@ describe('signing in', () => {
     render(<App />)
     await screen.findByText('Administrator')
     expect(navLinks()).toEqual([
-      'Dashboard',
-      'Claims Workbench',
+      'Overview',
+      'Claims',
       'New Claim',
-      'Rule Manager',
+      'Rules',
       'JAB Audit',
+      'User Guide',
       'Audit Log',
     ])
   })

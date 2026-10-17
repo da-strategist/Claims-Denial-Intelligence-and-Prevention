@@ -1,5 +1,4 @@
-const BUTTON_CLASS =
-  'rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40'
+const BUTTON_CLASS = 'btn-secondary btn-sm'
 
 export default function Pagination({ page, pages, total, pageSize, onPageChange, disabled }) {
   const first = total === 0 ? 0 : (page - 1) * pageSize + 1

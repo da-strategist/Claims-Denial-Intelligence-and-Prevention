@@ -10,6 +10,7 @@ import pandas as pd
 
 from app.models import (
     ADJUDICATED_STATUSES,
+    AT_RISK_STATUSES,
     AgingBucket,
     ClaimStatus,
     Dashboard,
@@ -32,9 +33,6 @@ AR_BUCKETS: list[tuple[str, int, int | None]] = [
     ("61–90", 61, 90),
     ("90+", 91, None),
 ]
-
-# Validation statuses that need work before submission
-AT_RISK_STATUSES = (ValidationStatus.ERROR.value, ValidationStatus.AI_FIX.value)
 
 
 def build_dashboard(
@@ -224,7 +222,7 @@ def _kpis(
             "At-Risk Claims",
             KpiFormat.COUNT,
             False,
-            f"Errors under current rules · {now['aifix']:,} need an AI fix",
+            f"{now['aifix']:,} of them have an AI fix ready" if now["aifix"] else "",
         ),
     ]
 

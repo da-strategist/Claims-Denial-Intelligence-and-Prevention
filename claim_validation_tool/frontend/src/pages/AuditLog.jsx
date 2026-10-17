@@ -1,12 +1,14 @@
 import { useState } from 'react'
+import PageHeader, { Notice, Page } from '../components/PageHeader'
 import { FIELD_CLASS } from '../constants'
 import { useApi } from '../hooks/useApi'
 import { listAuditEvents, verifyAuditLog } from '../services/api'
 
+// Success is the norm, so it stays quiet
 const OUTCOME_STYLES = {
-  success: 'border-emerald-200 bg-emerald-50 text-emerald-800',
-  denied: 'border-amber-200 bg-amber-50 text-amber-800',
-  failed: 'border-red-200 bg-red-50 text-red-700',
+  success: 'bg-gray-100 text-gray-600',
+  denied: 'bg-amber-50 text-amber-800',
+  failed: 'bg-red-50 text-red-700',
 }
 
 const EMPTY_FILTERS = { username: '', record_id: '', outcome: '' }
@@ -46,13 +48,11 @@ export default function AuditLog() {
   )
 
   return (
-    <div className="space-y-5 p-4 sm:p-6">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Audit Log</h1>
-        <p className="text-sm text-gray-500">
-          Every API request: who made it, the records involved, and whether it was allowed
-        </p>
-      </div>
+    <Page wide>
+      <PageHeader
+        title="Audit log"
+        subtitle="Every request: who made it, the records involved, and whether it was allowed."
+      />
       <ChainStatus />
 
       <form
@@ -94,24 +94,24 @@ export default function AuditLog() {
         </label>
         <button
           type="submit"
-          className="rounded-lg bg-gray-900 px-3 py-2 text-sm font-semibold text-white hover:bg-gray-700"
+          className="btn-primary"
         >
           Filter
         </button>
       </form>
 
-      {error && <p className="text-sm text-red-700">Could not load the audit log — {error}</p>}
+      {error && <Notice>Could not load the audit log — {error}</Notice>}
       {loading && !events && <p className="text-sm text-gray-500">Loading events…</p>}
       {events && (
-        <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
+        <div className="card overflow-x-auto">
           <table className="min-w-full text-left text-sm">
-            <thead className="bg-gray-50 text-xs uppercase tracking-wide text-gray-500">
+            <thead className="border-b border-gray-100 text-xs text-gray-500">
               <tr>
-                <th className="px-3 py-2">When</th>
-                <th className="px-3 py-2">User</th>
-                <th className="px-3 py-2">Action</th>
-                <th className="px-3 py-2">Records and details</th>
-                <th className="px-3 py-2">Outcome</th>
+                <th className="px-4 py-3 font-medium">When</th>
+                <th className="px-4 py-3 font-medium">User</th>
+                <th className="px-4 py-3 font-medium">Action</th>
+                <th className="px-4 py-3 font-medium">Records and details</th>
+                <th className="px-4 py-3 font-medium">Outcome</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
@@ -124,13 +124,13 @@ export default function AuditLog() {
                     {event.username ?? <span className="text-gray-400">signed out</span>}
                     {event.role && <span className="block text-xs text-gray-400">{event.role}</span>}
                   </td>
-                  <td className="px-3 py-2 font-mono text-xs text-gray-800">{event.action}</td>
-                  <td className="px-3 py-2 text-xs">
+                  <td className="px-4 py-3 font-mono text-xs text-gray-800">{event.action}</td>
+                  <td className="px-4 py-3 text-xs">
                     <Details event={event} />
                   </td>
                   <td className="whitespace-nowrap px-3 py-2">
                     <span
-                      className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${OUTCOME_STYLES[event.outcome]}`}
+                      className={`rounded-full px-2 py-0.5 text-xs font-medium ${OUTCOME_STYLES[event.outcome]}`}
                     >
                       {event.status_code} {event.outcome}
                     </span>
@@ -144,6 +144,6 @@ export default function AuditLog() {
           )}
         </div>
       )}
-    </div>
+    </Page>
   )
 }

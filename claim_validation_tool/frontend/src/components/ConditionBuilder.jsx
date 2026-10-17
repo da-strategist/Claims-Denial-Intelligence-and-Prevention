@@ -117,7 +117,7 @@ export default function ConditionBuilder({ conditions, logic, fields, onChange, 
       {conditions.length > 1 && (
         <div className="flex items-center gap-2 text-sm text-gray-600">
           Flag a claim when
-          <div className="inline-flex overflow-hidden rounded-lg border border-gray-200">
+          <div className="inline-flex overflow-hidden rounded-xl border border-gray-200">
             {[
               ['AND', 'all'],
               ['OR', 'any'],

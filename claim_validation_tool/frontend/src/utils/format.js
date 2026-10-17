@@ -29,3 +29,17 @@ export function dateLabel(isoDate) {
     year: 'numeric',
   })
 }
+
+/** A dashboard KPI value in its format; days are shown without the unit. */
+export function formatKpiValue(value, format) {
+  switch (format) {
+    case 'currency':
+      return compactCurrency(value)
+    case 'percent':
+      return percent(value)
+    case 'days':
+      return value.toFixed(1)
+    default:
+      return Math.round(value).toLocaleString()
+  }
+}

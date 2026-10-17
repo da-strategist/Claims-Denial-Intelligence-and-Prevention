@@ -2,8 +2,8 @@
 
 const INTEGRATION_STATUSES = {
   live: { label: 'Live', style: 'bg-emerald-50 text-emerald-800 border-emerald-200' },
-  proposed: { label: 'Proposed', style: 'bg-violet-50 text-violet-800 border-violet-200' },
-  partial: { label: 'Partial', style: 'bg-sky-50 text-sky-800 border-sky-200' },
+  proposed: { label: 'Proposed', style: 'bg-gray-100 text-gray-700 border-transparent' },
+  partial: { label: 'Partial', style: 'bg-accent-soft text-accent border-transparent' },
   needed: { label: 'Needed', style: 'bg-amber-50 text-amber-800 border-amber-200' },
 }
 
@@ -65,7 +65,7 @@ const WORKFLOW_STEPS = [
 function StepLink({ step }) {
   if (step.href) {
     return (
-      <a href={step.href} className="text-xs font-medium text-red-700 hover:underline">
+      <a href={step.href} className="text-xs font-medium text-accent hover:underline">
         Open in app →
       </a>
     )
@@ -80,7 +80,7 @@ function StepLink({ step }) {
             .getElementById(`contract-${step.contract}`)
             ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
         }
-        className="text-xs font-medium text-violet-700 hover:underline"
+        className="text-xs font-medium text-accent hover:underline"
       >
         View contract ↓
       </button>
@@ -96,7 +96,7 @@ export function WorkflowDiagram() {
         {WORKFLOW_STEPS.map((step, index) => (
           <li
             key={step.title}
-            className="relative flex flex-col gap-1.5 rounded-xl border border-gray-100 bg-white p-4 shadow-sm"
+            className="relative flex flex-col gap-1.5 card p-5"
           >
             <div className="flex items-center justify-between gap-2">
               <span className="flex h-7 w-7 items-center justify-center rounded-full bg-gray-900 text-xs font-bold text-white">
@@ -176,7 +176,7 @@ export function ArchitectureCards() {
       {SYSTEMS.map((system) => (
         <div
           key={system.name}
-          className="flex flex-col gap-2 rounded-xl border border-gray-100 bg-white p-4 shadow-sm"
+          className="flex flex-col gap-2 card p-5"
         >
           <div className="flex items-start justify-between gap-2">
             <h3 className="font-semibold text-gray-900">{system.name}</h3>
