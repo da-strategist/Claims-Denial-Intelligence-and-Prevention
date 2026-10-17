@@ -97,6 +97,27 @@ Tasks:
 
 ---
 
+## Before going live on real claims
+
+Settings chosen for the synthetic sample data that must change once the tool runs on real,
+continuous claims:
+
+- **Overview period.** The Overview opens on *All time* (`DEFAULT_DASHBOARD_MONTHS` in
+  `frontend/src/constants.js`), and "Last N months" counts back from the latest service date
+  in the data (`_periods` in `backend/app/services/dashboard.py`). That's because the sample
+  claims end in December 2025 while claims entered now carry 2026 dates, so one new claim
+  would move the window onto mostly empty months. On real data, switch to counting back
+  **from today** and open on *Last 12 months*.
+- **Sample patient registrations.** The synthetic patients' dates of birth, addresses, and
+  member IDs are generated (`backend/app/data/registrations.py`, marked "sample" in the
+  form). Real patients' details must come from the hospital's registration system or be
+  captured on their first claim; turn off sample generation.
+- **837 settings.** Complete `backend/edi_settings.json` (submitter, clearinghouse, billing
+  provider with NPI, EIN and ZIP+4, payer IDs), give facilities ZIP+4 addresses, set `mode`
+  to `production`, and validate a test file with the clearinghouse first.
+- **Compliance items still open**: HTTPS (`RCM_COOKIE_SECURE=1`), encryption at rest,
+  single sign-on, a BAA/DPA with Anthropic and the clearinghouse, and audit-log retention.
+
 ## Planned feature updates: claim submission
 
 Not scheduled; to be built when the need arises. Today a claim goes Draft -> Pending

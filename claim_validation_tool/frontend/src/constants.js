@@ -8,11 +8,19 @@ export const VALIDATION_STATUSES = {
 }
 
 export const DASHBOARD_PERIODS = [
+  { months: '', label: 'All time' },
   { months: 12, label: 'Last 12 months' },
   { months: 6, label: 'Last 6 months' },
   { months: 3, label: 'Last 3 months' },
-  { months: '', label: 'All time' },
 ]
+
+// SAMPLE DATA ONLY — change before going live. The Overview opens on All time because the
+// synthetic claims end in December 2025 while claims entered now carry 2026 dates, and
+// "Last N months" counts back from the latest service date, so one new claim would move the
+// window onto mostly empty months. On real, continuous claims, open on 'Last 12 months' (12)
+// and count the window back from today (services/dashboard.py `_periods`). See PHASES.md,
+// "Before going live".
+export const DEFAULT_DASHBOARD_MONTHS = ''
 
 export const EMPTY_FILTERS = {
   search: '',

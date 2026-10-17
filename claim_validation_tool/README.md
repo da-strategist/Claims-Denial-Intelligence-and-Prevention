@@ -9,7 +9,7 @@ FastAPI backend and a React frontend over a synthetic 120,000-claim data set.
 
 | Page | Purpose |
 |---|---|
-| **Overview** | Opens on the number of claims that need attention, with a button straight to them. Then KPIs (denial rate, clean claim rate, days in AR, net collection, at-risk claims) against the prior period, revenue trend, validation status, top denial reasons, AR aging, payer performance. Filter by period, payer, department. |
+| **Overview** | Opens on the number of submitted claims that need attention (the same claims the Claims queue shows), with a button straight to them, and for billers a line for draft claims still to finish on New Claim. Then KPIs (denial rate, clean claim rate, days in AR, net collection, at-risk claims) against the prior period, revenue trend, validation status, top denial reasons, AR aging, payer performance. Filter by period, payer, department. |
 | **Claims** | Opens on the **Needs attention** queue: claims with validation errors (Error or AI Fix), riskiest first. **All claims** shows every submitted claim (drafts are finished on New Claim). Search and filter; each row shows its validation result and 0–100 risk score. Expand a claim for findings, risk breakdown, lines, denials, and **AI Fix** suggestions that can be applied and undone. Suggestions that need judgement (medical necessity, NCCI/modifiers, payer prior auth, appeals) offer **Ask the assistant**. A submitted claim shows its 837 with downloads (the file, a CMS-1500/UB-04 PDF, a readable PDF). Colours carry meaning: green for Paid, Pass and low risk; amber for warnings and medium risk; red for errors, denials and high risk. |
 | **New Claim** | Enter a draft claim for a registered patient: selecting them fills in their primary payer, date of birth, address and member ID from their registration; billed payer plus secondary/tertiary coverage, each with its policy, up to 12 diagnoses each supported by a service line, prior authorization. A **Drafts** panel on the right lists everything waiting to be finished, shared by every biller: **saved forms** (from **Save draft**: unfinished, not validated, deleted 30 days after the last save) and **draft claims** (created and validated, not yet submitted). Opening a draft claim shows its problems, AI fixes, and **Mark as submitted**, which is only allowed once no rule error or warning remains. The same check applies to claims sent through the API. |
 | **Rules** | Create, edit, enable/disable, and test rules (field + operator + value conditions, AND/OR, scoped to payers, departments, or claim types). Changes apply to every claim immediately. |
@@ -236,6 +236,8 @@ claim_validation_tool/
 ## Limitations
 
 - Synthetic data: payer, coding (LCD/NCCI/MUE), and contract checks are limited to what it contains.
+  Some defaults suit only this sample (the Overview opens on All time, sample patient details are
+  generated); `PHASES.md` lists what to change before going live on real claims.
 - Not yet fit for real patient data: no HTTPS or encryption at rest, local accounts rather than
   single sign-on, and no agreement (BAA/DPA) with Anthropic. Sessions live in memory, so a
   restart signs everyone out, and the audit log has no rotation or retention policy.
