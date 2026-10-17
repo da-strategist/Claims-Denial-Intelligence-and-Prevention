@@ -55,7 +55,9 @@ const SECTIONS = [
         <p className="text-[15px] text-gray-700">
           The first number is the one to act on: how many claims need attention because they have
           validation errors. <strong className="font-medium">Review claims</strong> opens exactly
-          those claims, for the same period, payer, and department you’ve chosen.
+          those claims, for the same period, payer, and department you’ve chosen. Draft claims
+          aren’t in that number; if any are waiting, a line underneath says how many, with{' '}
+          <strong className="font-medium">Open drafts</strong> to finish them on New Claim.
         </p>
         <p className="text-[15px] text-gray-700">
           Below it are the key measures compared with the previous period (green is better, red is

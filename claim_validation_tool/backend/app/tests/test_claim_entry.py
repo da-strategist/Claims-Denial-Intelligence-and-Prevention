@@ -89,7 +89,9 @@ def test_new_claim_counts_on_dashboard(client):
     now = {k["key"]: k for k in after["kpis"]}
     assert now["claims"]["value"] == {k["key"]: k["value"] for k in before["kpis"]}["claims"] + 1
     assert now["claims"]["detail"] == "$4.3K billed · 1 draft"
-    assert now["at_risk"]["value"] == 2  # CLM0000002 plus the new claim
+    # Needs attention is submitted claims (CLM0000002); the new draft is listed apart
+    assert now["at_risk"]["value"] == 1
+    assert after["drafts"] == {"claims": 1, "with_problems": 1}
     # A draft isn't adjudicated or in AR: rates and aging are unchanged
     assert now["denial_rate"]["value"] == 0.5
     assert now["avg_days_in_ar"]["value"] == 33.75

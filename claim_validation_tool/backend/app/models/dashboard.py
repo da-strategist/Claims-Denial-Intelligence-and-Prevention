@@ -85,6 +85,13 @@ class PayerSummary(BaseModel):
     paid: float
 
 
+class DraftSummary(BaseModel):
+    """Claims entered but not yet submitted, to finish on New Claim."""
+
+    claims: int = Field(ge=0)
+    with_problems: int = Field(ge=0, description="Still have a rule error or warning")
+
+
 class Dashboard(BaseModel):
     period: Period | None = Field(description="Service dates covered; null when no claims match")
     comparison_period: Period | None = None
@@ -95,3 +102,6 @@ class Dashboard(BaseModel):
     ar_aging: list[AgingBucket]
     validation_status: list[StatusCount]
     payers: list[PayerSummary]
+    drafts: DraftSummary = Field(
+        description="Payer and department filters apply; the period doesn't (drafts are current work)"
+    )

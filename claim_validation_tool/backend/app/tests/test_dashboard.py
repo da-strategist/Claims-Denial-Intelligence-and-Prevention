@@ -109,3 +109,22 @@ def test_at_risk_follows_rule_changes_and_fixes(client):
 @pytest.mark.parametrize("params", [{"months": 0}, {"months": 37}, {"payer_id": "nope"}])
 def test_invalid_params_are_422(client, params):
     assert client.get("/api/dashboard", params=params).status_code == 422
+
+
+def test_draft_claims_are_listed_apart_from_needs_attention(client, today):
+    from app.tests.test_claim_entry import create
+
+    # Today is pinned to 2026-01-10. Three PAY001 drafts: one with an error (prior auth
+    # missing), one that passes, and one from a year ago (now past Timely Filing: a warning)
+    create(client, pa_required=True)
+    create(client)
+    create(client, service_date="2025-01-05", submission_date="2025-01-06")
+
+    body = dashboard(client)
+    # Needs attention counts submitted claims only, matching the Claims queue
+    assert kpis(body)["at_risk"]["value"] == 1
+    assert body["drafts"] == {"claims": 3, "with_problems": 2}
+    # Drafts are current work: a period that leaves out last year's draft still counts it;
+    # the payer and department filters do apply
+    assert dashboard(client, months=1)["drafts"]["claims"] == 3
+    assert dashboard(client, payer_id="PAY002")["drafts"]["claims"] == 0

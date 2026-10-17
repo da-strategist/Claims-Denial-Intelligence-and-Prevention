@@ -10,8 +10,8 @@ import {
   PayerTable,
   RevenueTrendChart,
 } from '../components/DashboardCharts'
-import { DASHBOARD_PERIODS, FIELD_CLASS } from '../constants'
-import { useAuth } from '../hooks/useAuth'
+import { DASHBOARD_PERIODS, DEFAULT_DASHBOARD_MONTHS, FIELD_CLASS } from '../constants'
+import { useAuth, useCan } from '../hooks/useAuth'
 import { usePayerLookup } from '../hooks/useClaims'
 import { useDashboard } from '../hooks/useDashboard'
 import { useDepartmentLookup } from '../hooks/useRules'
@@ -55,8 +55,31 @@ function greeting(name) {
   return first ? `${part}, ${first}` : part
 }
 
+/** "3 draft claims to finish, 2 with problems": unsubmitted claims waiting on New Claim. */
+function DraftsLine({ drafts }) {
+  const { claims, with_problems: problems } = drafts
+  const noun = claims === 1 ? 'draft claim' : 'draft claims'
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3 border-t border-gray-100 px-6 py-3.5 sm:px-8">
+      <p className="flex items-center gap-2 text-sm text-gray-700">
+        <span
+          aria-hidden="true"
+          className={`h-2 w-2 rounded-full ${problems ? 'bg-amber-500' : 'bg-emerald-500'}`}
+        />
+        {problems
+          ? `${claims.toLocaleString()} ${noun} to finish, ${problems.toLocaleString()} with problems`
+          : `${claims.toLocaleString()} ${noun} ready to submit`}
+      </p>
+      <a href="#/new-claim" className="btn-quiet btn-sm">
+        Open drafts
+        <Icon name="arrow" className="h-4 w-4" />
+      </a>
+    </div>
+  )
+}
+
 /** The one number a billing team acts on, and the way to act on it. */
-function AttentionHero({ kpi, href, comparisonLabel }) {
+function AttentionHero({ kpi, href, comparisonLabel, drafts }) {
   const count = formatKpiValue(kpi.value, kpi.format)
   return (
     <section aria-label="Claims needing attention" className="card overflow-hidden">
@@ -83,6 +106,7 @@ function AttentionHero({ kpi, href, comparisonLabel }) {
           </a>
         )}
       </div>
+      {drafts?.claims > 0 && <DraftsLine drafts={drafts} />}
     </section>
   )
 }
@@ -93,7 +117,12 @@ function Skeleton({ className }) {
 
 export default function Dashboard() {
   const { user } = useAuth() ?? {}
-  const [filters, setFilters] = useState({ months: 12, payer_id: '', department_id: '' })
+  const canEnterClaims = useCan('claims:write')
+  const [filters, setFilters] = useState({
+    months: DEFAULT_DASHBOARD_MONTHS,
+    payer_id: '',
+    department_id: '',
+  })
   const { data, loading, error } = useDashboard(filters)
   const payers = usePayerLookup()
   const departments = useDepartmentLookup()
@@ -147,7 +176,13 @@ export default function Dashboard() {
         {data ? (
           <>
             {atRisk && (
-              <AttentionHero kpi={atRisk} href={queueHref} comparisonLabel={comparisonLabel} />
+              <AttentionHero
+                kpi={atRisk}
+                href={queueHref}
+                comparisonLabel={comparisonLabel}
+                // Only roles that enter claims can open New Claim to finish them
+                drafts={canEnterClaims ? data.drafts : null}
+              />
             )}
             <section
               aria-label="Key measures"

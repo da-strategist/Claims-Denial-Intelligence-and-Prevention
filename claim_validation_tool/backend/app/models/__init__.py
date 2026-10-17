@@ -53,6 +53,7 @@ from app.models.common import Page, RecordStatus
 from app.models.dashboard import (
     AgingBucket,
     Dashboard,
+    DraftSummary,
     DashboardQuery,
     DenialReason,
     Kpi,
@@ -175,6 +176,7 @@ __all__ = [
     "Correction",
     "Credential",
     "Dashboard",
+    "DraftSummary",
     "DashboardQuery",
     "Denial",
     "DenialCategory",

@@ -15,6 +15,7 @@ from app.models import (
     ClaimStatus,
     Dashboard,
     DashboardQuery,
+    DraftSummary,
     DenialReason,
     Kpi,
     KpiFormat,
@@ -85,6 +86,17 @@ def build_dashboard(
             for status in ValidationStatus
         ],
         payers=_payers(current, payers),
+        drafts=_drafts(scoped, statuses),
+    )
+
+
+def _drafts(scoped: pd.DataFrame, statuses: pd.DataFrame) -> DraftSummary:
+    """Unsubmitted claims under the payer/department filters, whatever their service date."""
+    drafts = scoped[scoped["status"] == ClaimStatus.DRAFT]
+    status = statuses["status"].reindex(drafts["claim_id"])
+    return DraftSummary(
+        claims=len(drafts),
+        with_problems=int((status != ValidationStatus.PASS.value).sum()),
     )
 
 
@@ -92,7 +104,12 @@ def build_dashboard(
 
 
 def _periods(months: int | None, data_range: Period) -> tuple[Period | None, Period | None]:
-    """The selected period and the one before it, or (None, None) for all time."""
+    """The selected period and the one before it, or (None, None) for all time.
+
+    The window counts back from the latest service date in the data. That suits the
+    synthetic sample (it ends in December 2025); before going live on real claims, count
+    back from today instead. See PHASES.md, "Before going live".
+    """
     if months is None:
         return None, None
     last = pd.Period(data_range.end, freq="M")
@@ -137,6 +154,8 @@ def _measures(claims: pd.DataFrame, denials: pd.DataFrame, status: pd.Series) ->
     denied = claims["status"] == ClaimStatus.DENIED
     adjudicated = claims["status"].isin(ADJUDICATED_STATUSES)
     submitted = _submitted(claims)
+    # Needs attention counts submitted claims, like the Claims queue; drafts are listed apart
+    submitted_status = status[(claims["status"] != ClaimStatus.DRAFT).to_numpy()]
     return {
         "claims": len(claims),
         "charges": float(claims["total_charge"].sum()),
@@ -152,8 +171,8 @@ def _measures(claims: pd.DataFrame, denials: pd.DataFrame, status: pd.Series) ->
         "avg_days_in_ar": float(submitted["days_in_ar"].mean()) if len(submitted) else 0.0,
         "over_60_days": int((submitted["days_in_ar"] > 60).sum()),
         "net_collection_rate": _ratio(claims["total_paid"].sum(), claims["total_allowed"].sum()),
-        "at_risk": int(status.isin(AT_RISK_STATUSES).sum()),
-        "aifix": int((status == ValidationStatus.AI_FIX.value).sum()),
+        "at_risk": int(submitted_status.isin(AT_RISK_STATUSES).sum()),
+        "aifix": int((submitted_status == ValidationStatus.AI_FIX.value).sum()),
     }
 
 
