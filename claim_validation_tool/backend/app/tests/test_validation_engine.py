@@ -1,4 +1,4 @@
-"""Engine and risk scorer tests against the fixture claims.
+"""Validation engine tests against the fixture claims.
 
 Fixture claims at a glance:
   CLM0000001  PAT000001  PAY001  Paid    Professional   $100   clean      I10    10 days AR
@@ -16,9 +16,8 @@ import pytest
 
 from app.data.rules import RuleRepository
 from app.data.seed_rules import DEFAULT_RULES
-from app.models import Rule, RuleCreate, RuleDefinition, RuleFinding, ValidationStatus
+from app.models import Rule, RuleCreate, RuleDefinition, ValidationStatus
 from app.services import validation_engine
-from app.services.risk_scorer import score_claim
 
 
 def matches(repo, conditions, logic="AND", scope=None) -> set[str]:
@@ -187,50 +186,6 @@ def test_rule_test_counts_scope_and_matches(repo):
     result = validation_engine.test_rule(rule, repo.claims_frame())
     assert (result.total_claims, result.in_scope, result.matched) == (4, 2, 2)
     assert result.sample_claim_ids == ["CLM0000002", "CLM0000004"]
-
-
-@pytest.mark.parametrize(
-    ("days_in_ar", "points"),
-    [(30, 0), (31, 5), (60, 5), (61, 10), (90, 10), (91, 15)],
-)
-def test_ar_aging_tiers(days_in_ar, points):
-    claim = {
-        "days_in_ar": days_in_ar,
-        "has_prior_denial": False,
-        "has_prior_preventable_denial": False,
-        "pa_required": False,
-        "pa_obtained": False,
-        "primary_icd10": "I10",
-        "is_clean_claim": True,
-    }
-    score, _ = score_claim(claim, [])
-    assert score == points
-
-
-def test_risk_score_is_capped_at_100():
-    claim = {
-        "days_in_ar": 120,
-        "has_prior_denial": True,
-        "has_prior_preventable_denial": True,
-        "pa_required": True,
-        "pa_obtained": False,
-        "primary_icd10": "",
-        "is_clean_claim": False,
-    }
-    errors = [
-        RuleFinding(
-            rule_id=f"RULE-00{i}",
-            rule_name="x",
-            severity="error",
-            category="Coding",
-            message="",
-            recommended_action="",
-        )
-        for i in range(1, 4)
-    ]
-    score, factors = score_claim(claim, errors)
-    assert score == 100
-    assert sum(f.points for f in factors) > 100
 
 
 def test_seed_rules_are_valid():

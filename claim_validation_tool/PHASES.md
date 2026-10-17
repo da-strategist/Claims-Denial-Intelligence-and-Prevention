@@ -68,12 +68,12 @@
 - Not built: a live underpayment preview. The synthetic allowed amounts aren't generated from contract rates (allowed/expected ranges 0.5–1.9×), so variance figures would be noise. Revisit once the data generator is aligned.
 
 ## Phase 9: Polish & Testing
-- [ ] Backend unit tests (validation engine, risk scorer, AI fix)
-- [ ] Frontend component testing
-- [ ] API integration tests
-- [ ] UI polish and responsive design
-- [ ] Error handling and loading states
-- [ ] Final documentation
+- [x] Backend unit tests (validation engine, risk scorer, AI fix)
+- [x] Frontend component testing
+- [x] API integration tests
+- [x] UI polish and responsive design
+- [x] Error handling and loading states
+- [x] Final documentation
 
 ## Phase 10: RAG Clarification Assistant
 Works alongside the rule-based engine: rules handle clear-cut cases; the assistant

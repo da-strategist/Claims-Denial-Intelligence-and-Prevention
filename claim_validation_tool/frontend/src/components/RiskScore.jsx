@@ -13,7 +13,7 @@ export default function RiskScore({ score }) {
   const level = riskLevel(score)
   return (
     <div className="flex items-center justify-end gap-2" title={`${level.label} risk`}>
-      <div className="h-1.5 w-12 overflow-hidden rounded-full bg-gray-100">
+      <div className="hidden h-1.5 w-12 overflow-hidden rounded-full bg-gray-100 lg:block">
         <div className={`h-full ${level.bar}`} style={{ width: `${score}%` }} />
       </div>
       <span className={`w-7 text-right text-sm font-semibold tabular-nums ${level.text}`}>

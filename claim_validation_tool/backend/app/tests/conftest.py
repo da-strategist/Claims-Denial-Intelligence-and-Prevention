@@ -1,3 +1,4 @@
+from datetime import date
 from pathlib import Path
 
 import pytest
@@ -5,6 +6,7 @@ from fastapi.testclient import TestClient
 
 from app.data.corrections import get_correction_store
 from app.data.reference import get_reference_data
+from app.data import repository
 from app.data.repository import ClaimsRepository, get_repository
 from app.data.rules import get_rule_repository
 from app.main import app
@@ -38,3 +40,11 @@ def client(monkeypatch, tmp_path) -> TestClient:
         yield test_client
     for cache in caches:
         cache.cache_clear()
+
+
+@pytest.fixture
+def today(monkeypatch):
+    """Pin the repository's clock to 2026-01-10; returns a setter for moving it."""
+    current = {"date": date(2026, 1, 10)}
+    monkeypatch.setattr(repository, "_today", lambda: current["date"])
+    return lambda new_date: current.update(date=new_date)

@@ -17,24 +17,30 @@ import { hashParams } from '../utils/route'
 const PAGE_SIZE = 25
 
 // `sort` is the API sort_by field; `firstDesc` is the direction of the first click
+// Secondary columns step aside on narrow screens so status, validation, and risk stay
+// in view; the expanded row shows them all
+const CELL = 'px-2 py-3 sm:px-4'
+const FROM_SM = 'hidden sm:table-cell'
+const FROM_LG = 'hidden lg:table-cell'
+
 const COLUMNS = [
   { label: 'Claim ID', sort: 'claim_id', firstDesc: false },
-  { label: 'Service Date', sort: 'service_date', firstDesc: true },
-  { label: 'Patient' },
-  { label: 'Payer' },
-  { label: 'Type' },
-  { label: 'Claim Status' },
+  { label: 'Service Date', sort: 'service_date', firstDesc: true, hide: FROM_SM },
+  { label: 'Patient', hide: FROM_LG },
+  { label: 'Payer', hide: FROM_LG },
+  { label: 'Type', hide: FROM_LG },
+  { label: 'Status' },
   { label: 'Validation' },
   { label: 'Risk', align: 'right' },
-  { label: 'Charge', align: 'right', sort: 'total_charge', firstDesc: true },
-  { label: 'Paid', align: 'right', sort: 'total_paid', firstDesc: true },
-  { label: 'Days in AR', align: 'right', sort: 'days_in_ar', firstDesc: true },
+  { label: 'Charge', align: 'right', sort: 'total_charge', firstDesc: true, hide: FROM_SM },
+  { label: 'Paid', align: 'right', sort: 'total_paid', firstDesc: true, hide: FROM_LG },
+  { label: 'Days in AR', align: 'right', sort: 'days_in_ar', firstDesc: true, hide: FROM_LG },
 ]
 const COLUMN_COUNT = COLUMNS.length + 1 // + expand toggle
 
 function SortableHeader({ column, sort, onSort }) {
   const alignClass = column.align === 'right' ? 'text-right' : 'text-left'
-  const headerClass = `px-4 py-3 text-xs font-semibold uppercase text-gray-500 ${alignClass}`
+  const headerClass = `${CELL} text-xs font-semibold uppercase text-gray-500 ${alignClass} ${column.hide ?? ''}`
   if (!column.sort) {
     return (
       <th scope="col" className={headerClass}>
@@ -68,7 +74,7 @@ function ClaimRow({ claim, payerName, validation, validating, expanded, onToggle
       className={`cursor-pointer border-b border-gray-50 hover:bg-gray-50 ${expanded ? 'bg-gray-50' : ''}`}
       onClick={onToggle}
     >
-      <td className="w-10 py-3 pl-4">
+      <td className="w-7 py-3 pl-1 sm:w-10 sm:pl-4">
         <button
           aria-expanded={expanded}
           aria-label={`${expanded ? 'Collapse' : 'Expand'} claim ${claim.claim_id}`}
@@ -95,7 +101,7 @@ function ClaimRow({ claim, payerName, validation, validating, expanded, onToggle
           </svg>
         </button>
       </td>
-      <td className="px-4 py-3 text-sm font-medium text-gray-900">
+      <td className={`${CELL} text-sm font-medium text-gray-900`}>
         {claim.claim_id}
         {claim.has_corrections && (
           <span
@@ -106,30 +112,35 @@ function ClaimRow({ claim, payerName, validation, validating, expanded, onToggle
           </span>
         )}
       </td>
-      <td className="px-4 py-3 text-sm text-gray-600">{claim.service_date}</td>
-      <td className="px-4 py-3 text-sm text-gray-600">{claim.patient_id}</td>
-      <td className="px-4 py-3 text-sm text-gray-700">{payerName ?? claim.payer_id}</td>
-      <td className="px-4 py-3 text-sm text-gray-600">{claim.claim_type}</td>
-      <td className="px-4 py-3">
+      <td className={`${CELL} text-sm text-gray-600 ${FROM_SM}`}>{claim.service_date}</td>
+      <td className={`${CELL} text-sm text-gray-600 ${FROM_LG}`}>{claim.patient_id}</td>
+      <td
+        className={`${CELL} max-w-48 truncate text-sm text-gray-700 ${FROM_LG}`}
+        title={payerName ?? claim.payer_id}
+      >
+        {payerName ?? claim.payer_id}
+      </td>
+      <td className={`${CELL} text-sm text-gray-600 ${FROM_LG}`}>{claim.claim_type}</td>
+      <td className={CELL}>
         <ClaimStatusBadge status={claim.status} overdue={claim.is_overdue} />
       </td>
-      <td className="px-4 py-3">
+      <td className={CELL}>
         {validation ? (
           <ValidationBadge status={validation.status} />
         ) : (
           <span className="text-xs text-gray-400">{validating ? 'Validating…' : '—'}</span>
         )}
       </td>
-      <td className="px-4 py-3">
+      <td className={CELL}>
         <RiskScore score={validation?.risk_score} />
       </td>
-      <td className="px-4 py-3 text-right text-sm font-medium tabular-nums text-gray-900">
+      <td className={`${CELL} text-right text-sm font-medium tabular-nums text-gray-900 ${FROM_SM}`}>
         {currency.format(claim.total_charge)}
       </td>
-      <td className="px-4 py-3 text-right text-sm tabular-nums text-gray-600">
+      <td className={`${CELL} text-right text-sm tabular-nums text-gray-600 ${FROM_LG}`}>
         {currency.format(claim.total_paid)}
       </td>
-      <td className="px-4 py-3 text-right text-sm tabular-nums text-gray-600">
+      <td className={`${CELL} text-right text-sm tabular-nums text-gray-600 ${FROM_LG}`}>
         {claim.days_in_ar}
       </td>
     </tr>
@@ -211,7 +222,7 @@ export default function ClaimsWorkbench() {
   }
 
   return (
-    <div className="space-y-4 p-6">
+    <div className="space-y-4 p-4 sm:p-6">
       <div className="flex flex-wrap items-end justify-between gap-2">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Claims Workbench</h1>
@@ -250,7 +261,7 @@ export default function ClaimsWorkbench() {
         <table className={`w-full whitespace-nowrap transition-opacity ${loading && data ? 'opacity-50' : ''}`}>
           <thead>
             <tr className="border-b border-gray-100">
-              <th scope="col" className="w-10">
+              <th scope="col" className="w-7 sm:w-10">
                 <span className="sr-only">Expand</span>
               </th>
               {COLUMNS.map((column) => (

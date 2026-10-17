@@ -57,7 +57,7 @@ export default function Dashboard() {
   const comparisonLabel = `prior ${filters.months} months`
 
   return (
-    <div className="space-y-4 p-6">
+    <div className="space-y-4 p-4 sm:p-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Executive Dashboard</h1>

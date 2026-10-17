@@ -25,13 +25,24 @@ function errorMessage(detail) {
     .join('; ')
 }
 
+// The dev proxy answers 502-504 when the API isn't running; fetch itself rejects with a TypeError
+const UNREACHABLE = 'Can’t reach the API server. Check that the backend is running.'
+const GATEWAY_ERRORS = new Set([502, 503, 504])
+
 async function request(path, { params, body, method = 'GET', signal } = {}) {
   const init = { method, signal }
   if (body !== undefined) {
     init.headers = { 'Content-Type': 'application/json' }
     init.body = JSON.stringify(body)
   }
-  const res = await fetch(`${API_BASE}${path}${toQueryString(params)}`, init)
+  let res
+  try {
+    res = await fetch(`${API_BASE}${path}${toQueryString(params)}`, init)
+  } catch (err) {
+    if (err.name === 'AbortError') throw err
+    throw new Error(UNREACHABLE, { cause: err })
+  }
+  if (GATEWAY_ERRORS.has(res.status)) throw new Error(UNREACHABLE)
   if (!res.ok) {
     const data = await res.json().catch(() => null)
     throw new Error(

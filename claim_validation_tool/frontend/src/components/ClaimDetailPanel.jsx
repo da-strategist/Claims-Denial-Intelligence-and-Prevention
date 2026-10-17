@@ -80,9 +80,9 @@ function RiskBreakdown({ validation }) {
   )
 }
 
-function Field({ label, children }) {
+function Field({ label, children, className = '' }) {
   return (
-    <div>
+    <div className={className}>
       <dt className="text-xs text-gray-500">{label}</dt>
       <dd className="text-sm text-gray-900">{children ?? '—'}</dd>
     </div>
@@ -103,6 +103,19 @@ function ClaimFacts({ claim, detail, payers }) {
           : claim.patient_id}
       </Field>
       <Field label="Patient ID">{claim.patient_id}</Field>
+      {/* Columns the workbench table hides on narrow screens */}
+      <Field label="Service date" className="sm:hidden">
+        {claim.service_date}
+      </Field>
+      <Field label="Charge" className="sm:hidden">
+        {currency.format(claim.total_charge)}
+      </Field>
+      <Field label="Payer" className="lg:hidden">
+        {payers?.[claim.payer_id]?.payer_name ?? claim.payer_id}
+      </Field>
+      <Field label="Claim type" className="lg:hidden">
+        {claim.claim_type}
+      </Field>
       <Field label="Provider">
         {detail?.provider
           ? `${detail.provider.provider_name}, ${detail.provider.credential}`
@@ -122,6 +135,12 @@ function ClaimFacts({ claim, detail, payers }) {
       <Field label="Submitted">{claim.submission_date}</Field>
       <Field label="Prior auth">{paLabel}</Field>
       <Field label="Allowed">{currency.format(claim.total_allowed)}</Field>
+      <Field label="Paid" className="lg:hidden">
+        {currency.format(claim.total_paid)}
+      </Field>
+      <Field label="Days in AR" className="lg:hidden">
+        {claim.days_in_ar}
+      </Field>
       <Field label="Patient responsibility">{currency.format(claim.patient_responsibility)}</Field>
     </dl>
   )
@@ -323,7 +342,7 @@ export default function ClaimDetailPanel({ claim, validation: pageValidation, on
   }
 
   return (
-    <div className="grid gap-6 whitespace-normal bg-gray-50 px-6 py-5 lg:grid-cols-2">
+    <div className="grid grid-cols-1 gap-6 whitespace-normal bg-gray-50 px-4 py-5 sm:px-6 lg:grid-cols-2">
       <div className="space-y-5">
         <Section title="Validation">
           <SubmitClaim

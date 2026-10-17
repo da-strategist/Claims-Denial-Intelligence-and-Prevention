@@ -12,18 +12,24 @@ This tool validates healthcare claims against configurable rules, identifies den
 
 **Module layout:**
 
-- `app/main.py` — FastAPI app instance, middleware, startup events
+- `app/main.py` — FastAPI app instance, CORS, routers, data preload at startup
 - `app/routers/` — one file per API domain:
-  - `claims.py` — CRUD and search for claims
-  - `rules.py` — CRUD for validation rules
-  - `validation.py` — run validation engine against claims
+  - `claims.py` — search, detail, manual entry, and submission of claims
+  - `rules.py` — CRUD and dry-run testing for validation rules
+  - `validation.py` — run the validation engine against claims
+  - `aifix.py` — fix suggestions, applying them, and undoing corrections
   - `dashboard.py` — aggregated KPIs and chart data
+  - `patients.py`, `payers.py`, `departments.py`, `reference.py` — lookups for the UI
+  - `jab.py` — JAB Audit integration contracts (conceptual)
 - `app/models/` — Pydantic schemas for request/response contracts
 - `app/services/` — business logic, decoupled from HTTP:
-  - `validation_engine.py` — evaluates rules against claims, computes risk scores
-  - `ai_fix.py` — generates fix suggestions for flagged claims
+  - `validation_engine.py` — evaluates rules against claims (vectorized over pandas)
   - `risk_scorer.py` — composite risk score calculation
-- `app/data/` — data access layer (starts with synthetic data, later connects to BigQuery)
+  - `aifix.py` — rule-based fix suggestions with citations
+  - `status_snapshot.py` — cached validation of every claim, invalidated on data or rule changes
+  - `dashboard.py`, `jab.py` — dashboard aggregates and JAB contract schemas
+- `app/data/` — data access: in-memory claims repository over the synthetic CSVs, JSON-backed
+  rule and correction stores, reference data (CPT, ICD-10, contracts, CARC/RARC)
 
 **Conventions:**
 - All API routes prefixed with `/api/`
@@ -38,17 +44,20 @@ This tool validates healthcare claims against configurable rules, identifies den
 - `src/pages/` — one component per view:
   - `Dashboard.jsx` — KPI cards, charts
   - `ClaimsWorkbench.jsx` — searchable/filterable claim table with expandable rows
+  - `NewClaim.jsx` — manual claim entry for registered patients
   - `RuleManager.jsx` — rule list + rule builder panel
-  - `JABAudit.jsx` — conceptual audit workflow
+  - `JabAudit.jsx` — conceptual audit workflow
 - `src/components/` — reusable pieces (StatusBadge, KpiCard, ConditionBuilder, etc.)
 - `src/services/api.js` — centralized fetch wrapper for all backend calls
 - `src/hooks/` — custom hooks for data fetching and state
 
 **Conventions:**
-- Functional components with hooks (no class components)
-- Tailwind CSS for styling (CDN for now, build step later if needed)
+- Functional components with hooks; the one exception is `ErrorBoundary`, which React only
+  supports as a class
+- Tailwind CSS v4 via the Vite plugin
 - All API calls go through `services/api.js` — components never call fetch directly
 - Props destructured in function signature
+- Tests sit next to the code they cover (`*.test.js[x]`), run with Vitest and Testing Library
 
 ## Domain Context
 
@@ -71,7 +80,7 @@ The project uses synthetic data representing a 312-bed community hospital:
 - ~22.3K denials (18% denial rate)
 - ~76% clean claim rate
 - $911M total billed
-- 6 payers: Medicare, Medicaid, UHC, Aetna, BCBS, Humana
+- 12 payers, including Medicare, Medicaid plans, UnitedHealthcare, Aetna, Blue Cross NC, Humana, Cigna, and Self-Pay
 - Source CSVs in `../Data/raw_data/` (25 files, ~178MB total)
 
 ### Validation Rules
@@ -88,7 +97,7 @@ Factors:
 - Error count: 25 pts per error
 - Warning count: 10 pts per warning
 - Denial history: 20-25 pts
-- AR aging > 60 days: 5-15 pts
+- AR aging over 30 / 60 / 90 days: 5 / 10 / 15 pts
 - Missing prior auth: 15 pts
 - Missing diagnosis: 10 pts
 - Non-clean claim: 5 pts
@@ -100,7 +109,7 @@ Raw CSVs (Data/raw_data/)
     ↓
 dbt pipeline (rcm/) → BigQuery
     ↓
-FastAPI data layer (app/data/) → reads from BigQuery or synthetic data
+FastAPI data layer (app/data/) → loads the synthetic CSVs into memory (BigQuery later)
     ↓
 Validation Engine (app/services/) → evaluates rules, scores risk
     ↓

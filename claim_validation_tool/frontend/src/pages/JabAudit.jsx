@@ -18,7 +18,7 @@ export default function JabAudit() {
   const { data: contracts, loading, error } = useJabContracts()
 
   return (
-    <div className="space-y-8 p-6">
+    <div className="space-y-8 p-4 sm:p-6">
       <div className="space-y-3">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">JAB Audit Integration</h1>

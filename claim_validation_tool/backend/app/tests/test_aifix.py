@@ -168,6 +168,41 @@ def test_diagnosis_fix_rejects_invalid_codes(client):
     assert apply(client, "RULE-010", {"primary_icd10": "K21.9"}).status_code == 200
 
 
+@pytest.mark.parametrize(
+    ("condition", "title", "summary", "reasoning"),
+    [
+        (
+            {"field": "days_in_ar", "operator": "greaterThan", "value": "30"},
+            "Follow up with the payer on claim status",
+            "The claim has been in AR for 45 days.",
+            "This payer typically pays in 28 days.",
+        ),
+        (
+            {"field": "days_to_submission", "operator": "greaterThan", "value": "3"},
+            "Confirm the payer's timely filing limit",
+            "Submitted 5 days after the service date.",
+            "Claims filed after the payer's limit are denied",
+        ),
+    ],
+)
+def test_aging_rules_get_payer_follow_up(client, condition, title, summary, reasoning):
+    client.post(
+        "/api/rules",
+        json={"name": "Aging", "category": "Billing", "severity": "warning", "conditions": [condition]},
+    )
+    suggestion = by_id(fixes(client))["RULE-010"]
+    assert (suggestion["title"], suggestion["summary"]) == (title, summary)
+    assert suggestion["reasoning"].startswith(reasoning)
+    assert suggestion["action"] == "manual"
+    assert ("payer", "PAY002") in {(c["source_type"], c["reference_id"]) for c in suggestion["citations"]}
+
+
+def test_values_must_parse_as_the_field_type(client):
+    res = apply(client, "RULE-002", {"pa_obtained": "maybe", "pa_number": "PA-1"})
+    assert res.status_code == 422
+    assert "maybe" in res.json()["detail"]
+
+
 def test_custom_rule_gets_generic_suggestion(client):
     client.post(
         "/api/rules",

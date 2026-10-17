@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect, useState } from 'react'
+import ErrorBoundary from './components/ErrorBoundary'
 import ClaimsWorkbench from './pages/ClaimsWorkbench'
 import JabAudit from './pages/JabAudit'
 import NewClaim from './pages/NewClaim'
@@ -34,7 +35,7 @@ function App() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <header className="flex flex-wrap items-center gap-x-8 gap-y-3 border-b border-gray-200 bg-white px-6 py-4">
+      <header className="flex flex-wrap items-center gap-x-8 gap-y-3 border-b border-gray-200 bg-white px-4 py-4 sm:px-6">
         <div className="flex items-center gap-3">
           <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-red-600 text-lg font-bold text-white">
             C
@@ -58,10 +59,13 @@ function App() {
         </nav>
       </header>
       <main>
-        <Suspense fallback={<div className="p-6 text-sm text-gray-500">Loading…</div>}>
-          {/* Keyed by the full hash so a new query (e.g. ?search=) starts the page fresh */}
-          <Page key={hash} />
-        </Suspense>
+        {/* Keyed by the full hash so a new query (e.g. ?search=) starts the page fresh,
+            and leaving a crashed page clears the error */}
+        <ErrorBoundary key={hash}>
+          <Suspense fallback={<div className="p-4 text-sm text-gray-500 sm:p-6">Loading…</div>}>
+            <Page />
+          </Suspense>
+        </ErrorBoundary>
       </main>
     </div>
   )

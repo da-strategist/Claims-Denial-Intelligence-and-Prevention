@@ -204,14 +204,6 @@ def test_invalid_claims_are_rejected(client, changes, detail):
 # --- Draft -> Pending -------------------------------------------------------------
 
 
-@pytest.fixture
-def today(monkeypatch):
-    """Pin the repository's clock; returns a setter for moving it."""
-    current = {"date": date(2026, 1, 10)}
-    monkeypatch.setattr(repository, "_today", lambda: current["date"])
-    return lambda new_date: current.update(date=new_date)
-
-
 def submit(client, claim_id):
     return client.post(f"/api/claims/{claim_id}/submit")
 
