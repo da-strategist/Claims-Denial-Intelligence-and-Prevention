@@ -5,13 +5,15 @@ import { applyFix, undoCorrections } from '../services/api'
 import { useCan } from '../hooks/useAuth'
 import SubmitClaim from './SubmitClaim'
 import { currency } from '../utils/format'
+import EdiFileCard from './EdiFileCard'
 import FixSuggestion from './FixSuggestion'
-import { SeverityBadge, ValidationBadge } from './StatusBadge'
+import Icon from './Icon'
+import { SeverityBadge } from './StatusBadge'
 
 function Section({ title, children }) {
   return (
     <section className="space-y-2">
-      <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500">{title}</h3>
+      <h3 className="eyebrow">{title}</h3>
       {children}
     </section>
   )
@@ -20,21 +22,28 @@ function Section({ title, children }) {
 function Findings({ validation, suggestions, onApply }) {
   if (!validation) return <p className="text-sm text-gray-500">Validating…</p>
   if (validation.findings.length === 0) {
-    return <p className="text-sm text-emerald-700">All enabled rules passed.</p>
+    return (
+      <p className="flex items-center gap-2 text-sm text-gray-700">
+        <span className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-50 text-emerald-600">
+          <Icon name="check" className="h-3.5 w-3.5" strokeWidth={2.25} />
+        </span>
+        All enabled rules passed.
+      </p>
+    )
   }
   return (
-    <ul className="space-y-2">
+    <ul className="divide-y divide-gray-100">
       {validation.findings.map((finding) => (
-        <li key={finding.rule_id} className="rounded-lg border border-gray-200 bg-white p-3">
+        <li key={finding.rule_id} className="py-4 first:pt-1 last:pb-0">
           <div className="flex flex-wrap items-center gap-2">
             <SeverityBadge severity={finding.severity} />
-            <span className="text-sm font-semibold text-gray-900">{finding.rule_name}</span>
+            <span className="text-[15px] font-semibold text-gray-900">{finding.rule_name}</span>
             <span className="text-xs text-gray-400">
               {finding.rule_id} · {finding.category}
             </span>
           </div>
           {finding.message && <p className="mt-1.5 text-sm text-gray-600">{finding.message}</p>}
-          {finding.recommended_action && (
+          {finding.recommended_action && !suggestions?.[finding.rule_id] && (
             <p className="mt-1.5 text-sm text-gray-800">
               <span className="font-medium">Recommended: </span>
               {finding.recommended_action}
@@ -55,7 +64,7 @@ function RiskBreakdown({ validation }) {
   if (!validation) return null
   const total = validation.risk_factors.reduce((sum, factor) => sum + factor.points, 0)
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-3">
+    <div>
       {validation.risk_factors.length === 0 ? (
         <p className="text-sm text-gray-500">No risk factors.</p>
       ) : (
@@ -63,14 +72,14 @@ function RiskBreakdown({ validation }) {
           <tbody>
             {validation.risk_factors.map((factor) => (
               <tr key={factor.label}>
-                <td className="py-0.5 text-gray-600">{factor.label}</td>
-                <td className="py-0.5 text-right tabular-nums text-gray-900">+{factor.points}</td>
+                <td className="py-1 text-gray-600">{factor.label}</td>
+                <td className="py-1 text-right tabular-nums text-gray-500">+{factor.points}</td>
               </tr>
             ))}
           </tbody>
         </table>
       )}
-      <div className="mt-2 flex items-center justify-between border-t border-gray-100 pt-2 text-sm">
+      <div className="mt-2 flex items-center justify-between border-t border-gray-200 pt-2 text-sm">
         <span className="font-semibold text-gray-900">Risk score</span>
         <span className="font-semibold tabular-nums text-gray-900">
           {validation.risk_score}
@@ -84,7 +93,7 @@ function RiskBreakdown({ validation }) {
 function Field({ label, children, className = '' }) {
   return (
     <div className={className}>
-      <dt className="text-xs text-gray-500">{label}</dt>
+      <dt className="text-xs text-gray-400">{label}</dt>
       <dd className="text-sm text-gray-900">{children ?? '—'}</dd>
     </div>
   )
@@ -97,13 +106,19 @@ function ClaimFacts({ claim, detail, payers }) {
       : 'Required — not obtained'
     : 'Not required'
   return (
-    <dl className="grid grid-cols-2 gap-x-4 gap-y-2 rounded-lg border border-gray-200 bg-white p-3">
+    <dl className="grid grid-cols-2 gap-x-6 gap-y-3">
       <Field label="Patient">
         {detail?.patient
           ? `${detail.patient.first_name} ${detail.patient.last_name} · ${detail.patient.age} ${detail.patient.gender}`
           : claim.patient_id}
       </Field>
       <Field label="Patient ID">{claim.patient_id}</Field>
+      {detail?.billing && (
+        <>
+          <Field label="Date of birth">{detail.billing.patient_birth_date}</Field>
+          <Field label="Member ID">{detail.billing.policy?.member_id ?? 'Self-pay'}</Field>
+        </>
+      )}
       {/* Columns the workbench table hides on narrow screens */}
       <Field label="Service date" className="sm:hidden">
         {claim.service_date}
@@ -114,7 +129,7 @@ function ClaimFacts({ claim, detail, payers }) {
       <Field label="Payer" className="lg:hidden">
         {payers?.[claim.payer_id]?.payer_name ?? claim.payer_id}
       </Field>
-      <Field label="Claim type" className="lg:hidden">
+      <Field label="Claim type" className="2xl:hidden">
         {claim.claim_type}
       </Field>
       <Field label="Provider">
@@ -136,7 +151,7 @@ function ClaimFacts({ claim, detail, payers }) {
       <Field label="Submitted">{claim.submission_date}</Field>
       <Field label="Prior auth">{paLabel}</Field>
       <Field label="Allowed">{currency.format(claim.total_allowed)}</Field>
-      <Field label="Paid" className="lg:hidden">
+      <Field label="Paid" className="2xl:hidden">
         {currency.format(claim.total_paid)}
       </Field>
       <Field label="Days in AR" className="lg:hidden">
@@ -148,36 +163,32 @@ function ClaimFacts({ claim, detail, payers }) {
 }
 
 function ClaimLines({ lines }) {
+  const head = 'px-3 py-2 font-medium'
+  const cell = 'px-3 py-2'
   return (
-    <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
-      <table className="w-full text-sm">
+    <div className="overflow-x-auto rounded-xl ring-1 ring-gray-200/70">
+      <table className="w-full whitespace-nowrap text-[13px]">
         <thead>
           <tr className="border-b border-gray-100 text-left text-xs text-gray-500">
-            <th className="px-3 py-2 font-medium">#</th>
-            <th className="px-3 py-2 font-medium">CPT</th>
-            <th className="px-3 py-2 font-medium">Modifier</th>
-            <th className="px-3 py-2 font-medium">ICD-10</th>
-            <th className="px-3 py-2 text-right font-medium">Units</th>
-            <th className="px-3 py-2 text-right font-medium">Charge</th>
-            <th className="px-3 py-2 text-right font-medium">Paid</th>
+            <th className={head}>CPT</th>
+            <th className={head}>Mod</th>
+            <th className={head}>ICD-10</th>
+            <th className={`${head} text-right`}>Units</th>
+            <th className={`${head} text-right`}>Charge</th>
+            <th className={`${head} text-right`}>Paid</th>
           </tr>
         </thead>
         <tbody>
           {lines.map((line) => (
-            <tr key={line.line_id} className="border-b border-gray-50 last:border-0">
-              <td className="px-3 py-1.5 text-gray-500">{line.line_number}</td>
-              <td className="px-3 py-1.5 text-gray-900">
-                {line.cpt_code} <span className="text-gray-400">{line.cpt_category}</span>
+            <tr key={line.line_id} className="border-b border-gray-100 last:border-0">
+              <td className={`${cell} text-gray-900`} title={line.cpt_category}>
+                {line.cpt_code}
               </td>
-              <td className="px-3 py-1.5 text-gray-600">{line.modifier ?? '—'}</td>
-              <td className="px-3 py-1.5 text-gray-600">{line.icd10_pointer}</td>
-              <td className="px-3 py-1.5 text-right tabular-nums text-gray-600">{line.units}</td>
-              <td className="px-3 py-1.5 text-right tabular-nums text-gray-900">
-                {currency.format(line.charge_amount)}
-              </td>
-              <td className="px-3 py-1.5 text-right tabular-nums text-gray-600">
-                {currency.format(line.paid_amount)}
-              </td>
+              <td className={`${cell} text-gray-600`}>{line.modifier ?? '—'}</td>
+              <td className={`${cell} text-gray-600`}>{line.icd10_pointer}</td>
+              <td className={`${cell} text-right text-gray-600`}>{line.units}</td>
+              <td className={`${cell} text-right text-gray-900`}>{currency.format(line.charge_amount)}</td>
+              <td className={`${cell} text-right text-gray-600`}>{currency.format(line.paid_amount)}</td>
             </tr>
           ))}
         </tbody>
@@ -191,9 +202,9 @@ function Denials({ denials, suggestions, onApply }) {
     <ul className="space-y-2">
       {denials.map((denial) => (
         <li key={denial.denial_id} className="space-y-3">
-          <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm">
+          <div className="rounded-2xl bg-red-50 p-4 text-sm">
             <div className="font-semibold text-red-900">{denial.denial_reason_text}</div>
-            <div className="mt-1 text-red-800">
+            <div className="mt-1 text-red-800/80">
               {denial.denial_date} · CARC {denial.carc_code} / RARC {denial.rarc_code} ·{' '}
               {currency.format(denial.denial_amount)}
               {denial.is_preventable && ' · Preventable'}
@@ -230,7 +241,7 @@ function ApplyResult({ result, onDismiss }) {
   return (
     <div
       role="status"
-      className="flex items-start justify-between gap-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900"
+      className="flex items-start justify-between gap-3 rounded-2xl bg-emerald-50 p-4 text-sm text-emerald-900"
     >
       <div>
         <div className="font-semibold">
@@ -240,8 +251,12 @@ function ApplyResult({ result, onDismiss }) {
           {applied.map(describeCorrection).join(' · ')}
         </div>
       </div>
-      <button onClick={onDismiss} aria-label="Dismiss" className="text-emerald-700 hover:text-emerald-900">
-        ✕
+      <button
+        onClick={onDismiss}
+        aria-label="Dismiss"
+        className="rounded-lg p-1 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-900"
+      >
+        <Icon name="close" className="h-4 w-4" />
       </button>
     </div>
   )
@@ -260,7 +275,7 @@ function Corrections({ corrections, onUndo }) {
     }
   }
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-3">
+    <div>
       <ul className="space-y-1 text-sm">
         {corrections.map((c) => (
           <li key={c.id} className="flex flex-wrap justify-between gap-x-3 text-gray-700">
@@ -277,17 +292,10 @@ function Corrections({ corrections, onUndo }) {
           {confirming ? (
             <>
               <span className="text-gray-600">Restore the claim's original values?</span>
-              <button
-                onClick={undo}
-                disabled={busy}
-                className="rounded-lg bg-red-600 px-2.5 py-1 font-medium text-white hover:bg-red-700 disabled:opacity-50"
-              >
+              <button onClick={undo} disabled={busy} className="btn-danger btn-sm">
                 Undo all
               </button>
-              <button
-                onClick={() => setConfirming(false)}
-                className="rounded-lg px-2.5 py-1 text-gray-600 hover:bg-gray-100"
-              >
+              <button onClick={() => setConfirming(false)} className="btn-secondary btn-sm">
                 Cancel
               </button>
             </>
@@ -314,9 +322,15 @@ function suggestionsByTarget(fixes) {
 
 /**
  * Expanded-row content: findings with AI Fix suggestions, risk breakdown, corrections,
- * and claim detail. `onClaimChanged` runs after a fix is applied or undone.
+ * and claim detail. `onClaimChanged` runs after a fix is applied or undone, or the claim is
+ * submitted. `stacked` lays it out in one column, for narrow spaces.
  */
-export default function ClaimDetailPanel({ claim, validation: pageValidation, onClaimChanged }) {
+export default function ClaimDetailPanel({
+  claim,
+  validation: pageValidation,
+  onClaimChanged,
+  stacked = false,
+}) {
   const { data: detail, loading, error } = useClaimDetail(claim.claim_id)
   const fixes = useClaimFixes(claim.claim_id)
   const payers = usePayerLookup()
@@ -347,10 +361,34 @@ export default function ClaimDetailPanel({ claim, validation: pageValidation, on
     }
   }
 
+  const findingCount = validation?.findings.length ?? 0
+
   return (
-    <div className="grid grid-cols-1 gap-6 whitespace-normal bg-gray-50 px-4 py-5 sm:px-6 lg:grid-cols-2">
-      <div className="space-y-5">
-        <Section title="Validation">
+    <div
+      className={
+        stacked
+          ? 'grid grid-cols-1 gap-8'
+          : 'grid grid-cols-1 gap-8 whitespace-normal border-t border-gray-100 bg-white px-4 py-6 sm:px-8 lg:grid-cols-5'
+      }
+    >
+      <div className={stacked ? 'space-y-6' : 'space-y-6 lg:col-span-3'}>
+        <Section
+          title={
+            findingCount
+              ? `${findingCount} ${findingCount === 1 ? 'problem' : 'problems'} to resolve`
+              : 'Validation'
+          }
+        >
+          {result && <ApplyResult result={result} onDismiss={() => setResult(null)} />}
+          {fixes.error && (
+            <p className="text-sm text-amber-700">Could not load suggested fixes — {fixes.error}</p>
+          )}
+          <Findings
+            validation={validation}
+            suggestions={suggestions}
+            onApply={canEdit ? handleApply : null}
+          />
+          {/* Last: fix the problems above, then submit */}
           {canEdit && (
             <SubmitClaim
               claim={claim}
@@ -361,26 +399,6 @@ export default function ClaimDetailPanel({ claim, validation: pageValidation, on
               }}
             />
           )}
-          <div className="flex items-center gap-2">
-            <ValidationBadge status={validation?.status} />
-            {validation && (
-              <span className="text-sm text-gray-500">
-                {validation.findings.length} finding{validation.findings.length === 1 ? '' : 's'}
-              </span>
-            )}
-          </div>
-          {result && <ApplyResult result={result} onDismiss={() => setResult(null)} />}
-          {fixes.error && (
-            <p className="text-sm text-amber-700">Could not load suggested fixes — {fixes.error}</p>
-          )}
-          <Findings
-            validation={validation}
-            suggestions={suggestions}
-            onApply={canEdit ? handleApply : null}
-          />
-        </Section>
-        <Section title="Risk breakdown">
-          <RiskBreakdown validation={validation} />
         </Section>
         {fixes.data?.corrections.length > 0 && (
           <Section title="Corrections applied">
@@ -393,15 +411,16 @@ export default function ClaimDetailPanel({ claim, validation: pageValidation, on
         )}
       </div>
 
-      <div className="space-y-5">
-        <Section title="Claim detail">
-          <ClaimFacts claim={claim} detail={detail} payers={payers} />
-        </Section>
-        {error && <p className="text-sm text-red-700">Could not load claim detail — {error}</p>}
-        {loading && !detail && <p className="text-sm text-gray-500">Loading claim lines…</p>}
-        {detail && (
-          <Section title={`Claim lines (${detail.lines.length})`}>
-            <ClaimLines lines={detail.lines} />
+      <div
+        className={
+          stacked
+            ? 'space-y-6 border-t border-gray-100 pt-8'
+            : 'space-y-6 lg:col-span-2 lg:border-l lg:border-gray-100 lg:pl-8'
+        }
+      >
+        {detail?.edi && (
+          <Section title="Submitted as">
+            <EdiFileCard claimId={claim.claim_id} edi={detail.edi} />
           </Section>
         )}
         {detail?.denials.length > 0 && (
@@ -413,6 +432,19 @@ export default function ClaimDetailPanel({ claim, validation: pageValidation, on
             />
           </Section>
         )}
+        <Section title="Claim">
+          <ClaimFacts claim={claim} detail={detail} payers={payers} />
+        </Section>
+        {error && <p className="text-sm text-red-700">Could not load claim detail — {error}</p>}
+        {loading && !detail && <p className="text-sm text-gray-500">Loading claim lines…</p>}
+        {detail && (
+          <Section title={`Lines (${detail.lines.length})`}>
+            <ClaimLines lines={detail.lines} />
+          </Section>
+        )}
+        <Section title="Why the risk score">
+          <RiskBreakdown validation={validation} />
+        </Section>
       </div>
     </div>
   )

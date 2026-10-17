@@ -141,20 +141,30 @@ def test_seed_rules_on_fixture_claims(repo):
         ("Prior denial was preventable", 5),
     ]
 
-    # Missing PA (error) + non-clean (warning), AR aging, missing PA. Its own denial is not
-    # denial history, which leaves it just under the AI fix threshold.
+    # Missing PA (error) + non-clean (warning) and AR aging. The missing PA is scored once,
+    # through its rule, and its own denial is not denial history.
     claim2 = by_id["CLM0000002"]
     assert {f.rule_name for f in claim2.findings} == {
         "Missing Prior Authorization",
         "Non-Clean Claim Review",
     }
-    assert claim2.risk_score == 25 + 10 + 5 + 15
+    assert [(f.label, f.points) for f in claim2.risk_factors] == [
+        ("1 rule error", 25),
+        ("1 rule warning", 10),
+        ("Over 30 days in AR", 5),
+    ]
     assert claim2.status == ValidationStatus.ERROR
 
     # Warnings only: non-clean; 60 days in AR is not *over* 60, so no AR rule
     claim4 = by_id["CLM0000004"]
     assert [f.rule_name for f in claim4.findings] == ["Non-Clean Claim Review"]
     assert claim4.status == ValidationStatus.WARNING
+
+
+def test_missing_prior_auth_still_scores_without_its_rule(repo):
+    rules = [r for r in RuleRepository().list() if r.id != "RULE-002"]
+    [claim2] = validation_engine.validate_claims(repo.claims_frame(["CLM0000002"]), rules)
+    assert ("Missing prior authorization", 15) in [(f.label, f.points) for f in claim2.risk_factors]
 
 
 def test_disabled_rules_are_skipped(repo):

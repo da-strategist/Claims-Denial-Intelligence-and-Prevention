@@ -4,14 +4,16 @@ Weights follow PROJECT_GUIDE.md: rule findings carry most of the weight, and cla
 attributes that correlate with denials (prior denials, AR aging, missing prior auth,
 missing diagnosis) add to it.
 
-Whether a claim is clean is scored only through rules (the seed rule Non-Clean Claim
-Review), so the same fact never counts twice.
+The same fact never counts twice: whether a claim is clean is scored only through rules
+(the seed rule Non-Clean Claim Review), and the missing prior auth and missing diagnosis
+factors are skipped when a rule that tests that field already flagged the claim (e.g.
+Missing Prior Authorization). They still count if no such rule is enabled.
 
 Denial history means the patient's earlier denials that were known when this claim
 was submitted, never the claim's own denial, so the score reflects pre-submission risk.
 """
 
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 from typing import Any
 
 from app.models import RiskFactor, RuleFinding, Severity
@@ -30,9 +32,12 @@ AR_AGING_TIERS = [(90, 15), (60, 10), (30, 5)]
 
 
 def score_claim(
-    claim: Mapping[str, Any], findings: list[RuleFinding]
+    claim: Mapping[str, Any],
+    findings: list[RuleFinding],
+    flagged_fields: Collection[str] = (),
 ) -> tuple[int, list[RiskFactor]]:
-    """Score one claim. `claim` is a row from ClaimsRepository.claims_frame()."""
+    """Score one claim. `claim` is a row from ClaimsRepository.claims_frame();
+    `flagged_fields` are the fields tested by the rules that flagged it."""
     factors: list[RiskFactor] = []
 
     errors = sum(1 for f in findings if f.severity == Severity.ERROR)
@@ -54,9 +59,10 @@ def score_claim(
             factors.append(_factor(f"Over {threshold} days in AR", points))
             break
 
-    if claim["pa_required"] and not claim["pa_obtained"]:
+    missing_pa = claim["pa_required"] and not claim["pa_obtained"]
+    if missing_pa and "pa_obtained" not in flagged_fields:
         factors.append(_factor("Missing prior authorization", MISSING_PRIOR_AUTH_POINTS))
-    if not str(claim["primary_icd10"]).strip():
+    if not str(claim["primary_icd10"]).strip() and "primary_icd10" not in flagged_fields:
         factors.append(_factor("Missing primary diagnosis", MISSING_DIAGNOSIS_POINTS))
 
     score = min(sum(f.points for f in factors), MAX_SCORE)

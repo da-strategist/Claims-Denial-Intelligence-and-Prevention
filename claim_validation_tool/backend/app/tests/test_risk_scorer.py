@@ -28,8 +28,8 @@ def finding(severity, rule_id="RULE-001"):
     )
 
 
-def factors(findings=(), **changes):
-    score, found = score_claim({**LOW_RISK, **changes}, list(findings))
+def factors(findings=(), flagged_fields=(), **changes):
+    score, found = score_claim({**LOW_RISK, **changes}, list(findings), flagged_fields)
     return score, {f.label: f.points for f in found}
 
 
@@ -64,6 +64,18 @@ def test_preventable_denial_adds_to_denial_history():
 def test_non_clean_claim_is_left_to_the_rules():
     # RULE-008 already turns it into a warning; scoring it here too would count it twice
     assert factors(is_clean_claim=False) == (0, {})
+
+
+@pytest.mark.parametrize(
+    ("changes", "field"),
+    [({"pa_required": True}, "pa_obtained"), ({"primary_icd10": ""}, "primary_icd10")],
+)
+def test_attributes_a_rule_already_flagged_count_once(changes, field):
+    # e.g. Missing Prior Authorization (RULE-002) flagged it: its error points cover it
+    assert factors([finding(Severity.ERROR)], flagged_fields={field}, **changes) == (
+        25,
+        {"1 rule error": 25},
+    )
 
 
 def test_prior_auth_obtained_is_no_risk():

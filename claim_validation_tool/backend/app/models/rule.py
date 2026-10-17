@@ -288,6 +288,10 @@ class ValidationStatus(StrEnum):
     AI_FIX = "aifix"  # has errors and risk is high enough to warrant an AI-suggested fix
 
 
+# Validation statuses that need work before submission
+AT_RISK_STATUSES = (ValidationStatus.ERROR.value, ValidationStatus.AI_FIX.value)
+
+
 class RuleFinding(BaseModel):
     rule_id: RuleId
     rule_name: str

@@ -82,16 +82,23 @@ def validate_claims(claims: pd.DataFrame, rules: list[Rule]) -> list[ClaimValida
     `claims` is a frame from ClaimsRepository.claims_frame(); results are in the same order.
     """
     findings: dict[str, list[RuleFinding]] = {claim_id: [] for claim_id in claims["claim_id"]}
+    # Fields the rules that flagged each claim test, so the scorer doesn't count them again
+    flagged_fields: dict[str, set[str]] = {claim_id: set() for claim_id in claims["claim_id"]}
     for rule in rules:
         if not rule.enabled:
             continue
+        finding = _finding(rule)
+        fields = {condition.field for condition in rule.conditions}
         for claim_id in claims.loc[rule_mask(rule, claims), "claim_id"]:
-            findings[claim_id].append(_finding(rule))
+            findings[claim_id].append(finding)
+            flagged_fields[claim_id] |= fields
 
     results = []
     for claim in claims.to_dict("records"):
         claim_findings = findings[claim["claim_id"]]
-        risk_score, risk_factors = score_claim(claim, claim_findings)
+        risk_score, risk_factors = score_claim(
+            claim, claim_findings, flagged_fields[claim["claim_id"]]
+        )
         results.append(
             ClaimValidation(
                 claim_id=claim["claim_id"],

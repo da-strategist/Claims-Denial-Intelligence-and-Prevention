@@ -1,16 +1,21 @@
 import { Fragment, useState } from 'react'
 import ClaimDetailPanel from '../components/ClaimDetailPanel'
 import ClaimFilters from '../components/ClaimFilters'
+import Icon from '../components/Icon'
+import PageHeader, { Notice, Page } from '../components/PageHeader'
 import Pagination from '../components/Pagination'
 import RiskScore from '../components/RiskScore'
 import { ClaimStatusBadge, ValidationBadge } from '../components/StatusBadge'
-import { EMPTY_FILTERS, VALIDATION_STATUSES } from '../constants'
+import { EMPTY_FILTERS } from '../constants'
 import {
   useClaimValidations,
   useClaims,
   useDebouncedValue,
   usePayerLookup,
 } from '../hooks/useClaims'
+import { useDepartmentLookup } from '../hooks/useRules'
+import { useApi } from '../hooks/useApi'
+import { listClaims } from '../services/api'
 import { currency } from '../utils/format'
 import { hashParams } from '../utils/route'
 
@@ -19,28 +24,36 @@ const PAGE_SIZE = 25
 // `sort` is the API sort_by field; `firstDesc` is the direction of the first click
 // Secondary columns step aside on narrow screens so status, validation, and risk stay
 // in view; the expanded row shows them all
-const CELL = 'px-2 py-3 sm:px-4'
+const CELL = 'px-2 py-3 sm:px-3'
 const FROM_SM = 'hidden sm:table-cell'
 const FROM_LG = 'hidden lg:table-cell'
+const FROM_XL = 'hidden xl:table-cell'
+const FROM_2XL = 'hidden 2xl:table-cell'
+
+// The queue opens riskiest first; the full list newest first
+const VIEWS = {
+  attention: { label: 'Needs attention', sort: { by: 'risk_score', desc: true } },
+  all: { label: 'All claims', sort: { by: 'service_date', desc: true } },
+}
 
 const COLUMNS = [
   { label: 'Claim ID', sort: 'claim_id', firstDesc: false },
   { label: 'Service Date', sort: 'service_date', firstDesc: true, hide: FROM_SM },
-  { label: 'Patient', hide: FROM_LG },
+  { label: 'Patient', hide: FROM_XL },
   { label: 'Payer', hide: FROM_LG },
-  { label: 'Type', hide: FROM_LG },
+  { label: 'Type', hide: FROM_2XL },
   { label: 'Status' },
   { label: 'Validation' },
-  { label: 'Risk', align: 'right' },
+  { label: 'Risk', align: 'right', sort: 'risk_score', firstDesc: true },
   { label: 'Charge', align: 'right', sort: 'total_charge', firstDesc: true, hide: FROM_SM },
-  { label: 'Paid', align: 'right', sort: 'total_paid', firstDesc: true, hide: FROM_LG },
+  { label: 'Paid', align: 'right', sort: 'total_paid', firstDesc: true, hide: FROM_2XL },
   { label: 'Days in AR', align: 'right', sort: 'days_in_ar', firstDesc: true, hide: FROM_LG },
 ]
 const COLUMN_COUNT = COLUMNS.length + 1 // + expand toggle
 
 function SortableHeader({ column, sort, onSort }) {
   const alignClass = column.align === 'right' ? 'text-right' : 'text-left'
-  const headerClass = `${CELL} text-xs font-semibold uppercase text-gray-500 ${alignClass} ${column.hide ?? ''}`
+  const headerClass = `${CELL} text-xs font-medium text-gray-500 ${alignClass} ${column.hide ?? ''}`
   if (!column.sort) {
     return (
       <th scope="col" className={headerClass}>
@@ -56,12 +69,12 @@ function SortableHeader({ column, sort, onSort }) {
       aria-sort={active ? (sort.desc ? 'descending' : 'ascending') : 'none'}
     >
       <button
-        className={`inline-flex items-center gap-1 uppercase hover:text-gray-900 ${active ? 'text-gray-900' : ''}`}
+        className={`inline-flex items-center gap-1 hover:text-gray-900 ${active ? 'text-gray-900' : ''}`}
         onClick={() => onSort(column)}
       >
         {column.label}
         <span aria-hidden="true" className={active ? '' : 'text-gray-300'}>
-          {active ? (sort.desc ? '↓' : '↑') : '↕'}
+          {active ? (sort.desc ? '↓' : '↑') : ''}
         </span>
       </button>
     </th>
@@ -71,14 +84,14 @@ function SortableHeader({ column, sort, onSort }) {
 function ClaimRow({ claim, payerName, validation, validating, expanded, onToggle }) {
   return (
     <tr
-      className={`cursor-pointer border-b border-gray-50 hover:bg-gray-50 ${expanded ? 'bg-gray-50' : ''}`}
+      className={`cursor-pointer border-b border-gray-100 transition-colors hover:bg-gray-50 ${expanded ? 'bg-gray-50' : ''}`}
       onClick={onToggle}
     >
-      <td className="w-7 py-3 pl-1 sm:w-10 sm:pl-4">
+      <td className="w-7 py-3 pl-1 sm:w-10 sm:pl-3">
         <button
           aria-expanded={expanded}
           aria-label={`${expanded ? 'Collapse' : 'Expand'} claim ${claim.claim_id}`}
-          className="flex h-6 w-6 items-center justify-center rounded text-gray-400 hover:bg-gray-200 hover:text-gray-700"
+          className="flex h-6 w-6 items-center justify-center rounded-md text-gray-400 hover:bg-gray-200 hover:text-gray-700"
           onClick={(event) => {
             event.stopPropagation()
             onToggle()
@@ -106,21 +119,21 @@ function ClaimRow({ claim, payerName, validation, validating, expanded, onToggle
         {claim.has_corrections && (
           <span
             title="AI Fix corrections applied"
-            className="ml-2 rounded-full bg-violet-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-700"
+            className="ml-2 rounded-full bg-violet-50 px-1.5 py-0.5 text-[11px] font-medium text-violet-700"
           >
             Corrected
           </span>
         )}
       </td>
       <td className={`${CELL} text-sm text-gray-600 ${FROM_SM}`}>{claim.service_date}</td>
-      <td className={`${CELL} text-sm text-gray-600 ${FROM_LG}`}>{claim.patient_id}</td>
+      <td className={`${CELL} text-sm text-gray-600 ${FROM_XL}`}>{claim.patient_id}</td>
       <td
         className={`${CELL} max-w-48 truncate text-sm text-gray-700 ${FROM_LG}`}
         title={payerName ?? claim.payer_id}
       >
         {payerName ?? claim.payer_id}
       </td>
-      <td className={`${CELL} text-sm text-gray-600 ${FROM_LG}`}>{claim.claim_type}</td>
+      <td className={`${CELL} text-sm text-gray-600 ${FROM_2XL}`}>{claim.claim_type}</td>
       <td className={CELL}>
         <ClaimStatusBadge status={claim.status} overdue={claim.is_overdue} />
       </td>
@@ -134,10 +147,10 @@ function ClaimRow({ claim, payerName, validation, validating, expanded, onToggle
       <td className={CELL}>
         <RiskScore score={validation?.risk_score} />
       </td>
-      <td className={`${CELL} text-right text-sm font-medium tabular-nums text-gray-900 ${FROM_SM}`}>
+      <td className={`${CELL} text-right text-sm tabular-nums text-gray-900 ${FROM_SM}`}>
         {currency.format(claim.total_charge)}
       </td>
-      <td className={`${CELL} text-right text-sm tabular-nums text-gray-600 ${FROM_LG}`}>
+      <td className={`${CELL} text-right text-sm tabular-nums text-gray-600 ${FROM_2XL}`}>
         {currency.format(claim.total_paid)}
       </td>
       <td className={`${CELL} text-right text-sm tabular-nums text-gray-600 ${FROM_LG}`}>
@@ -147,43 +160,73 @@ function ClaimRow({ claim, payerName, validation, validating, expanded, onToggle
   )
 }
 
-/** Counts of each validation status on the current page. */
-function PageSummary({ claims, validations }) {
-  const counts = {}
-  for (const claim of claims) {
-    const status = validations[claim.claim_id]?.status
-    if (status) counts[status] = (counts[status] ?? 0) + 1
-  }
-  const entries = Object.keys(VALIDATION_STATUSES).filter((status) => counts[status])
-  if (entries.length === 0) return null
-  return (
-    <div className="flex flex-wrap items-center gap-2 text-sm text-gray-500">
-      <span>This page:</span>
-      {entries.map((status) => (
-        <span key={status} className="inline-flex items-center gap-1">
-          <ValidationBadge status={status} />
-          <span className="tabular-nums text-gray-700">{counts[status]}</span>
-        </span>
-      ))}
-    </div>
-  )
-}
-
 function MessageRow({ children }) {
   return (
     <tr>
-      <td colSpan={COLUMN_COUNT} className="px-4 py-10 text-center text-sm text-gray-500">
+      <td colSpan={COLUMN_COUNT} className="px-4 py-16 text-center text-sm text-gray-500">
         {children}
       </td>
     </tr>
   )
 }
 
+/** Filters and view from the link that opened the page. */
+function linkedState() {
+  const params = hashParams()
+  const search = params.get('search') ?? ''
+  return {
+    // A link to one claim shows it whatever its validation result
+    view: params.get('attention') === '1' || (!search && !params.size) ? 'attention' : 'all',
+    filters: {
+      ...EMPTY_FILTERS,
+      search,
+      payer_id: params.get('payer_id') ?? '',
+      department_id: params.get('department_id') ?? '',
+      service_date_from: params.get('from') ?? '',
+      service_date_to: params.get('to') ?? '',
+    },
+  }
+}
+
+/** "Needs attention" / "All claims" switch. */
+function ViewSwitch({ view, attentionCount, onChange }) {
+  return (
+    <div role="tablist" aria-label="Claims to show" className="inline-flex rounded-xl bg-gray-200/60 p-1">
+      {Object.entries(VIEWS).map(([key, { label }]) => {
+        const active = view === key
+        return (
+          <button
+            key={key}
+            role="tab"
+            aria-selected={active}
+            onClick={() => onChange(key)}
+            className={`flex items-center gap-2 rounded-lg px-3.5 py-1.5 text-sm font-medium transition-colors ${
+              active ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900'
+            }`}
+          >
+            {label}
+            {key === 'attention' && attentionCount !== undefined && (
+              <span
+                className={`rounded-full px-1.5 text-xs tabular-nums ${attentionCount ? 'bg-red-50 text-red-700' : 'bg-gray-100 text-gray-500'}`}
+              >
+                {attentionCount.toLocaleString()}
+              </span>
+            )}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
 export default function ClaimsWorkbench() {
-  // #/claims?search=CLM0120001 opens the workbench on that claim, expanded
-  const [linkedSearch] = useState(() => hashParams().get('search') ?? '')
-  const [filters, setFilters] = useState({ ...EMPTY_FILTERS, search: linkedSearch })
-  const [sort, setSort] = useState({ by: 'service_date', desc: true })
+  // #/claims?search=CLM0120001 opens the workbench on that claim, expanded;
+  // #/claims?attention=1&from=…&to=… opens the queue for a dashboard period
+  const [linked] = useState(linkedState)
+  const linkedSearch = linked.filters.search
+  const [view, setView] = useState(linked.view)
+  const [filters, setFilters] = useState(linked.filters)
+  const [sort, setSort] = useState(VIEWS[linked.view].sort)
   const [expanded, setExpanded] = useState(
     () => new Set(/^CLM\d{7}$/.test(linkedSearch) ? [linkedSearch] : []),
   )
@@ -191,7 +234,15 @@ export default function ClaimsWorkbench() {
   // The page belongs to the query it was chosen for: when the (debounced) search,
   // filters, or sort change, we're back on page 1 without an extra request.
   const search = useDebouncedValue(filters.search.trim())
-  const query = { ...filters, search, sort_by: sort.by, sort_desc: sort.desc }
+  const query = {
+    ...filters,
+    search,
+    // Drafts are finished on the New Claim page, not here
+    include_drafts: false,
+    needs_attention: view === 'attention' ? true : '',
+    sort_by: sort.by,
+    sort_desc: sort.desc,
+  }
   const queryKey = JSON.stringify(query)
   const [paging, setPaging] = useState({ queryKey, page: 1 })
   const page = paging.queryKey === queryKey ? paging.page : 1
@@ -201,6 +252,24 @@ export default function ClaimsWorkbench() {
   const claims = data?.items ?? []
   const validations = useClaimValidations(claims.map((claim) => claim.claim_id))
   const payers = usePayerLookup()
+  const departments = useDepartmentLookup()
+  // Size of the queue under the same filters, for the switch
+  const { data: attention } = useClaims({ ...query, needs_attention: true, page: 1, page_size: 1 })
+  // When the queue comes up empty under filters, how many claims those filters match in
+  // All claims (e.g. Pending: submitted claims never have errors, so they're never queued)
+  const queueEmpty = view === 'attention' && data?.total === 0
+  const elsewhere = useApi(
+    (options) =>
+      queueEmpty
+        ? listClaims({ ...query, needs_attention: '', sort_by: 'service_date', page: 1, page_size: 1 }, options)
+        : Promise.resolve(null),
+    `${queueEmpty}|${queryKey}`,
+  )
+
+  const changeView = (next) => {
+    setView(next)
+    setSort(VIEWS[next].sort)
+  }
 
   const updateFilters = (changes) => setFilters((prev) => ({ ...prev, ...changes }))
 
@@ -222,42 +291,28 @@ export default function ClaimsWorkbench() {
   }
 
   return (
-    <div className="space-y-4 p-4 sm:p-6">
-      <div className="flex flex-wrap items-end justify-between gap-2">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Claims Workbench</h1>
-          <p className="text-sm text-gray-500">
-            Each claim is checked against the enabled validation rules and scored for denial risk.
-          </p>
-        </div>
-        {data && (
-          <div className="text-sm text-gray-500">
-            {data.total.toLocaleString()} claim{data.total === 1 ? '' : 's'}
-          </div>
-        )}
-      </div>
+    <Page wide>
+      <PageHeader
+        title="Claims"
+        subtitle="Every claim is checked against the enabled rules and scored for denial risk."
+      >
+        <ViewSwitch view={view} attentionCount={attention?.total} onChange={changeView} />
+      </PageHeader>
 
       <ClaimFilters
         filters={filters}
         payers={payers}
+        departments={departments}
         onChange={updateFilters}
         onClear={() => updateFilters(EMPTY_FILTERS)}
       />
 
-      {error && (
-        <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-          Could not load claims — {error}
-        </div>
-      )}
+      {error && <Notice>Could not load claims — {error}</Notice>}
       {validations.error && (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-          Could not validate claims — {validations.error}
-        </div>
+        <Notice tone="warning">Could not validate claims — {validations.error}</Notice>
       )}
 
-      <PageSummary claims={claims} validations={validations.byId} />
-
-      <div className="relative overflow-x-auto rounded-xl border border-gray-100 bg-white shadow-sm">
+      <div className="card relative overflow-x-auto">
         <table className={`w-full whitespace-nowrap transition-opacity ${loading && data ? 'opacity-50' : ''}`}>
           <thead>
             <tr className="border-b border-gray-100">
@@ -301,7 +356,34 @@ export default function ClaimsWorkbench() {
               )
             })}
             {!data && loading && <MessageRow>Loading claims…</MessageRow>}
-            {data?.items.length === 0 && <MessageRow>No claims match these filters.</MessageRow>}
+            {data?.items.length === 0 && (
+              <MessageRow>
+                {view === 'attention' && elsewhere.data?.total > 0 ? (
+                  <span className="inline-flex flex-col items-center gap-3">
+                    <span>
+                      None of these need attention, but{' '}
+                      <strong className="font-medium text-gray-900">
+                        {elsewhere.data.total.toLocaleString()} claim{elsewhere.data.total === 1 ? '' : 's'}
+                      </strong>{' '}
+                      match{elsewhere.data.total === 1 ? 'es' : ''} these filters.
+                    </span>
+                    <button type="button" className="btn-secondary btn-sm" onClick={() => changeView('all')}>
+                      Show {elsewhere.data.total === 1 ? 'it' : 'them'} in All claims
+                    </button>
+                  </span>
+                ) : view === 'attention' ? (
+                  <span className="inline-flex flex-col items-center gap-2">
+                    <span className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-50 text-emerald-600">
+                      <Icon name="check" />
+                    </span>
+                    <span className="text-[15px] font-medium text-gray-900">Nothing needs attention</span>
+                    <span>Every claim matching these filters passes the current rules.</span>
+                  </span>
+                ) : (
+                  'No claims match these filters.'
+                )}
+              </MessageRow>
+            )}
           </tbody>
         </table>
       </div>
@@ -316,6 +398,6 @@ export default function ClaimsWorkbench() {
           disabled={loading}
         />
       )}
-    </div>
+    </Page>
   )
 }
