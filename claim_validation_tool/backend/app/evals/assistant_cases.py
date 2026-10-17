@@ -36,7 +36,7 @@ def claim(
     fields = dict(
         claim_type="Professional",
         place_of_service="22",
-        service_month="2025-06",
+        service_year=2025,
         status="Denied" if denials else "Draft",
         payer_id=payer_id,
         payer_name=name,

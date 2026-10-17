@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { VALIDATION_STATUSES } from '../constants'
 import { useClaimDetail, useClaimFixes, usePayerLookup } from '../hooks/useClaims'
 import { applyFix, undoCorrections } from '../services/api'
+import { useCan } from '../hooks/useAuth'
 import SubmitClaim from './SubmitClaim'
 import { currency } from '../utils/format'
 import FixSuggestion from './FixSuggestion'
@@ -266,37 +267,40 @@ function Corrections({ corrections, onUndo }) {
             <span>{describeCorrection(c)}</span>
             <span className="text-xs text-gray-400">
               {c.id} · {new Date(c.applied_at).toLocaleString()}
+              {c.applied_by && ` · ${c.applied_by}`}
             </span>
           </li>
         ))}
       </ul>
-      <div className="mt-2 flex items-center gap-2 border-t border-gray-100 pt-2 text-sm">
-        {confirming ? (
-          <>
-            <span className="text-gray-600">Restore the claim's original values?</span>
+      {onUndo && (
+        <div className="mt-2 flex items-center gap-2 border-t border-gray-100 pt-2 text-sm">
+          {confirming ? (
+            <>
+              <span className="text-gray-600">Restore the claim's original values?</span>
+              <button
+                onClick={undo}
+                disabled={busy}
+                className="rounded-lg bg-red-600 px-2.5 py-1 font-medium text-white hover:bg-red-700 disabled:opacity-50"
+              >
+                Undo all
+              </button>
+              <button
+                onClick={() => setConfirming(false)}
+                className="rounded-lg px-2.5 py-1 text-gray-600 hover:bg-gray-100"
+              >
+                Cancel
+              </button>
+            </>
+          ) : (
             <button
-              onClick={undo}
-              disabled={busy}
-              className="rounded-lg bg-red-600 px-2.5 py-1 font-medium text-white hover:bg-red-700 disabled:opacity-50"
+              onClick={() => setConfirming(true)}
+              className="font-medium text-red-700 hover:text-red-800"
             >
-              Undo all
+              Undo corrections
             </button>
-            <button
-              onClick={() => setConfirming(false)}
-              className="rounded-lg px-2.5 py-1 text-gray-600 hover:bg-gray-100"
-            >
-              Cancel
-            </button>
-          </>
-        ) : (
-          <button
-            onClick={() => setConfirming(true)}
-            className="font-medium text-red-700 hover:text-red-800"
-          >
-            Undo corrections
-          </button>
-        )}
-      </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }
@@ -318,6 +322,8 @@ export default function ClaimDetailPanel({ claim, validation: pageValidation, on
   const payers = usePayerLookup()
   const [result, setResult] = useState(null)
   const [undoError, setUndoError] = useState(null)
+  // Roles without claims:write see the suggestions but can't apply, undo, or submit
+  const canEdit = useCan('claims:write')
 
   const validation = fixes.data?.validation ?? pageValidation
   const suggestions = suggestionsByTarget(fixes.data)
@@ -345,14 +351,16 @@ export default function ClaimDetailPanel({ claim, validation: pageValidation, on
     <div className="grid grid-cols-1 gap-6 whitespace-normal bg-gray-50 px-4 py-5 sm:px-6 lg:grid-cols-2">
       <div className="space-y-5">
         <Section title="Validation">
-          <SubmitClaim
-            claim={claim}
-            validation={validation}
-            onSubmitted={() => {
-              fixes.reload()
-              onClaimChanged?.()
-            }}
-          />
+          {canEdit && (
+            <SubmitClaim
+              claim={claim}
+              validation={validation}
+              onSubmitted={() => {
+                fixes.reload()
+                onClaimChanged?.()
+              }}
+            />
+          )}
           <div className="flex items-center gap-2">
             <ValidationBadge status={validation?.status} />
             {validation && (
@@ -365,14 +373,21 @@ export default function ClaimDetailPanel({ claim, validation: pageValidation, on
           {fixes.error && (
             <p className="text-sm text-amber-700">Could not load suggested fixes — {fixes.error}</p>
           )}
-          <Findings validation={validation} suggestions={suggestions} onApply={handleApply} />
+          <Findings
+            validation={validation}
+            suggestions={suggestions}
+            onApply={canEdit ? handleApply : null}
+          />
         </Section>
         <Section title="Risk breakdown">
           <RiskBreakdown validation={validation} />
         </Section>
         {fixes.data?.corrections.length > 0 && (
           <Section title="Corrections applied">
-            <Corrections corrections={fixes.data.corrections} onUndo={handleUndo} />
+            <Corrections
+              corrections={fixes.data.corrections}
+              onUndo={canEdit ? handleUndo : null}
+            />
             {undoError && <p className="text-sm text-red-700">Could not undo — {undoError}</p>}
           </Section>
         )}
@@ -391,7 +406,11 @@ export default function ClaimDetailPanel({ claim, validation: pageValidation, on
         )}
         {detail?.denials.length > 0 && (
           <Section title="Payer denial">
-            <Denials denials={detail.denials} suggestions={suggestions} onApply={handleApply} />
+            <Denials
+              denials={detail.denials}
+              suggestions={suggestions}
+              onApply={canEdit ? handleApply : null}
+            />
           </Section>
         )}
       </div>

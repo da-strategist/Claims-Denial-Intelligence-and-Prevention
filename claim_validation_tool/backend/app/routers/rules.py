@@ -3,11 +3,23 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 
 from app.data import ClaimsRepository, RuleRepository, get_repository, get_rule_repository
-from app.models import RULE_FIELDS, Rule, RuleCreate, RuleDefinition, RuleField, RuleTestResult, RuleUpdate
+from app.models import (
+    RULE_FIELDS,
+    Permission,
+    Rule,
+    RuleCreate,
+    RuleDefinition,
+    RuleField,
+    RuleTestResult,
+    RuleUpdate,
+)
 from app.models.rule import RuleId
 from app.services import validation_engine
+from app.services.auth import require
 
-router = APIRouter(prefix="/api/rules", tags=["rules"])
+router = APIRouter(prefix="/api/rules", tags=["rules"], dependencies=[require(Permission.CLAIMS_READ)])
+
+WRITE = [require(Permission.RULES_WRITE)]
 
 Rules = Annotated[RuleRepository, Depends(get_rule_repository)]
 
@@ -23,7 +35,7 @@ def list_rule_fields() -> list[RuleField]:
     return list(RULE_FIELDS.values())
 
 
-@router.post("/test", response_model=RuleTestResult)
+@router.post("/test", response_model=RuleTestResult, dependencies=WRITE)
 def test_rule(
     rule: RuleDefinition,
     claims: Annotated[ClaimsRepository, Depends(get_repository)],
@@ -37,23 +49,23 @@ def get_rule(rule_id: RuleId, rules: Rules) -> Rule:
     return _found(rules.get(rule_id), rule_id)
 
 
-@router.post("", response_model=Rule, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=Rule, status_code=status.HTTP_201_CREATED, dependencies=WRITE)
 def create_rule(data: RuleCreate, rules: Rules) -> Rule:
     return rules.create(data)
 
 
-@router.put("/{rule_id}", response_model=Rule)
+@router.put("/{rule_id}", response_model=Rule, dependencies=WRITE)
 def replace_rule(rule_id: RuleId, data: RuleCreate, rules: Rules) -> Rule:
     return _found(rules.replace(rule_id, data), rule_id)
 
 
-@router.patch("/{rule_id}", response_model=Rule)
+@router.patch("/{rule_id}", response_model=Rule, dependencies=WRITE)
 def update_rule(rule_id: RuleId, changes: RuleUpdate, rules: Rules) -> Rule:
     """Partial update, e.g. {"enabled": false} to toggle a rule off."""
     return _found(rules.update(rule_id, changes), rule_id)
 
 
-@router.delete("/{rule_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{rule_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=WRITE)
 def delete_rule(rule_id: RuleId, rules: Rules) -> Response:
     if not rules.delete(rule_id):
         raise HTTPException(status_code=404, detail=f"Rule {rule_id} not found")

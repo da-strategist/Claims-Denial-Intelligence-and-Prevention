@@ -35,9 +35,31 @@ keyword search handles free-typed questions. Claude then writes the answer from 
 only. Without `ANTHROPIC_API_KEY` the assistant returns the matching records instead.
 
 **Shared with Claude:** codes and amounts only (CPT, ICD-10, modifiers, units, payer, claim
-type, place of service, charges, prior auth status, CARC/RARC, service month). Never patient
-or provider names, IDs, age, gender, ZIP, NPI, PA numbers, exact dates, or denial free text;
-identifiers typed into the question are masked. The panel shows exactly what was shared.
+type, place of service, charges, prior auth status, CARC/RARC, service year). Never patient
+or provider names, IDs, age, gender, ZIP, NPI, PA numbers, any date finer than the year, or
+denial free text. In the question, IDs, dates, and the names of registered patients and
+providers are masked. The panel shows exactly what was shared.
+
+### Sign-in, roles, and the audit log
+
+Every route except `/api/health` needs a signed-in user, and each role gets only what it needs:
+
+| Role | Can |
+|---|---|
+| `analyst` | View claims, validation, suggestions, dashboard, assistant. No patient names or demographics. |
+| `biller` | Also see patient details and search patients, enter and submit claims, apply and undo fixes |
+| `admin` | Also create and edit validation rules, and read the audit log |
+
+Sessions are an HttpOnly, SameSite=Strict cookie. They end after 15 minutes without a request,
+after 8 hours, at sign-out, or when the account is disabled; the API restarting also ends
+them. Passwords are salted scrypt hashes, at least 12 characters with mixed case and a digit
+or symbol, and five wrong attempts lock the account for 15 minutes.
+
+Every API request is appended to `backend/logs/audit.jsonl` with the user, the action, the
+records involved, search parameters, and the outcome (success, denied, failed). Each event
+holds the hash of the one before it, so an edited or deleted line is detected; the Audit Log
+page (admins) shows events and checks the chain. Questions to the assistant aren't logged,
+only the claim they concern. Applied corrections also record who applied them.
 
 ### Claim lifecycle
 
@@ -64,8 +86,13 @@ synthetic data in `../Data/raw_data/`.
 # Backend — from the repository root (Healthcare_RCM_Project/)
 uv sync
 cd claim_validation_tool/backend
+uv run python -m app.users add yourname --name "Your Name" --role admin   # prompts for a password
 uv run uvicorn app.main:app --reload --port 8000
 ```
+
+Manage accounts with `uv run python -m app.users` (`list`, `add`, `password`, `role`,
+`disable`, `enable`); changes apply while the API runs. Accounts live in `backend/users.json`
+(git-ignored, readable only by you).
 
 To have Claude answer the clarification assistant's questions, put the key in
 `backend/.env` (git-ignored) as `ANTHROPIC_API_KEY=...` and start the API with
@@ -92,6 +119,11 @@ App: http://localhost:5173. The Vite dev server proxies `/api` to port 8000.
 | `ANTHROPIC_API_KEY` | unset | Enables Claude for the clarification assistant |
 | `RCM_ASSISTANT_MODEL` | `claude-sonnet-5-5` | Claude model the assistant uses |
 | `RCM_ASSISTANT_MODE` | | Set to `retrieval` to keep Claude off even with a key |
+| `RCM_USERS_FILE` | `backend/users.json` | Sign-in accounts |
+| `RCM_AUDIT_FILE` | `backend/logs/audit.jsonl` | Audit log |
+| `RCM_SESSION_IDLE_MINUTES` | `15` | Sign out after this long without a request |
+| `RCM_SESSION_MAX_HOURS` | `8` | Longest a session lasts |
+| `RCM_COOKIE_SECURE` | off | Set to `1` behind HTTPS so the session cookie is never sent over plain HTTP |
 | `VITE_API_BASE` | `/api` | API base URL for the frontend |
 
 Rules and corrections persist in those JSON files (git-ignored). Claims entered on the New
@@ -125,6 +157,8 @@ All routes are under `/api`; full schemas at `/docs`.
 
 | Area | Endpoints |
 |---|---|
+| Sign-in | `POST /auth/login` · `POST /auth/logout` · `GET /auth/me` |
+| Audit | `GET /audit` (username, record_id, outcome, limit) · `GET /audit/verify` |
 | Claims | `GET /claims` (search, filter, sort, page) · `POST /claims` · `GET /claims/{id}` · `POST /claims/{id}/submit` |
 | Validation | `GET /validate/{id}` · `POST /validate` (up to 200 claims) |
 | Rules | `GET/POST /rules` · `GET/PUT/PATCH/DELETE /rules/{id}` · `GET /rules/fields` · `POST /rules/test` |
@@ -135,8 +169,8 @@ All routes are under `/api`; full schemas at `/docs`.
 | JAB Audit | `GET /jab/contracts` |
 | Health | `GET /health` |
 
-Errors return `{"detail": ...}`: a message for 404/409/422 business errors, or FastAPI's
-field list for request validation errors.
+Errors return `{"detail": ...}`: a message for 401 (signed out), 403 (role lacks the
+permission), 404/409/422 business errors, or FastAPI's field list for request validation errors.
 
 ## Project structure
 
@@ -145,16 +179,17 @@ claim_validation_tool/
 ├── PROJECT_GUIDE.md        # Architecture, conventions, domain context
 ├── PHASES.md               # Build phases and progress
 ├── backend/app/
-│   ├── main.py             # FastAPI app, CORS, routers, data preload
+│   ├── main.py             # FastAPI app, CORS, audit middleware, routers, data preload
+│   ├── users.py            # Account management CLI (python -m app.users)
 │   ├── routers/            # One module per API area
 │   ├── models/             # Pydantic request/response schemas
 │   ├── services/           # Validation engine, risk scorer, AI fix, assistant, dashboard, JAB
-│   ├── data/               # Claims repository, rule/correction stores, assistant knowledge base
+│   ├── data/               # Claims repository, rule/correction/user stores, audit log, knowledge base
 │   ├── evals/              # Assistant evaluation set and runner
 │   └── tests/              # pytest suite and fixture CSVs
 └── frontend/src/
     ├── App.jsx             # Shell and hash routes
-    ├── pages/              # Dashboard, ClaimsWorkbench, NewClaim, RuleManager, JabAudit
+    ├── pages/              # Login, Dashboard, ClaimsWorkbench, NewClaim, RuleManager, JabAudit, AuditLog
     ├── components/         # Shared UI (badges, panels, builders, error boundary)
     ├── hooks/              # Data hooks built on useApi
     ├── services/api.js     # The only place that calls fetch
@@ -165,7 +200,9 @@ claim_validation_tool/
 ## Limitations
 
 - Synthetic data: payer, coding (LCD/NCCI/MUE), and contract checks are limited to what it contains.
-- No authentication or audit log; intended for local use.
+- Not yet fit for real patient data: no HTTPS or encryption at rest, local accounts rather than
+  single sign-on, and no agreement (BAA/DPA) with Anthropic. Sessions live in memory, so a
+  restart signs everyone out, and the audit log has no rotation or retention policy.
 - AI Fix is rule-based; the assistant handles the ambiguous cases. Its knowledge is limited to
   the reference tables: there are no payer policy manuals, so it can't say which services a
   payer requires prior authorization for, or quote filing limits, and says so.

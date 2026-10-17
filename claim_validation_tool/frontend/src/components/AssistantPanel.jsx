@@ -111,9 +111,9 @@ function SharedFacts({ facts }) {
       </summary>
       <p className="mt-1">
         {facts.payer_name ?? facts.payer_id} · {facts.claim_type} · POS {facts.place_of_service} ·{' '}
-        {facts.service_month} · {lines}
+        {facts.service_year} · {lines}
         {denials && ` · ${denials}`}. Codes and amounts only — no patient or provider details,
-        IDs, or exact dates.
+        IDs, or dates finer than the year.
       </p>
     </details>
   )
@@ -173,7 +173,7 @@ export default function AssistantPanel({ claimId, topic }) {
             {asking ? 'Researching…' : 'Ask'}
           </button>
           <span className="text-xs text-gray-500">
-            Answers cite the reference tables. Don’t include patient names.
+            Answers cite the reference tables. Names, IDs, and dates are masked before sending.
           </span>
         </div>
       </form>

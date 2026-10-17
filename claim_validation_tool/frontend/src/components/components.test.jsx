@@ -162,6 +162,12 @@ describe('FixSuggestion', () => {
     expect(screen.getByRole('region', { name: 'Clarification assistant' })).toBeInTheDocument()
   })
 
+  it('is read-only for roles that cannot change claims', () => {
+    render(<FixSuggestion suggestion={suggestion} onApply={null} />)
+    expect(screen.queryByRole('button', { name: /Apply fix/ })).not.toBeInTheDocument()
+    expect(screen.getByText('Your role can view this fix but not apply it.')).toBeInTheDocument()
+  })
+
   it('has no form for manual suggestions', () => {
     render(<FixSuggestion suggestion={{ ...suggestion, action: 'manual' }} onApply={vi.fn()} />)
     expect(screen.queryByRole('button', { name: /Apply fix/ })).not.toBeInTheDocument()

@@ -34,12 +34,13 @@ class ClaimFacts(BaseModel):
     """The only claim data the assistant shares with the LLM: codes and amounts.
 
     Deliberately excludes anything that identifies the patient or provider (name, patient
-    and claim IDs, age, gender, ZIP, provider name/NPI, PA number) and exact dates.
+    and claim IDs, age, gender, ZIP, provider name/NPI, PA number) and every date element
+    finer than the year, as HIPAA's Safe Harbor de-identification method requires.
     """
 
     claim_type: str
     place_of_service: str
-    service_month: str = Field(description="YYYY-MM, never the exact date")
+    service_year: int = Field(description="Year of service only, never the month or day")
     status: str
     payer_id: PayerId
     payer_name: str | None

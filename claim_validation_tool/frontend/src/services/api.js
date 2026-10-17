@@ -29,6 +29,9 @@ function errorMessage(detail) {
 const UNREACHABLE = 'Can’t reach the API server. Check that the backend is running.'
 const GATEWAY_ERRORS = new Set([502, 503, 504])
 
+/** Fired on window when the API answers 401: the session is gone, so the app shows sign-in. */
+export const SIGNED_OUT_EVENT = 'rcm:signed-out'
+
 async function request(path, { params, body, method = 'GET', signal } = {}) {
   const init = { method, signal }
   if (body !== undefined) {
@@ -43,6 +46,10 @@ async function request(path, { params, body, method = 'GET', signal } = {}) {
     throw new Error(UNREACHABLE, { cause: err })
   }
   if (GATEWAY_ERRORS.has(res.status)) throw new Error(UNREACHABLE)
+  // A wrong password is a 401 too, but that's an error for the sign-in form, not a sign-out
+  if (res.status === 401 && path !== '/auth/login') {
+    window.dispatchEvent(new Event(SIGNED_OUT_EVENT))
+  }
   if (!res.ok) {
     const data = await res.json().catch(() => null)
     throw new Error(
@@ -53,6 +60,25 @@ async function request(path, { params, body, method = 'GET', signal } = {}) {
 }
 
 export const getHealth = (options) => request('/health', options)
+
+// --- Signing in (the session is an HttpOnly cookie the browser sends itself) ---------
+
+/** Returns the user: { username, display_name, role, permissions, idle_timeout_minutes }. */
+export const login = (username, password) =>
+  request('/auth/login', { method: 'POST', body: { username, password } })
+
+export const logout = () => request('/auth/logout', { method: 'POST' })
+
+/** The signed-in user; rejects (401) when signed out. */
+export const getMe = (options) => request('/auth/me', options)
+
+// --- Audit log (admins) ------------------------------------------------------------
+
+/** Recent API requests, newest first. Params: username, record_id, outcome, limit. */
+export const listAuditEvents = (params, options) => request('/audit', { ...options, params })
+
+/** Whether the audit log's hash chain is intact: { ok, events, first_bad_seq }. */
+export const verifyAuditLog = (options) => request('/audit/verify', options)
 
 export const listClaims = (params, options) => request('/claims', { ...options, params })
 

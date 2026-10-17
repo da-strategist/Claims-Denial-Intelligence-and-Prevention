@@ -3,11 +3,14 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query
 
 from app.data import ClaimsRepository, RuleRepository, get_repository, get_rule_repository
-from app.models import Dashboard, DashboardQuery
+from app.models import Dashboard, DashboardQuery, Permission
+from app.services.auth import require
 from app.services.dashboard import build_dashboard
 from app.services.status_snapshot import StatusSnapshot, get_status_snapshot
 
-router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
+router = APIRouter(
+    prefix="/api/dashboard", tags=["dashboard"], dependencies=[require(Permission.CLAIMS_READ)]
+)
 
 
 @router.get("", response_model=Dashboard)

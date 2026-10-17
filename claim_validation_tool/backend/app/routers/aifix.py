@@ -12,12 +12,15 @@ from app.data import (
     get_repository,
     get_rule_repository,
 )
-from app.models import ApplyFixRequest, ApplyFixResult, ClaimFixes
+from app.models import ApplyFixRequest, ApplyFixResult, ClaimFixes, Permission, User
 from app.models.common import ClaimId
 from app.services import aifix
 from app.services.aifix import FixSuggester, SuggestionError, get_suggester
+from app.services.auth import require
 
-router = APIRouter(prefix="/api/aifix", tags=["aifix"])
+router = APIRouter(prefix="/api/aifix", tags=["aifix"], dependencies=[require(Permission.CLAIMS_READ)])
+
+WRITE = require(Permission.CLAIMS_WRITE)
 
 
 class Deps:
@@ -47,11 +50,16 @@ def get_fixes(claim_id: ClaimId, deps: AiFixDeps) -> ClaimFixes:
 
 
 @router.post("/{claim_id}/apply", response_model=ApplyFixResult)
-def apply_fix(claim_id: ClaimId, request: ApplyFixRequest, deps: AiFixDeps) -> ApplyFixResult:
+def apply_fix(
+    claim_id: ClaimId,
+    request: ApplyFixRequest,
+    deps: AiFixDeps,
+    user: Annotated[User, WRITE],
+) -> ApplyFixResult:
     """Apply an accepted suggestion to the claim and re-validate it."""
     try:
         before, applied, after = aifix.apply_fix(
-            claim_id, request.suggestion_id, request.values, *deps.args
+            claim_id, request.suggestion_id, request.values, *deps.args, applied_by=user.username
         )
     except LookupError as err:
         raise HTTPException(status_code=404, detail=str(err)) from None
@@ -60,7 +68,7 @@ def apply_fix(claim_id: ClaimId, request: ApplyFixRequest, deps: AiFixDeps) -> A
     return ApplyFixResult(claim_id=claim_id, applied=applied, before=before, after=after)
 
 
-@router.delete("/{claim_id}/corrections", response_model=ClaimFixes)
+@router.delete("/{claim_id}/corrections", response_model=ClaimFixes, dependencies=[WRITE])
 def undo_corrections(claim_id: ClaimId, deps: AiFixDeps) -> ClaimFixes:
     """Undo every correction on the claim, restoring its source values."""
     fixes = aifix.undo_corrections(claim_id, *deps.args)

@@ -3,10 +3,13 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.data import ClaimsRepository, get_repository
-from app.models import Page, PatientQuery, PatientSummary
+from app.models import Page, PatientQuery, PatientSummary, Permission
 from app.models.common import PatientId
+from app.services.auth import require
 
-router = APIRouter(prefix="/api/patients", tags=["patients"])
+router = APIRouter(
+    prefix="/api/patients", tags=["patients"], dependencies=[require(Permission.PATIENTS_READ)]
+)
 
 Claims = Annotated[ClaimsRepository, Depends(get_repository)]
 

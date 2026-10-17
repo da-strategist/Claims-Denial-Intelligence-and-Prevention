@@ -30,7 +30,7 @@ const FACTS = {
   payer_name: 'Blue Cross NC',
   claim_type: 'Institutional',
   place_of_service: '22',
-  service_month: '2025-02',
+  service_year: 2025,
   lines: [{ cpt_code: '43239', modifier: '59', units: 1, icd10_pointer: 'K21.0' }],
   denials: [{ carc_code: '197', rarc_code: 'N362' }],
 }

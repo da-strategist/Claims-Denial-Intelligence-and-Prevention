@@ -16,6 +16,7 @@ from app.services.assistant import (
     NO_SOURCES,
     AssistantUnavailable,
     ClaudeWriter,
+    NameScrubber,
     Retriever,
     build_prompt,
     claim_facts,
@@ -40,7 +41,7 @@ def facts(**changes) -> ClaimFacts:
     base = {
         "claim_type": "Professional",
         "place_of_service": "11",
-        "service_month": "2025-03",
+        "service_year": 2025,
         "status": "Draft",
         "payer_id": "PAY001",
         "payer_name": "Medicare FFS",
@@ -82,7 +83,7 @@ def test_claim_facts_share_codes_and_amounts_only(repo):
         ("99284", "K21.0"),
         ("43239", "K21.0"),
     ]
-    assert (shared.service_month, shared.payer_name) == ("2025-02", "Blue Cross NC")
+    assert (shared.service_year, shared.payer_name) == (2025, "Blue Cross NC")
     assert [(d.carc_code, d.rarc_code) for d in shared.denials] == [("197", "N362")]
 
     prompt = build_prompt("Why was this denied?", shared, [])
@@ -97,6 +98,7 @@ def test_claim_facts_share_codes_and_amounts_only(repo):
         claim.patient.zip_code,
         str(claim.service_date),
         str(claim.submission_date),
+        claim.service_date.strftime("%Y-%m"),  # Safe Harbor allows the year only
         "denial_reason_text",
         "age",
         "gender",
@@ -110,6 +112,33 @@ def test_questions_are_scrubbed_of_identifiers():
     assert scrub_question(question) == (
         "[patient] claim [claim] seen [date] (also [date]), NPI [number]?"
     )
+
+
+@pytest.mark.parametrize(
+    ("question", "expected"),
+    [
+        ("Why was Karen Sanchez denied?", "Why was [name] denied?"),
+        ("Sanchez, Karen has a 197 denial", "[name] has a 197 denial"),
+        ("Is patient Garcia's PA on file?", "Is patient [name]'s PA on file?"),
+        ("Did Mrs. Sanchez get the MRI?", "Did [name] get the MRI?"),
+        ("Dr. Test One ordered it", "[name] ordered it"),
+        ("Ask Dr Whoever about it", "Ask [name] about it"),  # any name after a title
+        # Names on their own are often ordinary words, so they're left alone
+        ("Will Medicare pay? Karen said the price is right", "Will Medicare pay? Karen said the price is right"),
+        ("Can the patient Garcia-style tests be billed?", "Can the patient Garcia-style tests be billed?"),
+    ],
+)
+def test_questions_are_scrubbed_of_names(repo, question, expected):
+    names = NameScrubber(repo.person_names())
+    assert scrub_question(question, names) == expected
+
+
+def test_names_are_masked_before_reaching_claude(client, fake_claude):
+    question = "Why was William Garcia's claim denied (CARC 197)?"
+    body = ask(client, question=question).json()
+    assert body["question"] == "Why was [name]'s claim denied (CARC 197)?"
+    [prompt] = fake_claude.prompts
+    assert "Garcia" not in prompt and "William" not in prompt
 
 
 # --- Retrieval -----------------------------------------------------------------------------
@@ -346,6 +375,18 @@ def test_eval_set_retrieves_every_expected_source():
     results = [evaluate(case, retriever, None) for case in CASES]
     misses = {r.case.id: r.retrieved for r in results if not r.recall}
     assert misses == {}
+
+
+@pytest.mark.skipif(
+    not (DEFAULT_DATA_DIR / "dim_patients.csv").exists(), reason="needs Data/raw_data"
+)
+def test_name_masking_leaves_billing_questions_alone():
+    """With all 15,000 registered names loaded, ordinary questions come through unchanged."""
+    from app.data.repository import ClaimsRepository
+
+    names = NameScrubber(ClaimsRepository(DEFAULT_DATA_DIR).person_names())
+    changed = {c.id: names.scrub(c.question) for c in CASES if names.scrub(c.question) != c.question}
+    assert changed == {}
 
 
 def test_claude_api_errors_show_anthropics_message(retriever):

@@ -38,9 +38,14 @@ class CorrectionStore:
         return result
 
     def add(
-        self, claim_id: str, suggestion_id: str, changes: dict[str, tuple[str | None, str]]
+        self,
+        claim_id: str,
+        suggestion_id: str,
+        changes: dict[str, tuple[str | None, str]],
+        applied_by: str | None = None,
     ) -> list[Correction]:
-        """Record field changes ({field: (old_value, new_value)}) from one applied suggestion."""
+        """Record field changes ({field: (old_value, new_value)}) from one applied suggestion,
+        and who applied it."""
         with self._lock:
             now = datetime.now(UTC)
             added = []
@@ -54,6 +59,7 @@ class CorrectionStore:
                         new_value=new_value,
                         suggestion_id=suggestion_id,
                         applied_at=now,
+                        applied_by=applied_by,
                     )
                 )
                 self._next_number += 1

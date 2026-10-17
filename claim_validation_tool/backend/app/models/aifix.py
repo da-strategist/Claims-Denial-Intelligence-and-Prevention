@@ -105,6 +105,9 @@ class Correction(BaseModel):
     new_value: str
     suggestion_id: str
     applied_at: datetime
+    applied_by: str | None = Field(
+        default=None, description="Username of who applied it (None for corrections made before sign-in)"
+    )
 
 
 class ClaimFixes(BaseModel):

@@ -6,8 +6,8 @@ over the source text covers free-typed questions. Claude then writes the answer 
 sources only, citing them as [S1], [S2]. Without an API key the assistant still returns the
 sources with a templated summary.
 
-Only `ClaimFacts` (codes and amounts) and the question, with identifiers removed, are sent
-to Claude.
+Only `ClaimFacts` (codes and amounts) and the question, with identifiers, dates, and people's
+names masked, are sent to Claude.
 """
 
 import math
@@ -19,6 +19,7 @@ from functools import lru_cache
 from typing import Protocol
 
 from app.data.knowledge import KnowledgeBase, Source, get_knowledge_base
+from app.data.repository import get_repository
 from app.models import (
     AssistantAnswer,
     AssistantMode,
@@ -53,7 +54,7 @@ def claim_facts(claim: ClaimDetail) -> ClaimFacts:
     return ClaimFacts(
         claim_type=claim.claim_type,
         place_of_service=claim.place_of_service,
-        service_month=claim.service_date.strftime("%Y-%m"),
+        service_year=claim.service_date.year,
         status=claim.status,
         payer_id=claim.payer_id,
         payer_name=claim.payer.payer_name if claim.payer else None,
@@ -101,10 +102,71 @@ _IDENTIFIERS = [
 ]
 
 
-def scrub_question(question: str) -> str:
+_WORD = re.compile(r"[A-Za-z][A-Za-z'-]*")
+_TITLE = re.compile(r"^(?:mr|mrs|ms|miss|mx|dr)\.?$", re.I)
+# Words that introduce a person, so a known surname after them is a name ("patient Garcia")
+_PERSON_CUES = frozenset("patient pt member subscriber provider doctor physician".split())
+
+
+class NameScrubber:
+    """Masks people's names in a question before it's sent anywhere.
+
+    Catches the registered patients' and providers' names ("Karen Sanchez", "Sanchez, Karen"),
+    a known surname after a title or a word like "patient" ("Mrs. Sanchez", "patient
+    Sanchez's"), and any capitalised word after a title ("Dr. Whoever"). A first name or
+    surname on its own is left alone: too many are ordinary words ("Will", "Price", "Long").
+    """
+
+    def __init__(self, names: list[tuple[str, str]] = ()) -> None:
+        self.full_names = {f"{first} {last}".lower() for first, last in names}
+        self.surnames = {last.lower() for _, last in names}
+
+    def _full_name(self, text: str, words: list[re.Match], i: int) -> int:
+        """2 if words i and i+1 are a known "First Last" or "Last, First", else 0."""
+        if i + 1 >= len(words):
+            return 0
+        a, b = words[i], words[i + 1]
+        gap = text[a.end() : b.start()].strip()
+        first, second = _bare(a), _bare(b)
+        if gap == "" and f"{first} {second}" in self.full_names:
+            return 2
+        if gap == "," and f"{second} {first}" in self.full_names:
+            return 2
+        return 0
+
+    def scrub(self, text: str) -> str:
+        words = list(_WORD.finditer(text))
+        spans, i = [], 0
+        while i < len(words):
+            word = words[i]
+            if n := self._full_name(text, words, i):
+                spans.append((word.start(), words[i + n - 1].end()))
+                i += n
+                continue
+            nxt = words[i + 1] if i + 1 < len(words) else None
+            if nxt and nxt.group()[0].isupper() and not text[word.end() : nxt.start()].strip(" ."):
+                title = bool(_TITLE.match(word.group()))
+                if title or (word.group().lower() in _PERSON_CUES and _bare(nxt) in self.surnames):
+                    n = self._full_name(text, words, i + 1) or 1  # "Dr. Carol Robinson"
+                    spans.append((word.start() if title else nxt.start(), words[i + n].end()))
+                    i += 1 + n
+                    continue
+            i += 1
+        for start, end in reversed(spans):
+            possessive = "'s" if text[start:end].endswith("'s") else ""
+            text = f"{text[:start]}[name]{possessive}{text[end:]}"
+        return text
+
+
+def _bare(word: re.Match) -> str:
+    return word.group().removesuffix("'s").lower()
+
+
+def scrub_question(question: str, names: NameScrubber | None = None) -> str:
+    """The question with identifiers, dates, and people's names masked."""
     for pattern, replacement in _IDENTIFIERS:
         question = pattern.sub(replacement, question)
-    return question.strip()
+    return (names or NameScrubber()).scrub(question).strip()
 
 
 # --- Retrieval ------------------------------------------------------------------------
@@ -402,8 +464,9 @@ def answer_question(
     topic: ClarificationTopic | None,
     retriever: Retriever,
     writer: AnswerWriter,
+    names: NameScrubber | None = None,
 ) -> AssistantAnswer:
-    question = scrub_question(question)
+    question = scrub_question(question, names)
     matches = retriever.retrieve(question, facts, topic)
     sources = [
         AssistantSource(
@@ -446,6 +509,12 @@ def answer_question(
 
 
 # --- Dependencies ---------------------------------------------------------------------
+
+
+@lru_cache(maxsize=1)
+def get_name_scrubber() -> NameScrubber:
+    """Knows the registered patients' and providers' names."""
+    return NameScrubber(get_repository().person_names())
 
 
 @lru_cache(maxsize=1)

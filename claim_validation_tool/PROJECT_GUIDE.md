@@ -12,7 +12,8 @@ This tool validates healthcare claims against configurable rules, identifies den
 
 **Module layout:**
 
-- `app/main.py` — FastAPI app instance, CORS, routers, data preload at startup
+- `app/main.py` — FastAPI app instance, CORS, audit middleware, routers, data preload at startup
+- `app/users.py` — account management CLI
 - `app/routers/` — one file per API domain:
   - `claims.py` — search, detail, manual entry, and submission of claims
   - `rules.py` — CRUD and dry-run testing for validation rules
@@ -22,6 +23,7 @@ This tool validates healthcare claims against configurable rules, identifies den
   - `dashboard.py` — aggregated KPIs and chart data
   - `patients.py`, `payers.py`, `departments.py`, `reference.py` — lookups for the UI
   - `jab.py` — JAB Audit integration contracts (conceptual)
+  - `auth.py`, `audit.py` — sign-in and out; reading and verifying the audit log
 - `app/models/` — Pydantic schemas for request/response contracts
 - `app/services/` — business logic, decoupled from HTTP:
   - `validation_engine.py` — evaluates rules against claims (vectorized over pandas)
@@ -30,9 +32,11 @@ This tool validates healthcare claims against configurable rules, identifies den
   - `assistant.py` — clarification assistant: claim facts, retrieval, Claude answer writer
   - `status_snapshot.py` — cached validation of every claim, invalidated on data or rule changes
   - `dashboard.py`, `jab.py` — dashboard aggregates and JAB contract schemas
+  - `auth.py` — sessions, login throttling, and the `require(permission)` route dependency
 - `app/data/` — data access: in-memory claims repository over the synthetic CSVs, JSON-backed
   rule and correction stores, reference data (CPT, ICD-10, contracts, CARC/RARC), and the
-  assistant's knowledge base (`knowledge.py`: one citable source per reference-table row)
+  assistant's knowledge base (`knowledge.py`: one citable source per reference-table row),
+  user accounts (`users.py`), and the hash-chained audit log (`audit.py`)
 - `app/evals/` — the assistant's evaluation set and runner
 
 **Conventions:**
@@ -40,6 +44,9 @@ This tool validates healthcare claims against configurable rules, identifies den
 - Pydantic models for all request/response bodies
 - Services never import from routers (dependency flows inward)
 - Type hints on all function signatures
+- Every router declares the permission it needs (`dependencies=[require(Permission.X)]`), and
+  write routes add a stricter one; `test_every_api_route_requires_sign_in` fails if a route
+  is left open. Roles and their permissions are in `models/auth.py`
 
 ### Frontend (React / Vite)
 
@@ -115,13 +122,16 @@ can't. It reads only the reference tables, and only `ClaimFacts` leaves the syst
 |---|---|
 | CPT, category, modifier, units, line charge, ICD-10 pointer | Patient name, ID, age, gender, ZIP |
 | Primary and additional ICD-10 | Claim ID, provider name, provider ID, NPI |
-| Payer ID, name, type; other payer IDs | Exact service, submission, or denial dates |
-| Claim type, place of service, status, service month | Prior auth number (only whether one exists) |
+| Payer ID, name, type; other payer IDs | Any date element finer than the year (HIPAA Safe Harbor) |
+| Claim type, place of service, status, service year | Prior auth number (only whether one exists) |
 | Total charge and paid, days in AR, PA required/obtained | Denial reason free text |
 | Denial CARC/RARC, root cause category, amount, preventable | |
 
-Questions are scrubbed of patient/claim/provider IDs, 10-digit numbers, and dates before
-retrieval or sending. Any new field added to `ClaimFacts` must stay within this list; the
+Questions are scrubbed of patient/claim/provider IDs, 10-digit numbers, dates, and people's
+names before retrieval or sending. Names are matched against the registered patients and
+providers ("Karen Sanchez", "Sanchez, Karen", "patient Sanchez", "Mrs. Sanchez"), plus any
+capitalised word after a title; a lone first name or surname is left alone because so many
+are ordinary words. Any new field added to `ClaimFacts` must stay within this list; the
 test `test_claim_facts_share_codes_and_amounts_only` checks a real claim's identifiers never
 reach the prompt.
 

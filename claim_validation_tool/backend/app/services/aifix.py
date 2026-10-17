@@ -541,6 +541,7 @@ def apply_fix(
     corrections: CorrectionStore,
     reference: ReferenceData,
     suggester: FixSuggester,
+    applied_by: str | None = None,
 ) -> tuple[ClaimValidation, list[Correction], ClaimFixes]:
     """Apply an accepted suggestion, then re-validate. Returns (before, applied, after)."""
     before = claim_fixes(claim_id, claims, rules, corrections, reference, suggester)
@@ -551,7 +552,7 @@ def apply_fix(
         raise LookupError(f"Suggestion {suggestion_id} is not current for {claim_id}")
 
     changes = resolve_changes(claims.get_claim(claim_id), suggestion, values)
-    applied = corrections.add(claim_id, suggestion_id, changes)
+    applied = corrections.add(claim_id, suggestion_id, changes, applied_by)
     claims.apply_overrides(corrections.overrides())
     after = claim_fixes(claim_id, claims, rules, corrections, reference, suggester)
     return before.validation, applied, after

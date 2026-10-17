@@ -69,6 +69,7 @@ function Citations({ citations }) {
 }
 
 /** One AI Fix suggestion: what to do, why, sources, and (if applicable) the fix form. */
+/** Without `onApply` (the user's role can't change claims) the suggestion is read-only. */
 export default function FixSuggestion({ suggestion, onApply }) {
   const formId = useId()
   const [values, setValues] = useState(() =>
@@ -122,7 +123,13 @@ export default function FixSuggestion({ suggestion, onApply }) {
 
       <Citations citations={suggestion.citations} />
 
-      {suggestion.action === 'apply' && (
+      {suggestion.action === 'apply' && !onApply && (
+        <p className="border-t border-violet-100 pt-2.5 text-xs text-gray-500">
+          Your role can view this fix but not apply it.
+        </p>
+      )}
+
+      {suggestion.action === 'apply' && onApply && (
         <form onSubmit={submit} className="space-y-2 border-t border-violet-100 pt-2.5">
           {suggestion.changes.map((change) => {
             const inputId = `${formId}-${change.field}`

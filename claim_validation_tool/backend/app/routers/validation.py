@@ -3,11 +3,14 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.data import ClaimsRepository, RuleRepository, get_repository, get_rule_repository
-from app.models import ClaimValidation, Rule, ValidateRequest
+from app.models import ClaimValidation, Permission, Rule, ValidateRequest
 from app.models.common import ClaimId
 from app.services import validation_engine
+from app.services.auth import require
 
-router = APIRouter(prefix="/api/validate", tags=["validation"])
+router = APIRouter(
+    prefix="/api/validate", tags=["validation"], dependencies=[require(Permission.CLAIMS_READ)]
+)
 
 Claims = Annotated[ClaimsRepository, Depends(get_repository)]
 Rules = Annotated[RuleRepository, Depends(get_rule_repository)]

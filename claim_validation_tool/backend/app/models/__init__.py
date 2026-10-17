@@ -11,6 +11,19 @@ from app.models.aifix import (
     SourceType,
     SuggestionAction,
 )
+from app.models.auth import (
+    MIN_PASSWORD_LENGTH,
+    ROLE_PERMISSIONS,
+    AuditEvent,
+    AuditOutcome,
+    AuditQuery,
+    AuditVerification,
+    CurrentUser,
+    LoginRequest,
+    Permission,
+    Role,
+    User,
+)
 from app.models.assistant import (
     AssistantAnswer,
     AssistantMode,
@@ -80,6 +93,17 @@ from app.models.rule import (
 )
 
 __all__ = [
+    "MIN_PASSWORD_LENGTH",
+    "ROLE_PERMISSIONS",
+    "AuditEvent",
+    "AuditOutcome",
+    "AuditQuery",
+    "AuditVerification",
+    "CurrentUser",
+    "LoginRequest",
+    "Permission",
+    "Role",
+    "User",
     "ADJUDICATED_STATUSES",
     "MAX_DIAGNOSES",
     "MAX_OTHER_PAYERS",

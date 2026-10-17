@@ -1,7 +1,7 @@
 from typing import Annotated
 
 import pandas as pd
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
 from app.data import (
     ClaimsRepository,
@@ -19,13 +19,17 @@ from app.models import (
     ClaimQuery,
     ClaimStatus,
     Page,
+    Permission,
     RecordStatus,
     ValidationStatus,
 )
 from app.models.common import ClaimId
 from app.services import validation_engine
+from app.services.auth import SignedIn, audit_note, require
 
-router = APIRouter(prefix="/api/claims", tags=["claims"])
+router = APIRouter(prefix="/api/claims", tags=["claims"], dependencies=[require(Permission.CLAIMS_READ)])
+
+WRITE = [require(Permission.CLAIMS_WRITE)]
 
 Claims = Annotated[ClaimsRepository, Depends(get_repository)]
 Rules = Annotated[RuleRepository, Depends(get_rule_repository)]
@@ -39,15 +43,18 @@ def list_claims(query: Annotated[ClaimQuery, Query()], repo: Claims) -> Page[Cla
     return repo.list_claims(query)
 
 
-@router.post("", response_model=ClaimCreated, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "", response_model=ClaimCreated, status_code=status.HTTP_201_CREATED, dependencies=WRITE
+)
 def create_claim(
-    body: ClaimCreate, repo: Claims, rules: Rules, reference: Reference
+    body: ClaimCreate, request: Request, repo: Claims, rules: Rules, reference: Reference
 ) -> ClaimCreated:
     """Enter a Draft claim for a registered patient and validate it.
 
     The department comes from the provider; each line's category (and, if omitted, its
     charge) from the CPT code set. Kept in memory until the server restarts.
     """
+    audit_note(request, patient_id=body.patient_id)
     patient = repo.get_patient(body.patient_id)
     if patient is None or patient.status != RecordStatus.ACTIVE:
         raise HTTPException(
@@ -108,13 +115,14 @@ def create_claim(
         claim = repo.add_claim(fields, lines)
     except ValueError as err:  # another request took the same ID first
         raise HTTPException(status_code=409, detail=str(err)) from err
+    audit_note(request, claim_id=claim.claim_id)
     validation = validation_engine.validate_claims(
         repo.claims_frame([claim.claim_id]), rules.list()
     )[0]
     return ClaimCreated(claim=claim, validation=validation)
 
 
-@router.post("/{claim_id}/submit", response_model=ClaimCreated)
+@router.post("/{claim_id}/submit", response_model=ClaimCreated, dependencies=WRITE)
 def submit_claim(claim_id: ClaimId, repo: Claims, rules: Rules) -> ClaimCreated:
     """Mark a Draft as submitted to the payer today. Refused while rule errors remain."""
     if repo.missing_claim_ids([claim_id]):
@@ -133,11 +141,14 @@ def submit_claim(claim_id: ClaimId, repo: Claims, rules: Rules) -> ClaimCreated:
 
 
 @router.get("/{claim_id}", response_model=ClaimDetail)
-def get_claim(claim_id: ClaimId, repo: Claims) -> ClaimDetail:
-    """Single claim with its lines, denials, payer, and provider."""
+def get_claim(claim_id: ClaimId, repo: Claims, user: SignedIn) -> ClaimDetail:
+    """Single claim with its lines, denials, payer, and provider, and the patient's
+    demographics for roles allowed to see them."""
     claim = repo.get_claim(claim_id)
     if claim is None:
         raise HTTPException(status_code=404, detail=f"Claim {claim_id} not found")
+    if not user.can(Permission.PATIENTS_READ):
+        claim = claim.model_copy(update={"patient": None})
     return claim
 
 

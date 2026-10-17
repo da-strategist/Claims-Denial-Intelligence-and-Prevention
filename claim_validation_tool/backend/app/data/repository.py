@@ -388,6 +388,15 @@ class ClaimsRepository:
             return None
         return self._patient_summary(self._patients.iloc[pos].to_dict())
 
+    def person_names(self) -> list[tuple[str, str]]:
+        """(first, last) names of every patient and provider, for masking them in free text."""
+        names = list(zip(self._patients["first_name"], self._patients["last_name"]))
+        for provider in self._providers.values():
+            words = [w for w in provider.provider_name.split() if w.rstrip(".") not in ("Dr", provider.credential)]
+            if len(words) >= 2:
+                names.append((words[0], words[-1]))
+        return names
+
     # --- Internals ----------------------------------------------------------
 
     def _patient(self, patient_id: str) -> Patient | None:

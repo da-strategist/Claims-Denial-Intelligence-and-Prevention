@@ -5,9 +5,10 @@ from typing import Annotated
 from fastapi import APIRouter, Depends
 
 from app.data import ClaimsRepository, ReferenceData, get_reference_data, get_repository
-from app.models import DiagnosisCode, Facility, ProcedureCode, Provider
+from app.models import DiagnosisCode, Facility, Permission, ProcedureCode, Provider
+from app.services.auth import require
 
-router = APIRouter(prefix="/api", tags=["reference"])
+router = APIRouter(prefix="/api", tags=["reference"], dependencies=[require(Permission.CLAIMS_READ)])
 
 Claims = Annotated[ClaimsRepository, Depends(get_repository)]
 Reference = Annotated[ReferenceData, Depends(get_reference_data)]
