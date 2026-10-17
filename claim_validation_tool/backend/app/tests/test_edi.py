@@ -11,7 +11,7 @@ from app.data.audit import get_audit_log
 from app.data.new_claims import get_new_claim_store
 from app.data.registrations import get_registration_store
 from app.models import Role
-from app.tests.conftest import sign_in
+from app.tests.conftest import org_folder, sign_in, use_data_dir
 from app.tests.test_claim_entry import NEW_CLAIM, create
 
 LIVE_SETTINGS = {
@@ -45,10 +45,8 @@ def find(segs, prefix):
     return [s for s in segs if s.startswith(prefix + "*")]
 
 
-def test_a_five_digit_facility_zip_keeps_it_a_test_file(client, today, tmp_path, monkeypatch):
-    path = tmp_path / "live.json"
-    path.write_text(json.dumps(LIVE_SETTINGS))
-    monkeypatch.setenv("RCM_EDI_SETTINGS_FILE", str(path))
+def test_a_five_digit_facility_zip_keeps_it_a_test_file(client, today):
+    (org_folder() / "edi_settings.json").write_text(json.dumps(LIVE_SETTINGS))
     claim, _ = submitted_837(client)
     assert claim["edi"]["test"] is True
     assert claim["edi"]["notes"] == ["Not set: ZIP+4 (9 digits) for Test Main Campus"]
@@ -91,11 +89,8 @@ def test_live_settings_make_a_production_file(client, today, tmp_path, monkeypat
     shutil.copytree(FIXTURES_DIR, facilities)
     csv = facilities / "dim_facilities.csv"
     csv.write_text(csv.read_text().replace("NC 28211", "NC 282111234"))
-    monkeypatch.setenv("RCM_DATA_DIR", str(facilities))
-    repository.get_repository.cache_clear()
-    path = tmp_path / "live.json"
-    path.write_text(json.dumps(LIVE_SETTINGS))
-    monkeypatch.setenv("RCM_EDI_SETTINGS_FILE", str(path))
+    use_data_dir("meridian", facilities)
+    (org_folder() / "edi_settings.json").write_text(json.dumps(LIVE_SETTINGS))
     claim, download = submitted_837(client)
     segs = segments(download.text)
     assert claim["edi"]["test"] is False and claim["edi"]["notes"] == []
@@ -189,7 +184,7 @@ def test_claims_without_what_the_837_needs_are_refused(client, changes, message)
 
 def test_only_roles_that_change_claims_download_and_its_audited(client, today):
     claim, _ = submitted_837(client)
-    events = [e for e in get_audit_log().events() if e.action.endswith("/837")]
+    events = [e for e in get_audit_log("meridian").events() if e.action.endswith("/837")]
     assert (events[-1].username, events[-1].detail) == ("admin1", {"export": "837P"})
     sign_in(client, Role.ANALYST)
     assert client.get(f"/api/claims/{claim['claim_id']}/837").status_code == 403
@@ -299,7 +294,7 @@ def test_pdfs_need_a_submitted_claim_and_a_role_that_changes_claims(client, toda
     assert client.get(f"/api/claims/{draft_id}/claim-form.pdf").status_code == 404
     claim, _ = submitted_837(client)
     client.get(f"/api/claims/{claim['claim_id']}/claim-form.pdf")
-    exports = [e.detail.get("export") for e in get_audit_log().events() if e.action.endswith(".pdf")]
+    exports = [e.detail.get("export") for e in get_audit_log("meridian").events() if e.action.endswith(".pdf")]
     assert exports[-1] == "CMS-1500 PDF"
     sign_in(client, Role.ANALYST)
     for path in ("claim-form.pdf", "837-readable.pdf"):

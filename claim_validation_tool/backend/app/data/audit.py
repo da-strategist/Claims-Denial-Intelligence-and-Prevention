@@ -14,6 +14,7 @@ from pathlib import Path
 from threading import Lock
 from typing import Any
 
+from app.data.orgs import org_file
 from app.models import AuditEvent, AuditOutcome, AuditQuery, AuditVerification, Role
 
 DEFAULT_AUDIT_FILE = Path(__file__).resolve().parents[2] / "logs" / "audit.jsonl"
@@ -128,7 +129,14 @@ class AuditLog:
             f.write(line + "\n")
 
 
+@lru_cache(maxsize=None)
+def get_audit_log(org_id: str) -> AuditLog:
+    """The organisation's audit log, in its folder; only its administrators read it."""
+    return AuditLog(org_file(org_id, "logs/audit.jsonl"))
+
+
 @lru_cache(maxsize=1)
-def get_audit_log() -> AuditLog:
-    """Process-wide audit log appended to RCM_AUDIT_FILE."""
+def get_platform_audit_log() -> AuditLog:
+    """Requests that belong to no organisation (e.g. sign-in with an unknown username),
+    appended to RCM_AUDIT_FILE."""
     return AuditLog(Path(os.environ.get("RCM_AUDIT_FILE", DEFAULT_AUDIT_FILE)))

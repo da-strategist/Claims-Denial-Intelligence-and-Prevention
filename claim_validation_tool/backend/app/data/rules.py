@@ -6,12 +6,12 @@ one, rules live in memory only (used by tests).
 """
 
 import json
-import os
 from datetime import UTC, datetime
 from functools import lru_cache
 from pathlib import Path
 from threading import Lock
 
+from app.data.orgs import org_file
 from app.data.seed_rules import DEFAULT_RULES
 from app.models import Rule, RuleCreate, RuleUpdate
 
@@ -97,7 +97,7 @@ class RuleRepository:
         tmp.replace(self.path)
 
 
-@lru_cache(maxsize=1)
-def get_rule_repository() -> RuleRepository:
-    """Process-wide rule store saved to RCM_RULES_FILE, usable as a FastAPI dependency."""
-    return RuleRepository(path=Path(os.environ.get("RCM_RULES_FILE", DEFAULT_RULES_FILE)))
+@lru_cache(maxsize=None)
+def get_rule_repository(org_id: str) -> RuleRepository:
+    """The organisation's rules, saved in its folder."""
+    return RuleRepository(path=org_file(org_id, "rules.json"))

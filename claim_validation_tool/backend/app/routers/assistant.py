@@ -4,23 +4,19 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
-from app.data import ClaimsRepository, KnowledgeBase, get_knowledge_base, get_repository
 from app.models import AssistantAnswer, AssistantRequest, AssistantStatus, Permission
 from app.services.assistant import (
     AnswerWriter,
-    NameScrubber,
-    Retriever,
     answer_question,
     claim_facts,
     get_answer_writer,
-    get_name_scrubber,
-    get_retriever,
 )
 from app.services.auth import audit_note, require
+from app.services.org_context import OrgClaims, OrgKnowledge, OrgNames, OrgRetriever
 
 router = APIRouter(prefix="/api/assistant", tags=["assistant"], dependencies=[require(Permission.CLAIMS_READ)])
 
-Claims = Annotated[ClaimsRepository, Depends(get_repository)]
+Claims = OrgClaims
 Writer = Annotated[AnswerWriter, Depends(get_answer_writer)]
 
 
@@ -29,9 +25,9 @@ def ask(
     request: AssistantRequest,
     http: Request,
     claims: Claims,
-    retriever: Annotated[Retriever, Depends(get_retriever)],
+    retriever: OrgRetriever,
     writer: Writer,
-    names: Annotated[NameScrubber, Depends(get_name_scrubber)],
+    names: OrgNames,
 ) -> AssistantAnswer:
     """Answer a billing question from the reference tables, citing them as [S1], [S2].
 
@@ -51,7 +47,7 @@ def ask(
 
 @router.get("/status", response_model=AssistantStatus)
 def status(
-    knowledge: Annotated[KnowledgeBase, Depends(get_knowledge_base)], writer: Writer
+    knowledge: OrgKnowledge, writer: Writer
 ) -> AssistantStatus:
     """Whether Claude writes the answers, and what the knowledge base holds."""
     return AssistantStatus(mode=writer.mode, model=writer.model, sources=knowledge.counts())

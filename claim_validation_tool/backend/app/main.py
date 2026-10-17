@@ -5,7 +5,8 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.data import get_reference_data, get_repository, get_rule_repository
-from app.data.audit import get_audit_log
+from app.data.audit import AuditLog, get_audit_log, get_platform_audit_log
+from app.data.orgs import OrgStatus, get_org_registry
 from app.data.users import get_user_store
 from app.routers import (
     aifix,
@@ -32,15 +33,23 @@ logger = logging.getLogger("uvicorn.error")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Load the CSVs once at startup so the first request isn't slow
-    get_repository()
-    get_rule_repository()
-    get_reference_data()
-    get_retriever()  # knowledge base and keyword index for the assistant
-    # Validate every claim up front so the first dashboard load is fast
-    get_status_snapshot().get(get_repository(), get_rule_repository().list())
-    if not get_user_store().list():
+    # Load each organisation's data once at startup so the first request isn't slow
+    orgs = [org for org in get_org_registry().list() if org.status == OrgStatus.ACTIVE]
+    if not orgs:
+        logger.warning("No organisations yet: run `uv run python -m app.orgs migrate`")
+    for org in orgs:
+        repo, rules = get_repository(org.id), get_rule_repository(org.id)
+        get_reference_data(org.id)
+        get_retriever(org.id)  # knowledge base and keyword index for the assistant
+        # Validate every claim up front so the first dashboard load is fast
+        get_status_snapshot(org.id).get(repo, rules.list())
+    users = get_user_store().list()
+    if not users:
         logger.warning("No user accounts yet: create one with `uv run python -m app.users add`")
+    if any(user.organisation_id is None for user in users):
+        logger.warning(
+            "Some accounts have no organisation and can't sign in: run `uv run python -m app.orgs migrate`"
+        )
     yield
 
 
@@ -105,7 +114,7 @@ def _audit(request: Request, status_code: int) -> None:
         if detail.get(key):
             records[key] = str(detail.pop(key))
     username = user.username if user else detail.pop("attempted_username", None)
-    get_audit_log().record(
+    _audit_log_for(user, username).record(
         username=username,
         role=user.role if user else None,
         action=f"{request.method} {route.path if route else request.url.path}",
@@ -115,6 +124,16 @@ def _audit(request: Request, status_code: int) -> None:
         detail={k: v for k, v in detail.items() if v is not None},
         client_ip=request.client.host if request.client else None,
     )
+
+
+def _audit_log_for(user, username: str | None) -> AuditLog:
+    """The organisation's own log for its users' requests (including failed sign-ins to its
+    accounts); the platform log for requests that belong to no organisation."""
+    account = user or (get_user_store().get(username) if username else None)
+    org_id = account.organisation_id if account else None
+    if org_id and get_org_registry().get(org_id) is not None:
+        return get_audit_log(org_id)
+    return get_platform_audit_log()
 
 
 @app.get("/api/health")

@@ -168,18 +168,19 @@ def test_user_file_is_private_and_holds_no_plain_passwords(tmp_path):
     assert UserStore(path).authenticate("carol", "Carols-password-9").role == Role.BILLER
 
 
-def test_cli_adds_and_disables_accounts(tmp_path, monkeypatch, capsys):
+def test_cli_adds_and_disables_accounts(anon_client, tmp_path, monkeypatch, capsys):
     from app import users as cli
 
     monkeypatch.setenv("RCM_USERS_FILE", str(tmp_path / "users.json"))
     monkeypatch.setattr(cli.getpass, "getpass", lambda prompt: "Dana-password-42")
     get_user_store.cache_clear()
     try:
-        assert cli.main(["add", "dana", "--name", "Dana Lee", "--role", "biller"]) == 0
+        assert cli.main(["add", "dana", "--name", "Dana Lee", "--role", "biller", "--org", "nowhere"]) == 1
+        assert cli.main(["add", "dana", "--name", "Dana Lee", "--role", "biller", "--org", "meridian"]) == 0
         assert cli.main(["disable", "dana"]) == 0
         assert cli.main(["role", "nobody", "admin"]) == 1
         cli.main(["list"])
-        assert "dana                 biller   disabled  Dana Lee" in capsys.readouterr().out
+        assert "dana                 meridian       biller   disabled  Dana Lee" in capsys.readouterr().out
         assert get_user_store().authenticate("dana", "Dana-password-42") is None
     finally:
         get_user_store.cache_clear()
@@ -187,14 +188,20 @@ def test_cli_adds_and_disables_accounts(tmp_path, monkeypatch, capsys):
 
 def test_every_api_route_requires_sign_in(anon_client):
     """Guards against a new router forgetting its permission check."""
-    from app.main import app
+    from app.tests.conftest import api_routes
 
     open_routes = {"/api/health", "/api/auth/login"}
-    for route in app.routes:
-        path = getattr(route, "path", "")
-        if not path.startswith("/api/") or path in open_routes:
+    examples = {"claim_id": "CLM0000001", "rule_id": "RULE-001", "patient_id": "PAT000001",
+                "draft_id": "DRF-0000abcd", "username": "admin1"}
+    checked = 0
+    for method, path in api_routes():
+        if path in open_routes:
             continue
-        concrete = path.replace("{claim_id}", "CLM0000001").replace("{rule_id}", "RULE-001")
-        concrete = concrete.replace("{patient_id}", "PAT000001")
-        for method in route.methods - {"HEAD"}:
-            assert anon_client.request(method, concrete).status_code == 401, f"{method} {path}"
+        concrete = path
+        for name, value in examples.items():
+            concrete = concrete.replace("{" + name + "}", value)
+        assert "{" not in concrete, f"no example value for {path}"
+        assert anon_client.request(method, concrete).status_code == 401, f"{method} {path}"
+        checked += 1
+    # A walk that silently finds no routes would pass; there are well over 40
+    assert checked >= 40, f"only {checked} routes checked"

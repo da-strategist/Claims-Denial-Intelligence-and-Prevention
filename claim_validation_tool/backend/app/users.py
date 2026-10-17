@@ -1,6 +1,6 @@
 """Manage sign-in accounts. Passwords are typed at a hidden prompt, never on the command line.
 
-    uv run python -m app.users add alice --name "Alice Jones" --role admin
+    uv run python -m app.users add alice --name "Alice Jones" --role admin --org meridian
     uv run python -m app.users list
     uv run python -m app.users password alice
     uv run python -m app.users role alice biller
@@ -15,6 +15,7 @@ import argparse
 import getpass
 import sys
 
+from app.data.orgs import get_org_registry
 from app.data.users import get_user_store
 from app.models import Role
 
@@ -33,6 +34,7 @@ def main(argv: list[str] | None = None) -> int:
     add.add_argument("username")
     add.add_argument("--name", help="display name (defaults to the username)")
     add.add_argument("--role", type=Role, choices=list(Role), required=True)
+    add.add_argument("--org", required=True, help="organisation ID (see python -m app.orgs list)")
     commands.add_parser("list", help="show accounts")
     for name, text in [
         ("password", "set a new password"),
@@ -49,12 +51,17 @@ def main(argv: list[str] | None = None) -> int:
     try:
         match args.command:
             case "add":
-                user = users.add(args.username, args.name or args.username, args.role, _new_password())
-                print(f"Created {user.username} ({user.role})")
+                if get_org_registry().get(args.org) is None:
+                    raise LookupError(f"No organisation {args.org} (see python -m app.orgs list)")
+                user = users.add(
+                    args.username, args.name or args.username, args.role, _new_password(), args.org
+                )
+                print(f"Created {user.username} ({user.role}) in {args.org}")
             case "list":
                 for user in users.list():
                     state = "active" if user.active else "disabled"
-                    print(f"{user.username:20} {user.role:8} {state:9} {user.display_name}")
+                    org = user.organisation_id or "(no organisation)"
+                    print(f"{user.username:20} {org:14} {user.role:8} {state:9} {user.display_name}")
             case "password":
                 users.update(args.username, password=_new_password())
                 print(f"Password changed for {args.username}")

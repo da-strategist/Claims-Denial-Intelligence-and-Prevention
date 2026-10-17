@@ -19,6 +19,7 @@ from functools import lru_cache
 from pathlib import Path
 from threading import Lock
 
+from app.data.orgs import org_file
 from app.models import (
     Address,
     ClaimBilling,
@@ -146,9 +147,7 @@ class RegistrationStore:
         tmp.replace(self.path)
 
 
-@lru_cache(maxsize=1)
-def get_registration_store() -> RegistrationStore:
-    """Process-wide store saved to RCM_REGISTRATIONS_FILE."""
-    return RegistrationStore(
-        Path(os.environ.get("RCM_REGISTRATIONS_FILE", DEFAULT_REGISTRATIONS_FILE))
-    )
+@lru_cache(maxsize=None)
+def get_registration_store(org_id: str) -> RegistrationStore:
+    """The organisation's patient registrations, saved in its folder."""
+    return RegistrationStore(org_file(org_id, "patient_registrations.json"))

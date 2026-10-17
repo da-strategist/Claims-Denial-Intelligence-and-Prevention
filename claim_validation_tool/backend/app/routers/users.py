@@ -1,5 +1,8 @@
 """User accounts, managed by administrators from the Users page.
 
+Administrators see and manage only their own organisation's accounts: another
+organisation's username is "not found", the same as one that doesn't exist.
+
 Safeguards: administrators can't change their own role or disable themselves, and the
 last active administrator can't be demoted or disabled, so the app always has someone
 who can manage it. Disabling an account or resetting its password signs that person out.
@@ -22,6 +25,7 @@ from app.models import (
 )
 from app.models.auth import Username
 from app.services.auth import SessionStore, SignedIn, audit_note, get_session_store, require
+from app.services.org_context import OrgId
 
 router = APIRouter(
     prefix="/api/users", tags=["users"], dependencies=[require(Permission.USERS_MANAGE)]
@@ -35,28 +39,29 @@ def _summary(user: User) -> UserSummary:
     return UserSummary.model_validate(user.model_dump())
 
 
-def _target(users: UserStore, username: str) -> User:
+def _target(users: UserStore, username: str, org_id: str) -> User:
     user = users.get(username)
-    if user is None:
+    if user is None or user.organisation_id != org_id:
         raise HTTPException(status_code=404, detail=f"No user {username}")
     return user
 
 
 @router.get("", response_model=list[UserSummary])
-def list_users(users: Users) -> list[UserSummary]:
-    """Every account, active and disabled."""
-    return [_summary(user) for user in users.list()]
+def list_users(users: Users, org_id: OrgId) -> list[UserSummary]:
+    """Every account in the organisation, active and disabled."""
+    return [_summary(user) for user in users.list() if user.organisation_id == org_id]
 
 
 @router.post("", response_model=UserSummary, status_code=status.HTTP_201_CREATED)
-def create_user(body: UserCreate, users: Users, request: Request) -> UserSummary:
+def create_user(body: UserCreate, users: Users, request: Request, org_id: OrgId) -> UserSummary:
     """Add an account. The password must meet the policy (12+ characters, mixed case,
     and a digit or symbol)."""
     audit_note(request, new_user=body.username, role=body.role)
     try:
-        user = users.add(body.username, body.display_name, body.role, body.password)
+        # Into the administrator's own organisation; the body can't choose another
+        user = users.add(body.username, body.display_name, body.role, body.password, org_id)
     except ValueError as err:
-        code = 409 if "already exists" in str(err) else 422
+        code = 409 if "is taken" in str(err) else 422
         raise HTTPException(status_code=code, detail=str(err)) from err
     return _summary(user)
 
@@ -69,9 +74,10 @@ def update_user(
     sessions: Sessions,
     me: SignedIn,
     request: Request,
+    org_id: OrgId,
 ) -> UserSummary:
     """Rename, change role, or disable / enable an account."""
-    target = _target(users, username)
+    target = _target(users, username, org_id)
     is_me = target.username == me.username
     if is_me and body.role is not None and body.role != target.role:
         raise HTTPException(
@@ -85,7 +91,7 @@ def update_user(
     losing_admin = target.role == Role.ADMIN and target.active and (
         (body.role is not None and body.role != Role.ADMIN) or body.active is False
     )
-    if losing_admin and _active_admins(users) == 1:
+    if losing_admin and _active_admins(users, org_id) == 1:
         raise HTTPException(
             status_code=409,
             detail=f"{target.username} is the only active administrator; make someone else an administrator first",
@@ -107,9 +113,10 @@ def reset_password(
     sessions: Sessions,
     me: SignedIn,
     request: Request,
+    org_id: OrgId,
 ) -> None:
     """Set a new password. Anyone else is signed out and signs in with the new one."""
-    target = _target(users, username)
+    target = _target(users, username, org_id)
     audit_note(request, password_reset=True)
     try:
         users.update(target.username, password=body.password)
@@ -119,5 +126,9 @@ def reset_password(
         sessions.end_all(target.username)
 
 
-def _active_admins(users: UserStore) -> int:
-    return sum(1 for user in users.list() if user.role == Role.ADMIN and user.active)
+def _active_admins(users: UserStore, org_id: str) -> int:
+    return sum(
+        1
+        for user in users.list()
+        if user.organisation_id == org_id and user.role == Role.ADMIN and user.active
+    )

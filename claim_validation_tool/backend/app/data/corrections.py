@@ -5,12 +5,12 @@ ClaimsRepository, and undoing a claim's corrections restores its original values
 """
 
 import json
-import os
 from datetime import UTC, datetime
 from functools import lru_cache
 from pathlib import Path
 from threading import Lock
 
+from app.data.orgs import org_file
 from app.models import Correction
 
 DEFAULT_CORRECTIONS_FILE = Path(__file__).resolve().parents[2] / "claim_corrections.json"
@@ -88,7 +88,7 @@ class CorrectionStore:
         tmp.replace(self.path)
 
 
-@lru_cache(maxsize=1)
-def get_correction_store() -> CorrectionStore:
-    """Process-wide correction store saved to RCM_CORRECTIONS_FILE."""
-    return CorrectionStore(Path(os.environ.get("RCM_CORRECTIONS_FILE", DEFAULT_CORRECTIONS_FILE)))
+@lru_cache(maxsize=None)
+def get_correction_store(org_id: str) -> CorrectionStore:
+    """The organisation's AI Fix corrections, saved in its folder."""
+    return CorrectionStore(org_file(org_id, "claim_corrections.json"))

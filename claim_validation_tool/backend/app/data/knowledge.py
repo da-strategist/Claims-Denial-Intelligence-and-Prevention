@@ -229,7 +229,7 @@ class KnowledgeBase:
         return dict(Counter(source.source_type for source in self.sources))
 
 
-@lru_cache(maxsize=1)
-def get_knowledge_base() -> KnowledgeBase:
-    """Process-wide knowledge base, from the same data directory as the claims."""
-    return KnowledgeBase.load(get_repository().data_dir)
+@lru_cache(maxsize=None)
+def get_knowledge_base(org_id: str) -> KnowledgeBase:
+    """The organisation's knowledge base, from the same data directory as its claims."""
+    return KnowledgeBase.load(get_repository(org_id).data_dir)

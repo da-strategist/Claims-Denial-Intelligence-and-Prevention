@@ -103,13 +103,13 @@ def test_only_admins_manage_users_and_changes_are_audited(client):
     add(client)
     client.patch("/api/users/amina", json={"role": "analyst"})
     client.post("/api/users/amina/password", json={"password": "Another-pass-22"})
-    events = [e for e in get_audit_log().events() if "/api/users" in e.action]
+    events = [e for e in get_audit_log("meridian").events() if "/api/users" in e.action]
     assert [(e.action, e.records, e.detail) for e in events] == [
         ("POST /api/users", {}, {"new_user": "amina", "role": "biller"}),
         ("PATCH /api/users/{username}", {"username": "amina"}, {"role": "analyst"}),
         ("POST /api/users/{username}/password", {"username": "amina"}, {"password_reset": True}),
     ]
-    assert "Another-pass-22" not in json_dump(get_audit_log().events())
+    assert "Another-pass-22" not in json_dump(get_audit_log("meridian").events())
     for role in (Role.BILLER, Role.ANALYST):
         sign_in(client, role)
         assert client.get("/api/users").status_code == 403

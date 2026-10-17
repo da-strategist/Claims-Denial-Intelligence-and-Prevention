@@ -41,6 +41,7 @@ class StatusSnapshot:
             return self._frame
 
 
-@lru_cache(maxsize=1)
-def get_status_snapshot() -> StatusSnapshot:
+@lru_cache(maxsize=None)
+def get_status_snapshot(org_id: str) -> StatusSnapshot:
+    """The organisation's cached validation of every claim."""
     return StatusSnapshot()

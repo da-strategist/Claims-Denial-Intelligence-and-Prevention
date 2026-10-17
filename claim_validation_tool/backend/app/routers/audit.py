@@ -2,17 +2,17 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Query
 
-from app.data.audit import AuditLog, get_audit_log
 from app.models import AuditEvent, AuditQuery, AuditVerification, Permission
 from app.services.auth import require
+from app.services.org_context import OrgAudit
 
 router = APIRouter(
     prefix="/api/audit", tags=["audit"], dependencies=[require(Permission.AUDIT_READ)]
 )
 
-Log = Annotated[AuditLog, Depends(get_audit_log)]
+Log = OrgAudit
 
 
 @router.get("", response_model=list[AuditEvent])

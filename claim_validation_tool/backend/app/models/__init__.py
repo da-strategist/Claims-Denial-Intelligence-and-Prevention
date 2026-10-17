@@ -27,6 +27,7 @@ from app.models.auth import (
     UserCreate,
     UserSummary,
     UserUpdate,
+    OrganisationSummary,
 )
 from app.models.assistant import (
     AssistantAnswer,
@@ -119,6 +120,7 @@ from app.models.rule import (
 )
 
 __all__ = [
+    "OrganisationSummary",
     "PasswordReset",
     "UserCreate",
     "UserSummary",

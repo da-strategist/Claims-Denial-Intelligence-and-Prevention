@@ -88,7 +88,14 @@ class UserStore:
         valid = verify_password(password, user.password_hash if user else _DUMMY_HASH)
         return user if valid and user is not None and user.active else None
 
-    def add(self, username: str, display_name: str, role: Role, password: str) -> User:
+    def add(
+        self,
+        username: str,
+        display_name: str,
+        role: Role,
+        password: str,
+        organisation_id: str | None = None,
+    ) -> User:
         check_password_strength(password)
         now = datetime.now(UTC)
         user = User(
@@ -98,10 +105,12 @@ class UserStore:
             password_hash=hash_password(password),
             created_at=now,
             password_changed_at=now,
+            organisation_id=organisation_id,
         )
         with self._lock:
             if user.username in self._users:
-                raise ValueError(f"User {user.username} already exists")
+                # Usernames are unique across organisations; don't say whose it is
+                raise ValueError(f"The username {user.username} is taken; choose another")
             self._users[user.username] = user
             self._save()
         return user
@@ -114,8 +123,11 @@ class UserStore:
         role: Role | None = None,
         active: bool | None = None,
         display_name: str | None = None,
+        organisation_id: str | None = None,
     ) -> User:
         changes: dict = {}
+        if organisation_id is not None:
+            changes["organisation_id"] = organisation_id
         if display_name is not None:
             changes["display_name"] = display_name
         if password is not None:

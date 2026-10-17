@@ -2,7 +2,7 @@
 
 import json
 
-from app.data.audit import AuditLog, get_audit_log
+from app.data.audit import AuditLog, get_audit_log, get_platform_audit_log
 from app.models import Role
 from app.tests.conftest import TEST_PASSWORD, sign_in
 from app.tests.test_claim_entry import NEW_CLAIM
@@ -57,9 +57,12 @@ def test_refusals_and_failed_sign_ins_are_recorded(anon_client):
     sign_in(anon_client, Role.ANALYST)
     anon_client.get("/api/patients")
 
-    log = get_audit_log().events()
-    assert [(e.username, e.action, e.status_code, e.outcome) for e in log[:5]] == [
-        (None, "GET /api/claims", 401, "denied"),
+    # Signed-out requests belong to no organisation: the platform log has them
+    platform = get_platform_audit_log().events()
+    assert [(e.username, e.action, e.status_code) for e in platform] == [(None, "GET /api/claims", 401)]
+    # Everything by (or aimed at) Meridian's accounts is in Meridian's own log
+    log = get_audit_log("meridian").events()
+    assert [(e.username, e.action, e.status_code, e.outcome) for e in log[:4]] == [
         ("biller1", "POST /api/auth/login", 401, "denied"),
         ("admin1", "POST /api/auth/login", 200, "success"),
         ("admin1", "GET /api/claims/{claim_id}", 404, "failed"),
@@ -82,7 +85,8 @@ def test_only_admins_read_the_audit_log_and_reading_it_is_recorded(client):
 
 def test_health_checks_are_not_recorded(anon_client):
     anon_client.get("/api/health")
-    assert get_audit_log().events() == []
+    assert get_audit_log("meridian").events() == []
+    assert get_platform_audit_log().events() == []
 
 
 def test_the_hash_chain_detects_edits_and_deletions(tmp_path):

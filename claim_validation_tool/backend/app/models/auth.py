@@ -51,6 +51,9 @@ class User(BaseModel):
     active: bool = True
     created_at: datetime
     password_changed_at: datetime
+    # The one organisation whose data this account can reach. None (an account from before
+    # organisations) can't sign in until `python -m app.orgs migrate` assigns one.
+    organisation_id: str | None = None
 
     @property
     def permissions(self) -> frozenset[Permission]:
@@ -92,10 +95,16 @@ class PasswordReset(BaseModel):
     password: str = Field(min_length=1, max_length=256)
 
 
+class OrganisationSummary(BaseModel):
+    id: str
+    name: str
+
+
 class CurrentUser(BaseModel):
     """The signed-in user, as the frontend sees them."""
 
     username: str
+    organisation: OrganisationSummary
     display_name: str
     role: Role
     permissions: list[Permission]

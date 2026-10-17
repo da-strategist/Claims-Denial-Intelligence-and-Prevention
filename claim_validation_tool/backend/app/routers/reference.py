@@ -1,17 +1,16 @@
 """Lists the claim-entry form picks from: providers, facilities, and code sets."""
 
-from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter
 
-from app.data import ClaimsRepository, ReferenceData, get_reference_data, get_repository
 from app.models import DiagnosisCode, Facility, Permission, ProcedureCode, Provider
 from app.services.auth import require
+from app.services.org_context import OrgClaims, OrgReference
 
 router = APIRouter(prefix="/api", tags=["reference"], dependencies=[require(Permission.CLAIMS_READ)])
 
-Claims = Annotated[ClaimsRepository, Depends(get_repository)]
-Reference = Annotated[ReferenceData, Depends(get_reference_data)]
+Claims = OrgClaims
+Reference = OrgReference
 
 
 @router.get("/providers", response_model=list[Provider])

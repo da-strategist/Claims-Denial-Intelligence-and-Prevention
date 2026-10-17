@@ -511,15 +511,15 @@ def answer_question(
 # --- Dependencies ---------------------------------------------------------------------
 
 
-@lru_cache(maxsize=1)
-def get_name_scrubber() -> NameScrubber:
-    """Knows the registered patients' and providers' names."""
-    return NameScrubber(get_repository().person_names())
+@lru_cache(maxsize=None)
+def get_name_scrubber(org_id: str) -> NameScrubber:
+    """Knows the organisation's registered patients' and providers' names."""
+    return NameScrubber(get_repository(org_id).person_names())
 
 
-@lru_cache(maxsize=1)
-def get_retriever() -> Retriever:
-    return Retriever(get_knowledge_base())
+@lru_cache(maxsize=None)
+def get_retriever(org_id: str) -> Retriever:
+    return Retriever(get_knowledge_base(org_id))
 
 
 @lru_cache(maxsize=1)

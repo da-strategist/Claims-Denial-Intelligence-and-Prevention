@@ -125,7 +125,10 @@ function Shell() {
           <Logo />
           <div className="leading-tight">
             <div className="text-[15px] font-semibold tracking-tight text-gray-900">ClaustraRCM</div>
-            <div className="text-xs text-gray-500">Claim Validation</div>
+            {/* Whose data this is: each organisation's is kept apart from the others' */}
+            <div className="truncate text-xs text-gray-500" title={auth.user.organisation?.name}>
+              {auth.user.organisation?.name ?? 'Claim Validation'}
+            </div>
           </div>
         </div>
         <div className="ml-auto lg:order-last lg:mt-auto lg:ml-0 lg:border-t lg:border-gray-200/70 lg:px-2 lg:pt-4">

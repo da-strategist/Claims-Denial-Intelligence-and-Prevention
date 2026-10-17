@@ -88,7 +88,7 @@ def test_only_roles_that_enter_claims_see_drafts(client):
 def test_saving_and_opening_are_audited(client):
     draft = save(client)
     client.get(f"/api/drafts/{draft['id']}")
-    events = [e for e in get_audit_log().events() if "/api/drafts" in e.action]
+    events = [e for e in get_audit_log("meridian").events() if "/api/drafts" in e.action]
     assert [(e.action, e.records) for e in events] == [
         ("POST /api/drafts", {"draft_id": draft["id"], "patient_id": "PAT000003"}),
         ("GET /api/drafts/{draft_id}", {"draft_id": draft["id"], "patient_id": "PAT000003"}),

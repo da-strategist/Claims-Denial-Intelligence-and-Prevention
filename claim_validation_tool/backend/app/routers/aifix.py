@@ -2,21 +2,12 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from app.data import (
-    ClaimsRepository,
-    CorrectionStore,
-    ReferenceData,
-    RuleRepository,
-    get_correction_store,
-    get_reference_data,
-    get_repository,
-    get_rule_repository,
-)
 from app.models import ApplyFixRequest, ApplyFixResult, ClaimFixes, Permission, User
 from app.models.common import ClaimId
 from app.services import aifix
 from app.services.aifix import FixSuggester, SuggestionError, get_suggester
 from app.services.auth import require
+from app.services.org_context import OrgClaims, OrgCorrections, OrgReference, OrgRules
 
 router = APIRouter(prefix="/api/aifix", tags=["aifix"], dependencies=[require(Permission.CLAIMS_READ)])
 
@@ -28,10 +19,10 @@ class Deps:
 
     def __init__(
         self,
-        claims: Annotated[ClaimsRepository, Depends(get_repository)],
-        rules: Annotated[RuleRepository, Depends(get_rule_repository)],
-        corrections: Annotated[CorrectionStore, Depends(get_correction_store)],
-        reference: Annotated[ReferenceData, Depends(get_reference_data)],
+        claims: OrgClaims,
+        rules: OrgRules,
+        corrections: OrgCorrections,
+        reference: OrgReference,
         suggester: Annotated[FixSuggester, Depends(get_suggester)],
     ) -> None:
         self.args = (claims, rules, corrections, reference, suggester)

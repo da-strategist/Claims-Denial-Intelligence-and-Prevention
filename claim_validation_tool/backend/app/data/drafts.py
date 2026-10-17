@@ -12,6 +12,7 @@ from functools import lru_cache
 from pathlib import Path
 from threading import Lock
 
+from app.data.orgs import org_file
 from app.models import DRAFT_RETENTION_DAYS, DraftForm, SavedDraft
 
 DEFAULT_DRAFTS_FILE = Path(__file__).resolve().parents[2] / "claim_drafts.json"
@@ -108,7 +109,7 @@ class DraftStore:
         tmp.replace(self.path)
 
 
-@lru_cache(maxsize=1)
-def get_draft_store() -> DraftStore:
-    """Process-wide draft store saved to RCM_DRAFTS_FILE."""
-    return DraftStore(Path(os.environ.get("RCM_DRAFTS_FILE", DEFAULT_DRAFTS_FILE)))
+@lru_cache(maxsize=None)
+def get_draft_store(org_id: str) -> DraftStore:
+    """The organisation's saved drafts, in its folder."""
+    return DraftStore(org_file(org_id, "claim_drafts.json"))

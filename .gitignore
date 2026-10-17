@@ -27,6 +27,8 @@ Data/raw_data/
 
 # Sensitive / credentials
 *.json
+# Each organisation's data folder (claims CSVs, PHI, app data)
+claim_validation_tool/backend/orgs/
 # ...but the frontend's npm manifests are needed to install it
 !claim_validation_tool/frontend/package.json
 !claim_validation_tool/frontend/package-lock.json

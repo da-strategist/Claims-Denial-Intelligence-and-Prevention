@@ -43,7 +43,7 @@ def contract_rate(reference: ReferenceData, payer_id: str, cpt_category: str) ->
     return float(contract["reimbursement_pct_of_charge"]) if contract else None
 
 
-@lru_cache(maxsize=1)
-def get_reference_data() -> ReferenceData:
-    """Process-wide reference tables, from the same data directory as the claims."""
-    return ReferenceData.load(get_repository())
+@lru_cache(maxsize=None)
+def get_reference_data(org_id: str) -> ReferenceData:
+    """The organisation's reference tables, from the same data directory as its claims."""
+    return ReferenceData.load(get_repository(org_id))

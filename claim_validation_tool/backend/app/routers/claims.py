@@ -2,18 +2,12 @@ from datetime import datetime
 from typing import Annotated
 
 import pandas as pd
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, HTTPException, Query, Request, status
 from fastapi.responses import PlainTextResponse, Response
 
 from app.data import (
     ClaimsRepository,
-    ReferenceData,
-    RuleRepository,
-    get_reference_data,
-    get_repository,
-    get_rule_repository,
 )
-from app.data.registrations import RegistrationStore, get_registration_store
 from app.models import (
     Claim,
     ClaimCreate,
@@ -36,17 +30,24 @@ from app.services.claim_pdf import claim_form_pdf, readable_837_pdf
 from app.services.edi837 import ClaimParties, build_837
 from app.services.edi_reader import read_837
 from app.services.edi_settings import load_edi_settings
-from app.services.status_snapshot import StatusSnapshot, get_status_snapshot
+from app.services.org_context import (
+    OrgClaims,
+    OrgId,
+    OrgReference,
+    OrgRegistrations,
+    OrgRules,
+    OrgSnapshot,
+)
 
 router = APIRouter(prefix="/api/claims", tags=["claims"], dependencies=[require(Permission.CLAIMS_READ)])
 
 WRITE = [require(Permission.CLAIMS_WRITE)]
 
-Claims = Annotated[ClaimsRepository, Depends(get_repository)]
-Rules = Annotated[RuleRepository, Depends(get_rule_repository)]
+Claims = OrgClaims
+Rules = OrgRules
 
-Reference = Annotated[ReferenceData, Depends(get_reference_data)]
-Registrations = Annotated[RegistrationStore, Depends(get_registration_store)]
+Reference = OrgReference
+Registrations = OrgRegistrations
 
 
 @router.get("", response_model=Page[Claim])
@@ -54,7 +55,7 @@ def list_claims(
     query: Annotated[ClaimQuery, Query()],
     repo: Claims,
     rules: Rules,
-    snapshot: Annotated[StatusSnapshot, Depends(get_status_snapshot)],
+    snapshot: OrgSnapshot,
 ) -> Page[Claim]:
     """List claims with search, filtering, sorting, and pagination."""
     statuses = None
@@ -165,7 +166,9 @@ def create_claim(
 
 
 @router.post("/{claim_id}/submit", response_model=ClaimCreated, dependencies=WRITE)
-def submit_claim(claim_id: ClaimId, repo: Claims, rules: Rules, request: Request) -> ClaimCreated:
+def submit_claim(
+    claim_id: ClaimId, repo: Claims, rules: Rules, request: Request, org_id: OrgId
+) -> ClaimCreated:
     """Mark a Draft as submitted to the payer today.
 
     This is the only way a claim leaves Draft, whether it was entered on screen or through
@@ -195,7 +198,7 @@ def submit_claim(claim_id: ClaimId, repo: Claims, rules: Rules, request: Request
         )
     edi = None
     if claim.payer is None or claim.payer.payer_type != PayerType.SELF_PAY:
-        edi = _build_837(claim, repo)
+        edi = _build_837(claim, repo, org_id)
         audit_note(request, edi_control_number=edi[1].control_number)
     try:
         claim = repo.submit_claim(claim_id, edi=edi)
@@ -286,14 +289,14 @@ def _pdf(content: bytes, filename: str) -> Response:
     )
 
 
-def _build_837(claim: ClaimDetail, repo: ClaimsRepository) -> tuple[str, EdiFile]:
+def _build_837(claim: ClaimDetail, repo: ClaimsRepository, org_id: str) -> tuple[str, EdiFile]:
     if claim.billing is None:
         raise HTTPException(
             status_code=422, detail=f"{claim.claim_id} has no billing details for the 837 file"
         )
     payers = [claim.payer, *[repo.get_payer(p) for p in claim.other_payer_ids]]
     facility = repo.get_facility(claim.facility_id)
-    parties = ClaimParties(payers=payers, facility=facility, settings=load_edi_settings())
+    parties = ClaimParties(payers=payers, facility=facility, settings=load_edi_settings(org_id))
     return build_837(claim, parties, repo.next_control_number(), datetime.now())
 
 

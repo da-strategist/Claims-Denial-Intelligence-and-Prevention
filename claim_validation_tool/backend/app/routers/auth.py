@@ -5,7 +5,8 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 
 from app.data.users import UserStore, get_user_store
-from app.models import CurrentUser, LoginRequest, User
+from app.data.orgs import get_org_registry
+from app.models import CurrentUser, LoginRequest, OrganisationSummary, User
 from app.services.auth import (
     SESSION_COOKIE,
     LoginThrottle,
@@ -15,6 +16,7 @@ from app.services.auth import (
     cookie_secure,
     get_login_throttle,
     get_session_store,
+    organisation_problem,
 )
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -25,8 +27,10 @@ BAD_LOGIN = "Wrong username or password"
 
 
 def _current(user: User, sessions: SessionStore, created) -> CurrentUser:
+    org = get_org_registry().get(user.organisation_id)
     return CurrentUser(
         username=user.username,
+        organisation=OrganisationSummary(id=org.id, name=org.name),
         display_name=user.display_name,
         role=user.role,
         permissions=sorted(user.permissions),
@@ -57,6 +61,9 @@ def login(
         throttle.failed(username)
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=BAD_LOGIN)
     throttle.succeeded(username)
+    problem = organisation_problem(user)
+    if problem:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=problem)
 
     token = sessions.create(user.username)
     request.state.user = user

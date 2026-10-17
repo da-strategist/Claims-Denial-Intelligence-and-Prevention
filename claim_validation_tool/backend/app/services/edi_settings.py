@@ -1,4 +1,4 @@
-"""The organisation's identifiers for 837 claim files, from RCM_EDI_SETTINGS_FILE.
+"""An organisation's identifiers for 837 claim files, from edi_settings.json in its folder.
 
 These identify who sends the file (the submitter), who receives it (the clearinghouse),
 the billing provider, and each payer's electronic payer ID. They aren't in the claim
@@ -16,11 +16,12 @@ data, so they live in a settings file (git-ignored). Until every one is filled i
 """
 
 import json
-import os
 from pathlib import Path
 from typing import Literal
 
 from pydantic import BaseModel, Field
+
+from app.data.orgs import org_file
 
 DEFAULT_EDI_SETTINGS_FILE = Path(__file__).resolve().parents[2] / "edi_settings.json"
 
@@ -95,9 +96,9 @@ def _npi_ok(npi: str) -> bool:
     return (10 - total % 10) % 10 == int(npi[9])
 
 
-def load_edi_settings() -> EdiSettings:
-    """Read on each use, so edits to the file apply without a restart."""
-    path = Path(os.environ.get("RCM_EDI_SETTINGS_FILE", DEFAULT_EDI_SETTINGS_FILE))
+def load_edi_settings(org_id: str) -> EdiSettings:
+    """The organisation's settings, read on each use so edits apply without a restart."""
+    path = org_file(org_id, "edi_settings.json")
     if not path.exists():
         return EdiSettings()
     return EdiSettings.model_validate(json.loads(path.read_text()))

@@ -14,6 +14,8 @@ from pathlib import Path
 from threading import Lock
 from typing import Any
 
+from app.data.orgs import org_file
+
 DEFAULT_NEW_CLAIMS_FILE = Path(__file__).resolve().parents[2] / "new_claims.json"
 
 
@@ -76,7 +78,7 @@ class NewClaimStore:
         tmp.replace(self.path)
 
 
-@lru_cache(maxsize=1)
-def get_new_claim_store() -> NewClaimStore:
-    """Process-wide store saved to RCM_NEW_CLAIMS_FILE."""
-    return NewClaimStore(Path(os.environ.get("RCM_NEW_CLAIMS_FILE", DEFAULT_NEW_CLAIMS_FILE)))
+@lru_cache(maxsize=None)
+def get_new_claim_store(org_id: str) -> NewClaimStore:
+    """Claims the organisation entered in the app, saved in its folder."""
+    return NewClaimStore(org_file(org_id, "new_claims.json"))

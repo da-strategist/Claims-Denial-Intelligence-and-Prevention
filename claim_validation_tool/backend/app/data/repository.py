@@ -5,7 +5,6 @@ run on the DataFrames; only the rows being returned are converted to Pydantic
 models, so listing a page of claims never materializes all 120K records.
 """
 
-import os
 import re
 from datetime import date
 from functools import lru_cache
@@ -17,6 +16,7 @@ import pandas as pd
 
 from app.data.corrections import get_correction_store
 from app.data.new_claims import NewClaimStore, get_new_claim_store
+from app.data.orgs import get_org_registry
 from app.models.aifix import CORRECTABLE_FIELDS
 from app.models.rule import RULE_FIELDS, parse_condition_value
 from app.models import (
@@ -639,12 +639,12 @@ class ClaimsRepository:
         return df[mask]
 
 
-@lru_cache(maxsize=1)
-def get_repository() -> ClaimsRepository:
-    """Process-wide repository, usable as a FastAPI dependency."""
-    data_dir = Path(os.environ.get("RCM_DATA_DIR", DEFAULT_DATA_DIR))
-    repo = ClaimsRepository(data_dir, get_new_claim_store())
-    corrections = get_correction_store()
+@lru_cache(maxsize=None)
+def get_repository(org_id: str) -> ClaimsRepository:
+    """The organisation's claims: its own CSVs plus the claims it entered in the app."""
+    data_dir = get_org_registry().data_dir(org_id)
+    repo = ClaimsRepository(data_dir, get_new_claim_store(org_id))
+    corrections = get_correction_store(org_id)
     # Drop corrections whose claim no longer exists (e.g. the new-claims file was removed),
     # so a new claim reusing the ID doesn't inherit them
     for claim_id in repo.missing_claim_ids(list(corrections.overrides())):

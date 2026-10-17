@@ -1,8 +1,6 @@
-from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, HTTPException, Response, status
 
-from app.data import ClaimsRepository, RuleRepository, get_repository, get_rule_repository
 from app.models import (
     RULE_FIELDS,
     Permission,
@@ -16,12 +14,13 @@ from app.models import (
 from app.models.rule import RuleId
 from app.services import validation_engine
 from app.services.auth import require
+from app.services.org_context import OrgClaims, OrgRules
 
 router = APIRouter(prefix="/api/rules", tags=["rules"], dependencies=[require(Permission.CLAIMS_READ)])
 
 WRITE = [require(Permission.RULES_WRITE)]
 
-Rules = Annotated[RuleRepository, Depends(get_rule_repository)]
+Rules = OrgRules
 
 
 @router.get("", response_model=list[Rule])
@@ -38,7 +37,7 @@ def list_rule_fields() -> list[RuleField]:
 @router.post("/test", response_model=RuleTestResult, dependencies=WRITE)
 def test_rule(
     rule: RuleDefinition,
-    claims: Annotated[ClaimsRepository, Depends(get_repository)],
+    claims: OrgClaims,
 ) -> RuleTestResult:
     """Run a draft rule against every claim without saving it."""
     return validation_engine.test_rule(rule, claims.claims_frame())

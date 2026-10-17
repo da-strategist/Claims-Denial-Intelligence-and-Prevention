@@ -45,8 +45,19 @@ This tool validates healthcare claims against configurable rules, identifies den
   user accounts (`users.py`), and the hash-chained audit log (`audit.py`)
 - `app/evals/` — the assistant's evaluation set and runner
 
+**Organisations (HIPAA data segregation, `DATA_SEGREGATION_PLAN.md`):** every store and cache
+is per organisation: `get_repository(org_id)`, `get_rule_repository(org_id)`, `get_audit_log(org_id)`
+and so on, each over that organisation's folder (`data/orgs.py`). Routes never call these
+getters: they declare `OrgClaims`, `OrgRules`, `OrgAudit`, … from `services/org_context.py`,
+which take the organisation from the signed-in account (never the URL or body). Accounts
+carry `organisation_id`; one without a working organisation is refused (fail closed).
+`test_org_isolation.py` tries every route with another organisation's IDs and checks no list
+or dashboard shows another organisation's data; the route walk in `conftest.api_routes` also
+fails if it finds suspiciously few routes, so the check can't silently pass.
+
 **Conventions:**
 - All API routes prefixed with `/api/`
+- Never reach data through a global: take the organisation's stores from `services/org_context.py`
 - Pydantic models for all request/response bodies
 - Services never import from routers (dependency flows inward)
 - Type hints on all function signatures

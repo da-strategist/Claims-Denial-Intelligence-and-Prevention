@@ -114,18 +114,35 @@ synthetic data in `../Data/raw_data/`.
 # Backend — from the repository root (Healthcare_RCM_Project/)
 uv sync
 cd claim_validation_tool/backend
-uv run python -m app.users add yourname --name "Your Name" --role admin   # prompts for a password
+uv run python -m app.orgs migrate        # creates the first organisation, "meridian", over Data/raw_data
+uv run python -m app.orgs add-sample     # optional: the synthetic "lakeside" practice, for demos
+uv run python -m app.users add yourname --name "Your Name" --role admin --org meridian   # prompts for a password
 uv run uvicorn app.main:app --reload --port 8000
 ```
+
+### Organisations
+
+Several organisations can use one installation, each completely walled off from the others
+(see `DATA_SEGREGATION_PLAN.md`). Each has its own folder under `backend/orgs/` (git-ignored,
+readable only by the account running the API) holding its rules, corrections, saved drafts,
+new claims and their 837s, patient registrations, 837 settings, and audit log, plus its own
+claims CSVs. Every account belongs to one organisation, and every request reaches only that
+organisation's data: another organisation's records are "not found". The sidebar shows the
+organisation's name. `uv run python -m app.orgs list` shows organisations; `add` registers a
+new one over its CSVs. `migrate` moves a single-organisation install into "meridian" and is
+safe to run twice. An automated test tries every API route with another organisation's IDs.
+
+### Accounts
 
 The first administrator is created on the command line, as above. After that, administrators
 manage accounts on the **Users** page (Admin section): add people, change roles, reset
 passwords, and disable or re-enable accounts. Disabling or resetting a password signs that
 person out; administrators can't change their own role or disable themselves, and the last
 active administrator can't be demoted or disabled. Every change is audited (never the
-password). The same is possible with `uv run python -m app.users` (`list`, `add`, `password`,
-`role`, `disable`, `enable`); changes apply while the API runs. Accounts live in
-`backend/users.json` (git-ignored, readable only by you).
+password). Administrators only see and manage their own organisation's accounts; usernames
+are unique across all organisations. The same is possible with `uv run python -m app.users`
+(`list`, `add … --org`, `password`, `role`, `disable`, `enable`); changes apply while the API
+runs. Accounts live in `backend/users.json` (git-ignored, readable only by you).
 
 To have Claude answer the clarification assistant's questions, put the key in
 `backend/.env` (git-ignored) as `ANTHROPIC_API_KEY=...` and start the API with
@@ -146,26 +163,20 @@ App: http://localhost:5173. The Vite dev server proxies `/api` to port 8000.
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `RCM_DATA_DIR` | `Data/raw_data` at the repository root | Directory with the source CSVs |
-| `RCM_RULES_FILE` | `backend/rules.json` | Saved rules (seeded with 9 defaults on first run) |
-| `RCM_CORRECTIONS_FILE` | `backend/claim_corrections.json` | Applied AI Fix corrections |
-| `RCM_NEW_CLAIMS_FILE` | `backend/new_claims.json` | Claims entered in the app, when they were submitted, and their 837 files |
-| `RCM_REGISTRATIONS_FILE` | `backend/patient_registrations.json` | Patients' billing details captured from claims (owner-only) |
-| `RCM_EDI_SETTINGS_FILE` | `backend/edi_settings.json` | Organisation identifiers for 837 files |
-| `RCM_DRAFTS_FILE` | `backend/claim_drafts.json` | Saved drafts of the New Claim form (owner-only file; expire 30 days after the last save) |
+| `RCM_ORGS_DIR` | `backend/orgs` | Organisations: `organisations.json` and one folder per organisation with its `rules.json` (seeded with 9 defaults), `claim_corrections.json`, `claim_drafts.json` (expire 30 days after the last save), `new_claims.json` (with their 837s), `patient_registrations.json`, `edi_settings.json`, and `logs/audit.jsonl` |
 | `ANTHROPIC_API_KEY` | unset | Enables Claude for the clarification assistant |
 | `RCM_ASSISTANT_MODEL` | `claude-sonnet-5-5` | Claude model the assistant uses |
 | `RCM_ASSISTANT_MODE` | | Set to `retrieval` to keep Claude off even with a key |
 | `RCM_USERS_FILE` | `backend/users.json` | Sign-in accounts |
-| `RCM_AUDIT_FILE` | `backend/logs/audit.jsonl` | Audit log |
+| `RCM_AUDIT_FILE` | `backend/logs/audit.jsonl` | Platform audit log: requests that belong to no organisation (e.g. sign-in with an unknown username). Each organisation's own log is in its folder |
 | `RCM_SESSION_IDLE_MINUTES` | `15` | Sign out after this long without a request |
 | `RCM_SESSION_MAX_HOURS` | `8` | Longest a session lasts |
 | `RCM_COOKIE_SECURE` | off | Set to `1` behind HTTPS so the session cookie is never sent over plain HTTP |
 | `VITE_API_BASE` | `/api` | API base URL for the frontend |
 
-Rules, corrections, saved drafts, and claims entered in the app persist in those JSON files
-(git-ignored; the drafts and new-claims files are readable only by the account running the API).
-The source CSVs are never modified: new claims and their submission dates are replayed on startup.
+Each organisation's app data persists in its folder (git-ignored, readable only by the account
+running the API). The source CSVs are never modified: new claims and their submission dates are
+replayed on startup.
 
 ## Testing
 
@@ -221,6 +232,8 @@ claim_validation_tool/
 ├── backend/app/
 │   ├── main.py             # FastAPI app, CORS, audit middleware, routers, data preload
 │   ├── users.py            # Account management CLI (python -m app.users)
+│   ├── orgs.py             # Organisations CLI: list, add, migrate, add-sample
+│   ├── sample_org.py       # Generates the synthetic Lakeside Family Practice
 │   ├── routers/            # One module per API area
 │   ├── models/             # Pydantic request/response schemas
 │   ├── services/           # Validation engine, risk scorer, AI fix, assistant, dashboard, JAB,

@@ -1,8 +1,7 @@
-from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi import APIRouter, HTTPException, Request, Response, status
 
-from app.data import ClaimsRepository, DraftStore, get_draft_store, get_repository
+from app.data import ClaimsRepository
 from app.models import (
     DraftForm,
     Permission,
@@ -12,14 +11,15 @@ from app.models import (
 )
 from app.models.draft import DraftId
 from app.services.auth import SignedIn, audit_note, require
+from app.services.org_context import OrgClaims, OrgDrafts
 
 # Saved drafts are unfinished claim entry: shared by everyone who can enter claims
 router = APIRouter(
     prefix="/api/drafts", tags=["drafts"], dependencies=[require(Permission.CLAIMS_WRITE)]
 )
 
-Drafts = Annotated[DraftStore, Depends(get_draft_store)]
-Claims = Annotated[ClaimsRepository, Depends(get_repository)]
+Drafts = OrgDrafts
+Claims = OrgClaims
 
 
 def _not_found(draft_id: str) -> HTTPException:

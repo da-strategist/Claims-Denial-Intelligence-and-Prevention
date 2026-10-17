@@ -11,6 +11,7 @@ const user = (role, permissions) => ({
   role,
   permissions,
   idle_timeout_minutes: 15,
+  organisation: { id: 'meridian', name: 'Meridian Regional Medical Center' },
   session_expires_at: '2026-10-17T20:00:00Z',
 })
 const ANALYST = user('analyst', ['claims:read'])
@@ -22,6 +23,15 @@ const navLinks = () =>
   within(screen.getByRole('navigation', { name: 'Main' }))
     .getAllByRole('link')
     .map((link) => link.textContent)
+
+describe('organisation', () => {
+  it('shows whose data the signed-in user is working in', async () => {
+    mockApi({ ...PAGE, 'GET /auth/me': () => ANALYST })
+    window.location.hash = '#/jab'
+    render(<App />)
+    expect(await screen.findByText('Meridian Regional Medical Center')).toBeInTheDocument()
+  })
+})
 
 describe('signing in', () => {
   beforeEach(() => {

@@ -1,20 +1,19 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query
 
-from app.data import ClaimsRepository, get_repository
 from app.data import repository as repository_module
-from app.data.registrations import RegistrationStore, get_registration_store
 from app.models import Page, PatientQuery, PatientRegistration, PatientSummary, Permission
 from app.models.common import PatientId
 from app.services.auth import require
+from app.services.org_context import OrgClaims, OrgRegistrations
 
 router = APIRouter(
     prefix="/api/patients", tags=["patients"], dependencies=[require(Permission.PATIENTS_READ)]
 )
 
-Claims = Annotated[ClaimsRepository, Depends(get_repository)]
-Registrations = Annotated[RegistrationStore, Depends(get_registration_store)]
+Claims = OrgClaims
+Registrations = OrgRegistrations
 
 
 @router.get("", response_model=Page[PatientSummary])

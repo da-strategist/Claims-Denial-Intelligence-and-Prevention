@@ -303,27 +303,19 @@ def test_rules_can_flag_overdue_claims(client, today):
     assert "RULE-010" in [f["rule_id"] for f in findings]
 
 
-def test_startup_drops_corrections_for_claims_that_no_longer_exist(tmp_path, monkeypatch):
-    # A manual claim was corrected, then the server restarted and the claim is gone
-    path = tmp_path / "corrections.json"
+def test_startup_drops_corrections_for_claims_that_no_longer_exist(anon_client):
+    # A manual claim was corrected, then its saved claim was lost and the server restarted
+    from app.tests.conftest import org_folder
+
+    path = org_folder("meridian") / "claim_corrections.json"
     store = CorrectionStore(path)
     store.add("CLM0000005", "CLM0000005:RULE-002", {"pa_number": (None, "OLD-AUTH")})
     store.add("CLM0000002", "CLM0000002:RULE-008", {"is_clean_claim": ("false", "true")})
-    monkeypatch.setenv("RCM_DATA_DIR", str(FIXTURES_DIR))
-    monkeypatch.setenv("RCM_CORRECTIONS_FILE", str(path))
-    monkeypatch.setenv("RCM_NEW_CLAIMS_FILE", str(tmp_path / "new_claims.json"))
-    from app.data.new_claims import get_new_claim_store
-
-    get_new_claim_store.cache_clear()
     for cache in (repository.get_repository, get_correction_store):
         cache.cache_clear()
-    try:
-        repo = repository.get_repository()
-        assert CorrectionStore(path).overrides() == {"CLM0000002": {"is_clean_claim": "true"}}
-        assert repo.get_claim("CLM0000002").has_corrections is True
-    finally:
-        for cache in (repository.get_repository, get_correction_store, get_new_claim_store):
-            cache.cache_clear()
+    repo = repository.get_repository("meridian")
+    assert CorrectionStore(path).overrides() == {"CLM0000002": {"is_clean_claim": "true"}}
+    assert repo.get_claim("CLM0000002").has_corrections is True
 
 
 def test_submit_refused_while_any_warning_remains(client, today):

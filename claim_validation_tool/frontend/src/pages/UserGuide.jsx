@@ -42,7 +42,8 @@ const SECTIONS = [
         </p>
         <p className="text-[15px] text-gray-700">
           You’re signed in as <strong className="font-medium">{ROLE_LABELS[user.role] ?? user.role}</strong>.{' '}
-          {ROLE_SUMMARY[user.role]} This guide only shows what your role can do.
+          {ROLE_SUMMARY[user.role]} This guide only shows what your role can do. The sidebar shows
+          your organisation; you only ever see its patients and claims.
         </p>
       </>
     ),

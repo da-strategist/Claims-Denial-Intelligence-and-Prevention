@@ -1,19 +1,19 @@
-from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, HTTPException
 
-from app.data import ClaimsRepository, RuleRepository, get_repository, get_rule_repository
+from app.data import RuleRepository
 from app.models import ClaimValidation, Permission, Rule, ValidateRequest
 from app.models.common import ClaimId
 from app.services import validation_engine
 from app.services.auth import require
+from app.services.org_context import OrgClaims, OrgRules
 
 router = APIRouter(
     prefix="/api/validate", tags=["validation"], dependencies=[require(Permission.CLAIMS_READ)]
 )
 
-Claims = Annotated[ClaimsRepository, Depends(get_repository)]
-Rules = Annotated[RuleRepository, Depends(get_rule_repository)]
+Claims = OrgClaims
+Rules = OrgRules
 
 
 @router.post("", response_model=list[ClaimValidation])

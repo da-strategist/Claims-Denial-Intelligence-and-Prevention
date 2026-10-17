@@ -17,6 +17,7 @@ from typing import Annotated
 
 from fastapi import Depends, HTTPException, Request
 
+from app.data.orgs import OrgStatus, get_org_registry
 from app.data.users import UserStore, get_user_store
 from app.models import Permission, User
 
@@ -140,7 +141,8 @@ def current_user(
     token = request.cookies.get(SESSION_COOKIE)
     session = sessions.touch(token) if token else None
     user = users.get(session.username) if session else None
-    if user is None or not user.active:
+    # An account without a working organisation reaches no data at all (fail closed)
+    if user is None or not user.active or organisation_problem(user):
         if token:
             sessions.end(token)
         raise HTTPException(status_code=401, detail="Sign in to continue")
@@ -150,6 +152,18 @@ def current_user(
 
 
 SignedIn = Annotated[User, Depends(current_user)]
+
+
+def organisation_problem(user: User) -> str | None:
+    """Why this account can't reach its organisation's data, or None if it can."""
+    if user.organisation_id is None:
+        return "Your account isn't set up for an organisation yet. Ask an administrator."
+    org = get_org_registry().get(user.organisation_id)
+    if org is None:
+        return "Your account's organisation no longer exists. Ask an administrator."
+    if org.status != OrgStatus.ACTIVE:
+        return "Your organisation's access is suspended."
+    return None
 
 
 def require(permission: Permission):
