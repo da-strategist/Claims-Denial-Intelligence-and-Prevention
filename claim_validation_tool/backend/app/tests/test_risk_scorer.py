@@ -49,7 +49,6 @@ def test_rule_findings_by_severity():
         ({"has_prior_denial": True}, "Patient has prior denials", 20),
         ({"pa_required": True}, "Missing prior authorization", 15),
         ({"primary_icd10": "  "}, "Missing primary diagnosis", 10),
-        ({"is_clean_claim": False}, "Not a clean claim", 5),
     ],
 )
 def test_claim_attribute_factors(changes, label, points):
@@ -60,6 +59,11 @@ def test_preventable_denial_adds_to_denial_history():
     assert factors(has_prior_denial=True, has_prior_preventable_denial=True)[0] == 25
     # Without a prior denial the preventable flag can't apply
     assert factors(has_prior_preventable_denial=True)[0] == 0
+
+
+def test_non_clean_claim_is_left_to_the_rules():
+    # RULE-008 already turns it into a warning; scoring it here too would count it twice
+    assert factors(is_clean_claim=False) == (0, {})
 
 
 def test_prior_auth_obtained_is_no_risk():

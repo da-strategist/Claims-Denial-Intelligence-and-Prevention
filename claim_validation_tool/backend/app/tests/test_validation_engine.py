@@ -141,15 +141,15 @@ def test_seed_rules_on_fixture_claims(repo):
         ("Prior denial was preventable", 5),
     ]
 
-    # Missing PA (error) + non-clean (warning), AR aging, missing PA, non-clean.
-    # Its own denial is not denial history, which leaves it exactly at the AI fix threshold.
+    # Missing PA (error) + non-clean (warning), AR aging, missing PA. Its own denial is not
+    # denial history, which leaves it just under the AI fix threshold.
     claim2 = by_id["CLM0000002"]
     assert {f.rule_name for f in claim2.findings} == {
         "Missing Prior Authorization",
         "Non-Clean Claim Review",
     }
-    assert claim2.risk_score == 25 + 10 + 5 + 15 + 5
-    assert claim2.status == ValidationStatus.AI_FIX
+    assert claim2.risk_score == 25 + 10 + 5 + 15
+    assert claim2.status == ValidationStatus.ERROR
 
     # Warnings only: non-clean; 60 days in AR is not *over* 60, so no AR rule
     claim4 = by_id["CLM0000004"]

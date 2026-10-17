@@ -101,7 +101,8 @@ def create_claim(
         "total_paid": 0.0,
         "patient_responsibility": 0.0,
         "days_in_ar": 0,
-        "is_clean_claim": False,
+        # Nothing is known to be wrong with a new claim; rules and AI Fix flag real problems
+        "is_clean_claim": True,
     }
     try:
         claim = repo.add_claim(fields, lines)

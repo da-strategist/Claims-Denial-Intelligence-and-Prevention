@@ -104,7 +104,7 @@ Factors:
 - AR aging over 30 / 60 / 90 days: 5 / 10 / 15 pts
 - Missing prior auth: 15 pts
 - Missing diagnosis: 10 pts
-- Non-clean claim: 5 pts
+- Non-clean claim: scored only through rule findings (Non-Clean Claim Review), so it isn't counted twice
 
 ## Clarification Assistant: Data Handling
 

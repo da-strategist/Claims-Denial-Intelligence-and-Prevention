@@ -39,7 +39,7 @@ def test_create_claim_assigns_ids_and_defaults(client):
     assert claim["total_charge"] == 95.0  # standard charge × 1 unit
     assert (claim["status"], claim["total_paid"], claim["days_in_ar"]) == ("Draft", 0, 0)
     assert claim["is_overdue"] is False
-    assert claim["is_clean_claim"] is False
+    assert claim["is_clean_claim"] is True  # nothing known to be wrong yet
     assert [(line["cpt_code"], line["cpt_category"], line["charge_amount"]) for line in claim["lines"]] == [
         ("99213", "E&M", 95.0)
     ]
@@ -50,8 +50,8 @@ def test_create_claim_assigns_ids_and_defaults(client):
 def test_new_claim_is_validated_and_listed(client):
     body = create(client, pa_required=True).json()
     validation = body["validation"]
-    # Missing prior auth (error) + non-clean claim (warning)
-    assert [f["rule_id"] for f in validation["findings"]] == ["RULE-002", "RULE-008"]
+    # Missing prior auth (error); a new claim isn't flagged non-clean
+    assert [f["rule_id"] for f in validation["findings"]] == ["RULE-002"]
     assert validation["status"] == "error"
 
     claim_id = body["claim"]["claim_id"]
@@ -92,7 +92,7 @@ def test_ai_fix_works_on_new_claim(client):
         json={"suggestion_id": f"{claim_id}:RULE-002", "values": {"pa_number": "AUTH-9"}},
     )
     assert res.status_code == 200, res.text
-    assert res.json()["after"]["validation"]["status"] == "warning"
+    assert res.json()["after"]["validation"]["status"] == "pass"
 
 
 def test_pa_number_is_stored(client):
@@ -209,7 +209,7 @@ def submit(client, claim_id):
 
 
 def test_submit_turns_a_clean_draft_pending(client, today):
-    claim_id = create(client).json()["claim"]["claim_id"]  # only a warning (non-clean)
+    claim_id = create(client).json()["claim"]["claim_id"]  # passes every rule
     res = submit(client, claim_id)
     assert res.status_code == 200, res.text
     claim = res.json()["claim"]

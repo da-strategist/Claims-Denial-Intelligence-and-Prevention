@@ -51,8 +51,9 @@ Submission is blocked while a claim has rule errors. Drafts aren't counted in de
 ### Risk score (0–100)
 
 25 points per rule error, 10 per warning, 20 for prior patient denials (+5 if preventable),
-5–15 for AR aging past 30/60/90 days, 15 for missing prior auth, 10 for a missing diagnosis,
-5 for a non-clean claim. Capped at 100. A claim with an error and a score of 60+ is routed to AI Fix.
+5–15 for AR aging past 30/60/90 days, 15 for missing prior auth, 10 for a missing diagnosis.
+Capped at 100. A non-clean claim counts once, through the Non-Clean Claim Review rule (a
+warning), not again as a risk factor. New claims start clean. A claim with an error and a score of 60+ is routed to AI Fix.
 
 ## Setup
 

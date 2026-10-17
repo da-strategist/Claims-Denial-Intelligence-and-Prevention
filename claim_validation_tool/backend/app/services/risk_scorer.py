@@ -2,7 +2,10 @@
 
 Weights follow PROJECT_GUIDE.md: rule findings carry most of the weight, and claim
 attributes that correlate with denials (prior denials, AR aging, missing prior auth,
-missing diagnosis, non-clean submission) add to it.
+missing diagnosis) add to it.
+
+Whether a claim is clean is scored only through rules (the seed rule Non-Clean Claim
+Review), so the same fact never counts twice.
 
 Denial history means the patient's earlier denials that were known when this claim
 was submitted, never the claim's own denial, so the score reflects pre-submission risk.
@@ -21,7 +24,6 @@ DENIAL_HISTORY_POINTS = 20
 PREVENTABLE_DENIAL_POINTS = 5
 MISSING_PRIOR_AUTH_POINTS = 15
 MISSING_DIAGNOSIS_POINTS = 10
-NON_CLEAN_CLAIM_POINTS = 5
 
 # (days in AR above which the points apply, points), checked highest first
 AR_AGING_TIERS = [(90, 15), (60, 10), (30, 5)]
@@ -56,8 +58,6 @@ def score_claim(
         factors.append(_factor("Missing prior authorization", MISSING_PRIOR_AUTH_POINTS))
     if not str(claim["primary_icd10"]).strip():
         factors.append(_factor("Missing primary diagnosis", MISSING_DIAGNOSIS_POINTS))
-    if not claim["is_clean_claim"]:
-        factors.append(_factor("Not a clean claim", NON_CLEAN_CLAIM_POINTS))
 
     score = min(sum(f.points for f in factors), MAX_SCORE)
     return score, factors

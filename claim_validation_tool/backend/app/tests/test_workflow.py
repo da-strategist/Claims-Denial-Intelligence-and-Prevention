@@ -60,7 +60,7 @@ def test_claim_from_entry_to_overdue(client, today):
         json={"suggestion_id": suggestion["id"], "values": {"pa_number": "AUTH-42"}},
     )
     assert applied.status_code == 200, applied.text
-    assert applied.json()["after"]["validation"]["status"] == "warning"  # non-clean remains
+    assert applied.json()["after"]["validation"]["status"] == "pass"
     assert client.get(f"/api/claims/{claim_id}").json()["has_corrections"] is True
 
     # 6. Submission: Pending from today, no longer a draft

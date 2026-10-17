@@ -2,7 +2,8 @@
 
 Under the seed rules, CLM0000002 (PAY002, denied) breaks Missing Prior Authorization
 (error) and Non-Clean Claim Review (warning), and has a prior-auth denial
-(CARC 197 / RARC N362).
+(CARC 197 / RARC N362). Its risk score of 55 is below the AI Fix threshold, so its status
+is error; suggestions are offered for every finding regardless.
 """
 
 import pytest
@@ -32,7 +33,7 @@ def apply(client, suggestion_id, values=None, claim_id=CLAIM):
 
 def test_suggestions_follow_findings_then_appeal(client):
     body = fixes(client)
-    assert body["validation"]["status"] == "aifix"
+    assert body["validation"]["status"] == "error"
     assert list(by_id(body)) == ["RULE-002", "RULE-008", "appeal:DEN0000001"]
     assert body["corrections"] == []
 
@@ -76,7 +77,7 @@ def test_apply_fix_revalidates_and_overlays_the_claim(client):
     res = apply(client, "RULE-002", {"pa_number": "  AUTH-7781 "})
     assert res.status_code == 200
     result = res.json()
-    assert result["before"]["status"] == "aifix"
+    assert result["before"]["status"] == "error"
     assert [f["rule_id"] for f in result["after"]["validation"]["findings"]] == ["RULE-008"]
     assert result["after"]["validation"]["status"] == "warning"
     assert {(c["field"], c["old_value"], c["new_value"]) for c in result["applied"]} == {
@@ -106,7 +107,7 @@ def test_applying_both_fixes_passes_the_claim(client):
 def test_undo_restores_source_values(client):
     apply(client, "RULE-002", {"pa_number": "AUTH-1"})
     body = client.delete(f"/api/aifix/{CLAIM}/corrections").json()
-    assert body["validation"]["status"] == "aifix"
+    assert body["validation"]["status"] == "error"
     assert body["corrections"] == []
     claim = client.get(f"/api/claims/{CLAIM}").json()
     assert (claim["pa_obtained"], claim["pa_number"], claim["has_corrections"]) == (
