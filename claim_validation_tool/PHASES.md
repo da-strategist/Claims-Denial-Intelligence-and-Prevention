@@ -123,11 +123,13 @@ continuous claims:
 - **Encrypt before the first real file.** Encrypting later leaves plain-text copies behind
   in earlier backups (e.g. Time Machine snapshots) and in deleted disk blocks. On a new
   server, set the master key before any real patient data is loaded.
-- **HTTPS.** Production mode needs `RCM_COOKIE_SECURE=1`; set `RCM_ALLOWED_ORIGINS` to the
-  address the app is served from.
+- **HTTPS.** Use `deploy/Caddyfile.production` (automatic Let's Encrypt certificate, HSTS,
+  content security policy), keep the API on 127.0.0.1, and set `RCM_COOKIE_SECURE=1` and
+  `RCM_ALLOWED_ORIGINS` to the app's address (production mode refuses to start without the
+  first). Tested locally with `deploy/https-local.sh`; see the README.
 - **BAAs.** Record each organisation's signed BAA on the Platform page before loading its
   real data; in production mode an organisation without one can't sign in.
-- **Compliance items still open**: an HTTPS certificate in front of the API, moving the master key to
+- **Compliance items still open**: moving the master key to
   a cloud key service, single sign-on, a BAA/DPA with Anthropic and the clearinghouse, and
   audit-log retention.
 

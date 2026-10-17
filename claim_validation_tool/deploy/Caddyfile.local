@@ -1,0 +1,22 @@
+# HTTPS on this computer: https://localhost:8443 in front of the API (:8000) and the Vite
+# dev server (:5173), with a certificate from mkcert. Run ./https-local.sh from this folder.
+{
+	admin off
+	auto_https disable_redirects
+}
+
+import security-headers.caddy
+
+https://localhost:8443 {
+	tls certs/localhost.pem certs/localhost-key.pem
+	import security_headers
+	# No HSTS here: browsers apply it to every port on localhost, which would break plain
+	# http://localhost:5173 during development
+
+	handle /api/* {
+		reverse_proxy 127.0.0.1:8000
+	}
+	handle {
+		reverse_proxy 127.0.0.1:5173
+	}
+}

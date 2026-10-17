@@ -207,6 +207,25 @@ npm run dev
 
 App: http://localhost:5173. The Vite dev server proxies `/api` to port 8000.
 
+### HTTPS
+
+On this computer, Caddy serves the app at **https://localhost:8443**, in front of the API
+(:8000) and the dev server (:5173), with a certificate from mkcert:
+
+```bash
+brew install mkcert caddy
+mkcert -install                      # once: trust mkcert's local certificate authority (asks for your Mac password)
+./deploy/https-local.sh              # with the API and `npm run dev` running
+```
+
+On a server, `deploy/Caddyfile.production` gets and renews a Let's Encrypt certificate
+for your domain by itself, serves the built frontend (`npm run build`), adds HSTS and a
+strict content security policy, and passes `/api/*` to the API listening on 127.0.0.1
+only. Run the API there with `RCM_ENVIRONMENT=production`, `RCM_COOKIE_SECURE=1`, and
+`RCM_ALLOWED_ORIGINS=https://<your domain>`; instructions are at the top of the file.
+`http://localhost:5173` keeps working during development (Chrome treats localhost as
+secure, so the HTTPS-only cookie is still sent).
+
 ### Configuration
 
 | Variable | Default | Purpose |
@@ -283,6 +302,7 @@ permission), 404/409/422 business errors, or FastAPI's field list for request va
 claim_validation_tool/
 ├── PROJECT_GUIDE.md        # Architecture, conventions, domain context
 ├── PHASES.md               # Build phases and progress
+├── deploy/                  # Caddy configs for HTTPS: local (mkcert) and production (Let's Encrypt)
 ├── backend/app/
 │   ├── main.py             # FastAPI app, CORS, audit middleware, routers, data preload
 │   ├── users.py            # Account management CLI (python -m app.users)
@@ -311,7 +331,8 @@ claim_validation_tool/
 - Synthetic data: payer, coding (LCD/NCCI/MUE), and contract checks are limited to what it contains.
   Some defaults suit only this sample (the Overview opens on All time, sample patient details are
   generated); `PHASES.md` lists what to change before going live on real claims.
-- Not yet fit for real patient data: no HTTPS, the encryption master key sits in `.env` rather
+- Not yet fit for real patient data: HTTPS is tested only on this computer (the server
+  config is ready but there's no server yet), the encryption master key sits in `.env` rather
   than a key service, local accounts rather than single sign-on, and no agreement (BAA/DPA)
   with Anthropic. Sessions live in memory, so a
   restart signs everyone out, and the audit log has no rotation or retention policy.
