@@ -2,7 +2,8 @@ import { useState } from 'react'
 import PageHeader, { Notice, Page } from '../components/PageHeader'
 import { FIELD_CLASS } from '../constants'
 import { useApi } from '../hooks/useApi'
-import { listAuditEvents, verifyAuditLog } from '../services/api'
+import EmergencyAccessList from '../components/EmergencyAccessList'
+import { endOrgEmergencyAccess, listAuditEvents, listOrgEmergencyAccess, verifyAuditLog } from '../services/api'
 
 // Success is the norm, so it stays quiet
 const OUTCOME_STYLES = {
@@ -39,6 +40,30 @@ function Details({ event }) {
 }
 
 /** Who did what to which record, newest first (admins only). */
+/** The platform's emergency access to this organisation: shown first when any is active. */
+function EmergencySection() {
+  const { data: grants, reload } = useApi((options) => listOrgEmergencyAccess(options))
+  if (!grants?.length) return null
+  return (
+    <section aria-labelledby="org-emergency" className="card space-y-1 px-6 py-4">
+      <h2 id="org-emergency" className="text-[15px] font-semibold text-gray-900">
+        Platform emergency access
+      </h2>
+      <p className="text-xs text-gray-500">
+        The service’s operators looking at your data, read-only, with their reason. You can end it at any time.
+      </p>
+      <EmergencyAccessList
+        grants={grants}
+        showOrganisation={false}
+        onEnd={async (grant) => {
+          await endOrgEmergencyAccess(grant.id)
+          reload()
+        }}
+      />
+    </section>
+  )
+}
+
 export default function AuditLog() {
   const [draft, setDraft] = useState(EMPTY_FILTERS)
   const [filters, setFilters] = useState(EMPTY_FILTERS)
@@ -54,6 +79,7 @@ export default function AuditLog() {
         subtitle="Every request: who made it, the records involved, and whether it was allowed."
       />
       <ChainStatus />
+      <EmergencySection />
 
       <form
         className="flex flex-wrap items-end gap-3"

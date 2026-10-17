@@ -8,7 +8,8 @@
     uv run python -m app.users enable alice
 
 Roles: analyst (claims and dashboards, no patient details), biller (also patient details and
-changing claims), admin (also validation rules and the audit log).
+changing claims), admin (also validation rules, users, and the audit log), and platform
+(runs the hosted service: organisations only, no patient data; created without --org).
 """
 
 import argparse
@@ -34,7 +35,9 @@ def main(argv: list[str] | None = None) -> int:
     add.add_argument("username")
     add.add_argument("--name", help="display name (defaults to the username)")
     add.add_argument("--role", type=Role, choices=list(Role), required=True)
-    add.add_argument("--org", required=True, help="organisation ID (see python -m app.orgs list)")
+    add.add_argument(
+        "--org", help="organisation ID (see python -m app.orgs list); not for --role platform"
+    )
     commands.add_parser("list", help="show accounts")
     for name, text in [
         ("password", "set a new password"),
@@ -51,7 +54,12 @@ def main(argv: list[str] | None = None) -> int:
     try:
         match args.command:
             case "add":
-                if get_org_registry().get(args.org) is None:
+                if args.role == Role.PLATFORM:
+                    if args.org:
+                        raise ValueError("Platform accounts belong to no organisation: leave out --org")
+                elif not args.org:
+                    raise ValueError("Give the account's organisation with --org")
+                elif get_org_registry().get(args.org) is None:
                     raise LookupError(f"No organisation {args.org} (see python -m app.orgs list)")
                 user = users.add(
                     args.username, args.name or args.username, args.role, _new_password(), args.org
@@ -60,7 +68,7 @@ def main(argv: list[str] | None = None) -> int:
             case "list":
                 for user in users.list():
                     state = "active" if user.active else "disabled"
-                    org = user.organisation_id or "(no organisation)"
+                    org = user.organisation_id or ("(platform)" if user.role == Role.PLATFORM else "(none)")
                     print(f"{user.username:20} {org:14} {user.role:8} {state:9} {user.display_name}")
             case "password":
                 users.update(args.username, password=_new_password())

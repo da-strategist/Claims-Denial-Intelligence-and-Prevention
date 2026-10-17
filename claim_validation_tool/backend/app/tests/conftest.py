@@ -6,6 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.data.audit import get_audit_log, get_platform_audit_log
+from app.data.emergency import get_emergency_access
 from app.data.orgs import get_org_registry
 from app.data.corrections import get_correction_store
 from app.data.drafts import get_draft_store
@@ -18,7 +19,7 @@ from app.data.repository import ClaimsRepository, get_repository
 from app.data.rules import get_rule_repository
 from app.data.users import get_user_store, hash_password
 from app.main import app
-from app.models import Role
+from app.models import ORGANISATION_ROLES, Role
 from app.services.assistant import get_answer_writer, get_name_scrubber, get_retriever
 from app.services.auth import (
     SESSION_COOKIE,
@@ -36,8 +37,9 @@ ORGS = {"meridian": FIXTURES_DIR, "lakeside": LAKESIDE_FIXTURES_DIR}
 # all with this password (hashed once: scrypt is deliberately slow)
 TEST_PASSWORD = "Fixture-password-1"
 _TEST_HASH = hash_password(TEST_PASSWORD)
-USERNAMES = {role: f"{role}1" for role in Role}
-LAKESIDE_USERNAMES = {role: f"{role}2" for role in Role}
+USERNAMES = {role: f"{role}1" for role in ORGANISATION_ROLES}
+LAKESIDE_USERNAMES = {role: f"{role}2" for role in ORGANISATION_ROLES}
+PLATFORM_USERNAME = "platform1"  # runs the service; belongs to no organisation
 
 
 def _write_users(path: Path) -> None:
@@ -55,6 +57,16 @@ def _write_users(path: Path) -> None:
         }
         for org, names in (("meridian", USERNAMES), ("lakeside", LAKESIDE_USERNAMES))
         for role, username in names.items()
+    ] + [
+        {
+            "username": PLATFORM_USERNAME,
+            "display_name": "Test platform",
+            "role": "platform",
+            "password_hash": _TEST_HASH,
+            "active": True,
+            "created_at": now,
+            "password_changed_at": now,
+        }
     ]
     path.write_text(json.dumps({"users": users}))
 
@@ -113,8 +125,11 @@ def org_folder(org: str = "meridian") -> Path:
 def sign_in(client: TestClient, role: Role, org: str = "meridian") -> TestClient:
     """Give the client a session as the test user with `role` in `org` (skips the slow
     password check)."""
-    names = USERNAMES if org == "meridian" else LAKESIDE_USERNAMES
-    token = get_session_store().create(names[role])
+    if role == Role.PLATFORM:
+        username = PLATFORM_USERNAME
+    else:
+        username = (USERNAMES if org == "meridian" else LAKESIDE_USERNAMES)[role]
+    token = get_session_store().create(username)
     client.cookies.set(SESSION_COOKIE, token)
     return client
 
@@ -140,6 +155,7 @@ def anon_client(monkeypatch, tmp_path) -> TestClient:
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     caches = (
         get_org_registry,
+        get_emergency_access,
         get_platform_audit_log,
         get_repository,
         get_rule_repository,

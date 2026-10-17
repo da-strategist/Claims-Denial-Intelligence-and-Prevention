@@ -64,6 +64,14 @@ stays organisation-wide (`.base`) and callers look up only what they can see.
 `test_scope.py` covers each kind of limit, every claim route, the Overview, patients,
 new claims, saved forms, and the admin safeguards.
 
+**Platform and emergency access:** `Role.PLATFORM` (`ROLE_PERMISSIONS`: only
+`platform:manage`; admins get everything else) has no organisation. `current_user` gives a
+platform account with an active grant (`data/emergency.py`) a per-request copy with that
+organisation and `EMERGENCY_PERMISSIONS` (read-only), so the normal organisation wall,
+scope, and audit routing apply unchanged; `current_org_id` refuses platform accounts
+without a grant. `/api/platform/*` requests always go to the platform audit log; grants
+are also recorded in the organisation's own log. `routers/platform.py`, `test_platform.py`.
+
 **Conventions:**
 - All API routes prefixed with `/api/`
 - Never reach data through a global: take the organisation's stores from `services/org_context.py`

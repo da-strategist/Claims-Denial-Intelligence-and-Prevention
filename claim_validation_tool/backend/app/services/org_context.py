@@ -9,7 +9,7 @@ Claims additionally pass through the account's access scope (data/scoped.py).
 
 from typing import Annotated
 
-from fastapi import Depends
+from fastapi import Depends, HTTPException
 
 from app.data.audit import AuditLog, get_audit_log
 from app.data.corrections import CorrectionStore, get_correction_store
@@ -26,7 +26,13 @@ from app.services.status_snapshot import StatusSnapshot, get_status_snapshot
 
 
 def current_org_id(user: SignedIn) -> str:
-    """The signed-in user's organisation (current_user refuses accounts without one)."""
+    """The signed-in user's organisation. Platform accounts have none unless they're using
+    emergency access (current_user refuses every other account without one)."""
+    if user.organisation_id is None:
+        raise HTTPException(
+            status_code=403,
+            detail="Platform accounts see no organisation's data without emergency access",
+        )
     return user.organisation_id
 
 

@@ -50,5 +50,12 @@ export function useAuthState() {
     }
   }, [])
 
-  return { ...state, signIn, signOut }
+  // Re-read who is signed in (e.g. after a platform account starts or ends emergency access)
+  const refresh = useCallback(async () => {
+    const user = await getMe()
+    setState({ status: 'signed-in', user, notice: null })
+    return user
+  }, [])
+
+  return { ...state, signIn, signOut, refresh }
 }

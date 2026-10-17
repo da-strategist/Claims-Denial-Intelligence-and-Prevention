@@ -17,9 +17,10 @@ from typing import Annotated
 
 from fastapi import Depends, HTTPException, Request
 
+from app.data.emergency import get_emergency_access
 from app.data.orgs import OrgStatus, get_org_registry
 from app.data.users import UserStore, get_user_store
-from app.models import Permission, User
+from app.models import Permission, Role, User
 
 SESSION_COOKIE = "rcm_session"
 MAX_FAILED_LOGINS = 5
@@ -32,6 +33,7 @@ PERMISSION_LABELS = {
     Permission.RULES_WRITE: "change validation rules",
     Permission.AUDIT_READ: "read the audit log",
     Permission.USERS_MANAGE: "manage user accounts",
+    Permission.PLATFORM_MANAGE: "manage the platform",
 }
 
 
@@ -141,6 +143,8 @@ def current_user(
     token = request.cookies.get(SESSION_COOKIE)
     session = sessions.touch(token) if token else None
     user = users.get(session.username) if session else None
+    if user is not None and user.role == Role.PLATFORM:
+        user = with_emergency_access(user)
     # An account without a working organisation reaches no data at all (fail closed)
     if user is None or not user.active or organisation_problem(user):
         if token:
@@ -154,8 +158,23 @@ def current_user(
 SignedIn = Annotated[User, Depends(current_user)]
 
 
+def with_emergency_access(user: User) -> User:
+    """A platform account, as an organisation's read-only user while it has emergency
+    access to it (this request only; nothing is stored on the account)."""
+    grant = get_emergency_access().active_for(user.username)
+    org = get_org_registry().get(grant.organisation_id) if grant else None
+    if grant is None or org is None or org.status != OrgStatus.ACTIVE:
+        return user
+    return user.model_copy(
+        update={"organisation_id": grant.organisation_id, "emergency_access_id": grant.id}
+    )
+
+
 def organisation_problem(user: User) -> str | None:
-    """Why this account can't reach its organisation's data, or None if it can."""
+    """Why this account can't reach its organisation's data, or None if it can. Platform
+    accounts belong to no organisation and only reach one through emergency access."""
+    if user.role == Role.PLATFORM and user.emergency_access_id is None:
+        return None
     if user.organisation_id is None:
         return "Your account isn't set up for an organisation yet. Ask an administrator."
     org = get_org_registry().get(user.organisation_id)

@@ -24,6 +24,42 @@ const navLinks = () =>
     .getAllByRole('link')
     .map((link) => link.textContent)
 
+const PLATFORM = { ...user('platform', ['platform:manage']), organisation: null }
+const PLATFORM_PAGE = {
+  'GET /platform/organisations': () => [
+    { id: 'lakeside', name: 'Lakeside Family Practice', status: 'active', created_at: '2026-10-17T10:00:00Z', accounts: 1, active_admins: 1 },
+  ],
+  'GET /platform/emergency-access': () => [],
+  'GET /platform/audit': () => [],
+}
+
+describe('platform accounts', () => {
+  it('see only the Platform page, with no organisation', async () => {
+    window.location.hash = '#/claims'
+    mockApi({ ...PLATFORM_PAGE, 'GET /auth/me': () => PLATFORM })
+    render(<App />)
+    expect(await screen.findByText('Lakeside Family Practice')).toBeInTheDocument()
+    expect(navLinks()).toEqual(['Platform'])
+  })
+
+  it('work read-only under a banner during emergency access', async () => {
+    window.location.hash = '#/jab'
+    const inside = {
+      ...PLATFORM,
+      permissions: ['claims:read', 'patients:read', 'platform:manage'],
+      organisation: { id: 'lakeside', name: 'Lakeside Family Practice' },
+      emergency: { id: 'EA-1', reason: 'Ticket 4471: claims page fails to load', expires_at: '2026-10-17T15:00:00Z' },
+    }
+    mockApi({ ...PAGE, ...PLATFORM_PAGE, 'GET /auth/me': () => inside })
+    render(<App />)
+    const banner = await screen.findByRole('alert')
+    expect(banner).toHaveTextContent('Emergency access to Lakeside Family Practice')
+    expect(banner).toHaveTextContent('Read-only')
+    expect(banner).toHaveTextContent('Ticket 4471')
+    expect(navLinks()).toEqual(['Overview', 'Claims', 'JAB Audit', 'User Guide', 'Platform'])
+  })
+})
+
 describe('organisation', () => {
   it('shows whose data the signed-in user is working in', async () => {
     mockApi({ ...PAGE, 'GET /auth/me': () => ANALYST })

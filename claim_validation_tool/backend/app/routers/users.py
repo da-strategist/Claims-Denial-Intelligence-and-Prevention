@@ -16,6 +16,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from app.data.scoped import ScopedClaims
 from app.data.users import UserStore, get_user_store
 from app.models import (
+    ORGANISATION_ROLES,
     AccessScope,
     PasswordReset,
     Permission,
@@ -59,6 +60,7 @@ def create_user(body: UserCreate, users: Users, request: Request, org_id: OrgId)
     """Add an account. The password must meet the policy (12+ characters, mixed case,
     and a digit or symbol)."""
     audit_note(request, new_user=body.username, role=body.role)
+    _organisation_role(body.role)
     try:
         # Into the administrator's own organisation; the body can't choose another
         user = users.add(body.username, body.display_name, body.role, body.password, org_id)
@@ -81,6 +83,8 @@ def update_user(
 ) -> UserSummary:
     """Rename, change role, limit what the account sees (`scope`), or disable / enable it."""
     target = _target(users, username, org_id)
+    if body.role is not None:
+        _organisation_role(body.role)
     is_me = target.username == me.username
     if is_me and body.role is not None and body.role != target.role:
         raise HTTPException(
@@ -139,6 +143,11 @@ def reset_password(
         raise HTTPException(status_code=422, detail=str(err)) from err
     if target.username != me.username:
         sessions.end_all(target.username)
+
+
+def _organisation_role(role: Role) -> None:
+    if role not in ORGANISATION_ROLES:
+        raise HTTPException(status_code=422, detail="Organisations can only give analyst, biller, or admin roles")
 
 
 def _check_scope_ids(scope: AccessScope, claims: ScopedClaims) -> None:

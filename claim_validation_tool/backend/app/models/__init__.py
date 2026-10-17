@@ -29,6 +29,9 @@ from app.models.auth import (
     UserSummary,
     UserUpdate,
     OrganisationSummary,
+    EMERGENCY_PERMISSIONS,
+    ORGANISATION_ROLES,
+    EmergencySummary,
 )
 from app.models.assistant import (
     AssistantAnswer,
@@ -121,6 +124,9 @@ from app.models.rule import (
 )
 
 __all__ = [
+    "EmergencySummary",
+    "EMERGENCY_PERMISSIONS",
+    "ORGANISATION_ROLES",
     "AccessScope",
     "OrganisationSummary",
     "PasswordReset",

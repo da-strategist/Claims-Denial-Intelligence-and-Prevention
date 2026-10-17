@@ -5,9 +5,10 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 
 from app.data.users import UserStore, get_user_store
+from app.data.emergency import get_emergency_access
 from app.data.orgs import get_org_registry
 from app.data.repository import get_repository
-from app.models import CurrentUser, LoginRequest, OrganisationSummary, User
+from app.models import CurrentUser, EmergencySummary, LoginRequest, OrganisationSummary, User
 from app.services.auth import (
     SESSION_COOKIE,
     LoginThrottle,
@@ -40,11 +41,15 @@ def _access(user: User) -> str | None:
 
 
 def _current(user: User, sessions: SessionStore, created) -> CurrentUser:
-    org = get_org_registry().get(user.organisation_id)
+    org = get_org_registry().get(user.organisation_id) if user.organisation_id else None
+    grant = get_emergency_access().active_for(user.username) if user.emergency_access_id else None
     return CurrentUser(
         username=user.username,
-        organisation=OrganisationSummary(id=org.id, name=org.name),
-        access=_access(user),
+        organisation=OrganisationSummary(id=org.id, name=org.name) if org else None,
+        emergency=EmergencySummary(id=grant.id, reason=grant.reason, expires_at=grant.expires_at)
+        if grant
+        else None,
+        access=_access(user) if org else None,
         display_name=user.display_name,
         role=user.role,
         permissions=sorted(user.permissions),

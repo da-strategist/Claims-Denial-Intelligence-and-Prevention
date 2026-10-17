@@ -86,6 +86,30 @@ export const updateUser = (username, changes) =>
 export const resetUserPassword = (username, password) =>
   request(`/users/${encodeURIComponent(username)}/password`, { method: 'POST', body: { password } })
 
+/** Platform administration (platform accounts only). */
+export const listOrganisations = (options) => request('/platform/organisations', options)
+export const createOrganisation = (org) => request('/platform/organisations', { method: 'POST', body: org })
+export const setOrganisationActive = (orgId, active) =>
+  request(`/platform/organisations/${encodeURIComponent(orgId)}/${active ? 'reactivate' : 'suspend'}`, {
+    method: 'POST',
+  })
+export const addOrganisationAdmin = (orgId, admin) =>
+  request(`/platform/organisations/${encodeURIComponent(orgId)}/admins`, { method: 'POST', body: admin })
+export const startEmergencyAccess = (orgId, reason, minutes) =>
+  request(`/platform/organisations/${encodeURIComponent(orgId)}/emergency-access`, {
+    method: 'POST',
+    body: { reason, minutes },
+  })
+export const listEmergencyAccess = (options) => request('/platform/emergency-access', options)
+export const endEmergencyAccess = (grantId) =>
+  request(`/platform/emergency-access/${encodeURIComponent(grantId)}/end`, { method: 'POST' })
+export const listPlatformAudit = (options) => request('/platform/audit', options)
+
+/** The platform's emergency access to the signed-in admin's organisation. */
+export const listOrgEmergencyAccess = (options) => request('/audit/emergency-access', options)
+export const endOrgEmergencyAccess = (grantId) =>
+  request(`/audit/emergency-access/${encodeURIComponent(grantId)}/end`, { method: 'POST' })
+
 export const listAuditEvents = (params, options) => request('/audit', { ...options, params })
 
 /** Whether the audit log's hash chain is intact: { ok, events, first_bad_seq }. */

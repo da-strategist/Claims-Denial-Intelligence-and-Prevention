@@ -22,6 +22,7 @@ from app.routers import (
     payers,
     reference,
     rules,
+    platform,
     users,
     validation,
 )
@@ -72,6 +73,7 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(audit.router)
 app.include_router(users.router)
+app.include_router(platform.router)
 app.include_router(claims.router)
 app.include_router(drafts.router)
 app.include_router(payers.router)
@@ -114,7 +116,11 @@ def _audit(request: Request, status_code: int) -> None:
         if detail.get(key):
             records[key] = str(detail.pop(key))
     username = user.username if user else detail.pop("attempted_username", None)
-    _audit_log_for(user, username).record(
+    if user is not None and user.emergency_access_id:
+        detail["emergency_access"] = user.emergency_access_id
+    platform_route = request.url.path.startswith("/api/platform/")
+    log = get_platform_audit_log() if platform_route else _audit_log_for(user, username)
+    log.record(
         username=username,
         role=user.role if user else None,
         action=f"{request.method} {route.path if route else request.url.path}",

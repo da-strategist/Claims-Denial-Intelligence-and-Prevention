@@ -162,6 +162,25 @@ def generate(out_dir: Path, shared_from: Path, patients: int = 300, claims: int 
            denial_rows)
 
 
+# The tables each organisation has of its own (everything else is shared code sets)
+ORGANISATION_TABLES = [
+    "dim_departments", "dim_providers", "dim_facilities", "dim_payer_contracts", "dim_patients",
+    "fact_claims", "fact_claim_lines", "fact_denials",
+]
+
+
+def empty(out_dir: Path, shared_from: Path) -> None:
+    """A new organisation's data folder: the shared code sets, and its own tables with
+    headers only, ready for its patients, providers, facilities, and claims to be loaded."""
+    out_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
+    for table in SHARED_TABLES:
+        shutil.copyfile(shared_from / f"{table}.csv", out_dir / f"{table}.csv")
+    for table in ORGANISATION_TABLES:
+        with (shared_from / f"{table}.csv").open() as f:
+            header = f.readline()
+        (out_dir / f"{table}.csv").write_text(header)
+
+
 def _read(path: Path) -> list[dict[str, str]]:
     with path.open(newline="") as f:
         return list(csv.DictReader(f))

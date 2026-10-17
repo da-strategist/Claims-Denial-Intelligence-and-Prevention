@@ -222,7 +222,9 @@ const SECTIONS = [
             switching off a rule also stops it blocking submission.
           </Term>
           <Term name="Audit Log">
-            Every request: who, what, which records, and the outcome. Filter by user, record, or
+            Every request: who, what, which records, and the outcome. If the service’s operators
+            ever need emergency access to your data, it appears at the top with their reason, and
+            you can end it at any time; it is read-only and everything they open is logged. Filter by user, record, or
             outcome; the hash check shows whether the log has been altered.
           </Term>
           <Term name="Users">

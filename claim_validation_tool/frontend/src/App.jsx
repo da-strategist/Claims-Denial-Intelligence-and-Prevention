@@ -6,11 +6,13 @@ import { AuthContext, useAuth, useAuthState } from './hooks/useAuth'
 import AuditLog from './pages/AuditLog'
 import ClaimsWorkbench from './pages/ClaimsWorkbench'
 import JabAudit from './pages/JabAudit'
+import Platform from './pages/Platform'
 import Login from './pages/Login'
 import NewClaim from './pages/NewClaim'
 import RuleManager from './pages/RuleManager'
 import UserGuide from './pages/UserGuide'
 import Users from './pages/Users'
+import { endEmergencyAccess } from './services/api'
 import { hashPath } from './utils/route'
 
 // Loaded on demand: the chart library is most of its weight
@@ -27,6 +29,7 @@ const ROUTES = [
   { hash: '#/jab', label: 'JAB Audit', icon: 'loop', Page: JabAudit, permission: 'claims:read' },
   { hash: '#/guide', label: 'User Guide', icon: 'book', Page: UserGuide, permission: 'claims:read' },
   { hash: '#/users', label: 'Users', icon: 'users', Page: Users, permission: 'users:manage', admin: true },
+  { hash: '#/platform', label: 'Platform', icon: 'overview', Page: Platform, permission: 'platform:manage', admin: true },
   { hash: '#/audit', label: 'Audit Log', icon: 'shield', Page: AuditLog, permission: 'audit:read', admin: true },
 ]
 
@@ -111,6 +114,30 @@ function UserMenu({ user, onSignOut }) {
   )
 }
 
+/** Across every page while a platform account uses emergency access: whose data, until when. */
+function EmergencyBanner({ user, onEnd }) {
+  const { organisation, emergency } = user
+  const until = new Date(emergency.expires_at).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
+  return (
+    <div role="alert" className="flex flex-wrap items-center gap-x-4 gap-y-2 bg-red-600 px-4 py-2.5 text-sm text-white sm:px-8">
+      <span className="font-semibold">Emergency access to {organisation.name}</span>
+      <span>Read-only · ends {until} · “{emergency.reason}”</span>
+      <span className="text-red-100">Everything you open is in their audit log.</span>
+      <button
+        type="button"
+        className="ml-auto rounded-full bg-white px-3 py-1 text-xs font-semibold text-red-700 hover:bg-red-50"
+        onClick={async () => {
+          await endEmergencyAccess(emergency.id)
+          await onEnd()
+          window.location.hash = '#/platform'
+        }}
+      >
+        End now
+      </button>
+    </div>
+  )
+}
+
 function Shell() {
   const auth = useAuth()
   const routes = ROUTES.filter((r) => auth.user.permissions.includes(r.permission))
@@ -130,7 +157,7 @@ function Shell() {
             <div className="text-[15px] font-semibold tracking-tight text-gray-900">ClaustraRCM</div>
             {/* Whose data this is: each organisation's is kept apart from the others' */}
             <div className="truncate text-xs text-gray-500" title={auth.user.organisation?.name}>
-              {auth.user.organisation?.name ?? 'Claim Validation'}
+              {auth.user.organisation?.name ?? (auth.user.role === 'platform' ? 'Platform' : 'Claim Validation')}
             </div>
           </div>
         </div>
@@ -155,6 +182,7 @@ function Shell() {
         </nav>
       </aside>
       <main className="min-w-0 flex-1">
+        {auth.user.emergency && <EmergencyBanner user={auth.user} onEnd={auth.refresh} />}
         {/* Keyed by the full hash so a new query (e.g. ?search=) starts the page fresh,
             and leaving a crashed page clears the error */}
         <ErrorBoundary key={hash}>

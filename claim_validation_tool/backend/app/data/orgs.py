@@ -70,6 +70,13 @@ class OrgRegistry:
             self._save()
             return org
 
+    def set_status(self, org_id: str, status: OrgStatus) -> Organisation:
+        with self._lock:
+            org = self._require(org_id).model_copy(update={"status": status})
+            self._orgs[org_id] = org
+            self._save()
+            return org
+
     def folder(self, org_id: str) -> Path:
         """The organisation's app-data folder."""
         return self.root / org_id

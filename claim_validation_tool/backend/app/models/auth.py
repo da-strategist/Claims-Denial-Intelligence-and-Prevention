@@ -23,6 +23,13 @@ class Role(StrEnum):
     ANALYST = "analyst"
     BILLER = "biller"
     ADMIN = "admin"
+    # Runs the hosted service: manages organisations, belongs to none, sees no patient
+    # data except through audited, read-only, time-limited emergency access
+    PLATFORM = "platform"
+
+
+# Roles an organisation's administrators can give (never platform)
+ORGANISATION_ROLES = (Role.ANALYST, Role.BILLER, Role.ADMIN)
 
 
 class Permission(StrEnum):
@@ -32,6 +39,7 @@ class Permission(StrEnum):
     RULES_WRITE = "rules:write"  # create, edit, test, and delete validation rules
     AUDIT_READ = "audit:read"
     USERS_MANAGE = "users:manage"  # create accounts, change roles, reset passwords, disable
+    PLATFORM_MANAGE = "platform:manage"  # organisations, their first admins, emergency access
 
 
 ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
@@ -39,8 +47,12 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
     Role.BILLER: frozenset(
         {Permission.CLAIMS_READ, Permission.PATIENTS_READ, Permission.CLAIMS_WRITE}
     ),
-    Role.ADMIN: frozenset(Permission),
+    Role.ADMIN: frozenset(Permission) - {Permission.PLATFORM_MANAGE},
+    Role.PLATFORM: frozenset({Permission.PLATFORM_MANAGE}),
 }
+
+# What emergency access lets a platform account do inside an organisation: look, never change
+EMERGENCY_PERMISSIONS = frozenset({Permission.CLAIMS_READ, Permission.PATIENTS_READ})
 
 
 class AccessScope(BaseModel):
@@ -80,6 +92,8 @@ class User(BaseModel):
     # organisations) can't sign in until `python -m app.orgs migrate` assigns one.
     organisation_id: str | None = None
     scope: AccessScope = Field(default_factory=AccessScope)
+    # Set per request (never stored) while a platform account uses emergency access
+    emergency_access_id: str | None = Field(default=None, exclude=True)
 
     @property
     def effective_scope(self) -> AccessScope:
@@ -88,6 +102,9 @@ class User(BaseModel):
 
     @property
     def permissions(self) -> frozenset[Permission]:
+        if self.emergency_access_id is not None:
+            # Look inside the organisation, and still manage the platform (e.g. end access)
+            return EMERGENCY_PERMISSIONS | ROLE_PERMISSIONS[self.role]
         return ROLE_PERMISSIONS[self.role]
 
     def can(self, permission: Permission) -> bool:
@@ -135,11 +152,22 @@ class OrganisationSummary(BaseModel):
     name: str
 
 
+class EmergencySummary(BaseModel):
+    """A platform account's current emergency access, for the banner it works under."""
+
+    id: str
+    reason: str
+    expires_at: datetime
+
+
 class CurrentUser(BaseModel):
     """The signed-in user, as the frontend sees them."""
 
     username: str
-    organisation: OrganisationSummary
+    organisation: OrganisationSummary | None = Field(
+        description="None for a platform account outside emergency access"
+    )
+    emergency: EmergencySummary | None = None
     access: str | None = Field(
         default=None, description="What a limited account sees, e.g. 'Cardiology · Dr. Robinson'"
     )

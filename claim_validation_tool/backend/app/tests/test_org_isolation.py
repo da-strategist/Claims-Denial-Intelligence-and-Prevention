@@ -42,6 +42,8 @@ def other_orgs_ids(client, org, role=Role.ADMIN):
         "draft_id": draft_id,
         "rule_id": rule["id"],
         "username": "biller2" if org == "lakeside" else "biller1",
+        "org_id": org,  # platform routes: refused to organisation accounts
+        "grant_id": "EA-0000abcd",
     }
 
 
@@ -78,6 +80,9 @@ def test_lists_and_dashboards_hold_only_the_organisations_own_data(client):
         if "{" in path or method != "GET" or path in ("/api/auth/logout",):
             continue
         res = client.get(path)
+        if path.startswith("/api/platform/"):
+            assert res.status_code == 403, f"an organisation admin reached GET {path}"
+            continue
         assert res.status_code == 200, f"GET {path} -> {res.status_code}"
         leak = LAKESIDE_MARKERS.search(res.text)
         assert leak is None, f"GET {path} shows Lakeside's {leak.group()}"

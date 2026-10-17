@@ -142,6 +142,22 @@ only see that patient's claims and history inside their access. A limited person
 "Showing only: …" on Overview, Claims, and New Claim. Administrators are always
 organisation-wide. Changes apply on the person's next action.
 
+**Platform administration.** Whoever runs the hosted service uses a *platform* account
+(`uv run python -m app.users add ops --name "Ops" --role platform`, no `--org`). It belongs to
+no organisation and sees no patient data. Its **Platform** page lists organisations (status,
+accounts, active admins), creates new ones (starting with the shared code sets and empty
+tables for their own data), adds an organisation's administrator, and suspends or
+reactivates organisations (suspending signs their users out at once). Organisations'
+administrators can't create platform accounts.
+
+**Emergency (break-glass) access.** To look inside an organisation, e.g. for a support case,
+a platform account starts emergency access with a written reason (20+ characters) for 15
+minutes to 4 hours. It is **read-only** (claims and patients), shown in a red banner on every
+page, and ends at the set time or earlier, by the platform or by the organisation's
+administrators. Starting it, ending it, and every request made with it are in the
+organisation's own audit log, and its administrators see each grant and its reason on their
+Audit Log page. Grants are kept in `backend/orgs/break_glass.json`.
+
 ### Accounts
 
 The first administrator is created on the command line, as above. After that, administrators
@@ -219,6 +235,8 @@ All routes are under `/api`; full schemas at `/docs`.
 | Sign-in | `POST /auth/login` · `POST /auth/logout` · `GET /auth/me` |
 | Audit | `GET /audit` (username, record_id, outcome, limit) · `GET /audit/verify` |
 | Users | `GET /users` · `POST /users` · `PATCH /users/{username}` · `POST /users/{username}/password` (administrators) |
+| Platform | `GET/POST /platform/organisations` · `POST /platform/organisations/{id}/suspend` · `…/reactivate` · `…/admins` · `…/emergency-access` · `GET /platform/emergency-access` · `POST /platform/emergency-access/{id}/end` · `GET /platform/audit` (platform accounts) |
+| Emergency access (organisation side) | `GET /audit/emergency-access` · `POST /audit/emergency-access/{id}/end` (administrators) |
 | Claims | `GET /claims` (search, filter, sort, page) · `POST /claims` · `GET /claims/{id}` · `POST /claims/{id}/submit` · `GET /claims/{id}/837` · `GET /claims/{id}/claim-form.pdf` · `GET /claims/{id}/837-readable.pdf` |
 | Saved drafts | `GET /drafts` · `POST /drafts` · `GET /drafts/{id}` · `PUT /drafts/{id}` · `DELETE /drafts/{id}` (billers and admins) |
 | Validation | `GET /validate/{id}` · `POST /validate` (up to 200 claims) |
