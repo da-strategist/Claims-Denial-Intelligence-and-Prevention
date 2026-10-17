@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 
 from app.data.users import UserStore, get_user_store
 from app.data.orgs import get_org_registry
+from app.data.repository import get_repository
 from app.models import CurrentUser, LoginRequest, OrganisationSummary, User
 from app.services.auth import (
     SESSION_COOKIE,
@@ -26,11 +27,24 @@ Sessions = Annotated[SessionStore, Depends(get_session_store)]
 BAD_LOGIN = "Wrong username or password"
 
 
+def _access(user: User) -> str | None:
+    """'Cardiology · Main Campus · Dr. Carol Robinson' for a limited account, else None."""
+    scope = user.effective_scope
+    if not scope.restricted:
+        return None
+    repo = get_repository(user.organisation_id)
+    names = {d.department_id: d.department_name for d in repo.list_departments()}
+    names |= {f.facility_id: f.facility_name for f in repo.list_facilities()}
+    names |= {p.provider_id: p.provider_name for p in repo.list_providers()}
+    return " · ".join(names.get(i, i) for i in (*scope.departments, *scope.facilities, *scope.providers))
+
+
 def _current(user: User, sessions: SessionStore, created) -> CurrentUser:
     org = get_org_registry().get(user.organisation_id)
     return CurrentUser(
         username=user.username,
         organisation=OrganisationSummary(id=org.id, name=org.name),
+        access=_access(user),
         display_name=user.display_name,
         role=user.role,
         permissions=sorted(user.permissions),

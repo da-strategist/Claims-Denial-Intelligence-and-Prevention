@@ -1,3 +1,5 @@
+import { useAuth } from '../hooks/useAuth'
+
 /** Page frame: one title, one line of context, and the page's actions on the right. */
 export function Page({ children, wide = false, narrow = false }) {
   const width = wide ? 'max-w-[1600px]' : narrow ? 'max-w-3xl' : 'max-w-6xl'
@@ -31,5 +33,18 @@ export function Notice({ tone = 'error', children }) {
     <div role={tone === 'error' ? 'alert' : 'status'} className={`rounded-xl px-4 py-3 text-sm ${style}`}>
       {children}
     </div>
+  )
+}
+
+/** For an account limited to part of the organisation: what it's seeing, so a smaller set
+ * of claims never looks like missing data. Nothing for whole-organisation accounts. */
+export function AccessNote() {
+  const access = useAuth()?.user?.access
+  if (!access) return null
+  return (
+    <p className="-mt-3 flex items-center gap-2 text-sm text-amber-800">
+      <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+      Showing only: {access}
+    </p>
   )
 }

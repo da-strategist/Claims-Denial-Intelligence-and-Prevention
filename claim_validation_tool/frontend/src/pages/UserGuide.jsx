@@ -43,7 +43,9 @@ const SECTIONS = [
         <p className="text-[15px] text-gray-700">
           You’re signed in as <strong className="font-medium">{ROLE_LABELS[user.role] ?? user.role}</strong>.{' '}
           {ROLE_SUMMARY[user.role]} This guide only shows what your role can do. The sidebar shows
-          your organisation; you only ever see its patients and claims.
+          your organisation; you only ever see its patients and claims. If an administrator has
+          limited you to some departments, facilities, or providers, the main pages say “Showing
+          only: …”.
         </p>
       </>
     ),
@@ -225,7 +227,9 @@ const SECTIONS = [
           </Term>
           <Term name="Users">
             Add people, change their role, reset a password, or disable an account (which signs
-            them out). You can’t change your own role or disable yourself, and the last active
+            them out). Under each person, <strong className="font-medium">Change</strong> limits what
+            they see to some departments, facilities, or providers (everyone sees the whole
+            organisation until you do). You can’t change your own role or disable yourself, and the last active
             administrator can’t be removed. Every change is in the audit log. Give new passwords
             in person or by phone, not by email. The same can be done on the server with{' '}
             <code className="font-mono text-xs">python -m app.users</code>.

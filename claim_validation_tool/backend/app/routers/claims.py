@@ -8,6 +8,7 @@ from fastapi.responses import PlainTextResponse, Response
 from app.data import (
     ClaimsRepository,
 )
+from app.data.scoped import OutOfScopeError
 from app.models import (
     Claim,
     ClaimCreate,
@@ -149,6 +150,8 @@ def create_claim(
     }
     try:
         claim = repo.add_claim(fields, lines)
+    except OutOfScopeError as err:
+        raise HTTPException(status_code=403, detail=str(err)) from err
     except ValueError as err:  # another request took the same ID first
         raise HTTPException(status_code=409, detail=str(err)) from err
     audit_note(request, claim_id=claim.claim_id)

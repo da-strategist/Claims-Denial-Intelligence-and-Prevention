@@ -4,6 +4,7 @@ Every store and cache is created per organisation (`get_repository(org_id)` and 
 These dependencies take the organisation from the signed-in account, never from the URL,
 a header, or the request body, so a request can only ever touch its own organisation's
 data. Routes declare `repo: OrgClaims` and similar; they never call the getters directly.
+Claims additionally pass through the account's access scope (data/scoped.py).
 """
 
 from typing import Annotated
@@ -16,8 +17,9 @@ from app.data.drafts import DraftStore, get_draft_store
 from app.data.knowledge import KnowledgeBase, get_knowledge_base
 from app.data.reference import ReferenceData, get_reference_data
 from app.data.registrations import RegistrationStore, get_registration_store
-from app.data.repository import ClaimsRepository, get_repository
+from app.data.repository import get_repository
 from app.data.rules import RuleRepository, get_rule_repository
+from app.data.scoped import ScopedClaims
 from app.services.assistant import NameScrubber, Retriever, get_name_scrubber, get_retriever
 from app.services.auth import SignedIn
 from app.services.status_snapshot import StatusSnapshot, get_status_snapshot
@@ -31,8 +33,9 @@ def current_org_id(user: SignedIn) -> str:
 OrgId = Annotated[str, Depends(current_org_id)]
 
 
-def _claims(org_id: OrgId) -> ClaimsRepository:
-    return get_repository(org_id)
+def _claims(org_id: OrgId, user: SignedIn) -> ScopedClaims:
+    """The organisation's claims as this account may see them (its access scope)."""
+    return ScopedClaims(get_repository(org_id), user.effective_scope)
 
 
 def _rules(org_id: OrgId) -> RuleRepository:
@@ -75,7 +78,7 @@ def _names(org_id: OrgId) -> NameScrubber:
     return get_name_scrubber(org_id)
 
 
-OrgClaims = Annotated[ClaimsRepository, Depends(_claims)]
+OrgClaims = Annotated[ScopedClaims, Depends(_claims)]
 OrgRules = Annotated[RuleRepository, Depends(_rules)]
 OrgCorrections = Annotated[CorrectionStore, Depends(_corrections)]
 OrgReference = Annotated[ReferenceData, Depends(_reference)]

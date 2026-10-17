@@ -21,7 +21,10 @@ class StatusSnapshot:
         self._lock = Lock()
 
     def get(self, claims: ClaimsRepository, rules: list[Rule]) -> pd.DataFrame:
-        """Frame indexed by claim_id with `status` and `risk_score` columns."""
+        """Frame indexed by claim_id with `status` and `risk_score` columns, for every claim
+        in the organisation (a ScopedClaims passes its whole organisation's repository; the
+        callers then only look up the claims they can see)."""
+        claims = getattr(claims, "base", claims)
         key = (
             id(claims),
             claims.version,

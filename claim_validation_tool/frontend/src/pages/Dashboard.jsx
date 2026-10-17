@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import Icon from '../components/Icon'
 import KpiCard, { Change } from '../components/KpiCard'
-import PageHeader, { Notice, Page } from '../components/PageHeader'
+import PageHeader, { AccessNote, Notice, Page } from '../components/PageHeader'
 import {
   ArAgingChart,
   ChartCard,
@@ -166,6 +166,8 @@ export default function Dashboard() {
           ]}
         />
       </PageHeader>
+
+      <AccessNote />
 
       {error && <Notice>Could not load the dashboard — {error}</Notice>}
 

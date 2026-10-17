@@ -12,6 +12,7 @@ from app.models.aifix import (
     SuggestionAction,
 )
 from app.models.auth import (
+    AccessScope,
     MIN_PASSWORD_LENGTH,
     ROLE_PERMISSIONS,
     AuditEvent,
@@ -120,6 +121,7 @@ from app.models.rule import (
 )
 
 __all__ = [
+    "AccessScope",
     "OrganisationSummary",
     "PasswordReset",
     "UserCreate",

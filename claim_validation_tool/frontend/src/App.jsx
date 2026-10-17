@@ -94,7 +94,10 @@ function UserMenu({ user, onSignOut }) {
       </div>
       <div className="hidden min-w-0 flex-1 leading-tight sm:block">
         <div className="truncate text-sm font-medium text-gray-900">{user.display_name}</div>
-        <div className="text-xs text-gray-500">{ROLE_LABELS[user.role] ?? user.role}</div>
+        <div className="truncate text-xs text-gray-500" title={user.access ? `Sees only: ${user.access}` : undefined}>
+          {ROLE_LABELS[user.role] ?? user.role}
+          {user.access && ' · limited'}
+        </div>
       </div>
       <button
         onClick={onSignOut}

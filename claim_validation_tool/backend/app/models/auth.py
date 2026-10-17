@@ -11,6 +11,8 @@ from typing import Annotated, Any
 
 from pydantic import BaseModel, Field, StringConstraints
 
+from app.models.common import DepartmentId, FacilityId, ProviderId
+
 Username = Annotated[
     str, StringConstraints(pattern=r"^[a-z][a-z0-9._-]{2,31}$", to_lower=True, strip_whitespace=True)
 ]
@@ -41,6 +43,29 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
 }
 
 
+class AccessScope(BaseModel):
+    """The part of the organisation an account may see (need to know). Empty everywhere
+    means the whole organisation, the default. Otherwise a claim is visible when it matches
+    ANY of the limits: its facility, its department, or its provider. Administrators are
+    always organisation-wide."""
+
+    facilities: list[FacilityId] = Field(default_factory=list, max_length=50)
+    departments: list[DepartmentId] = Field(default_factory=list, max_length=50)
+    providers: list[ProviderId] = Field(default_factory=list, max_length=200)
+
+    @property
+    def restricted(self) -> bool:
+        return bool(self.facilities or self.departments or self.providers)
+
+    def allows(self, facility_id: str | None, department_id: str | None, provider_id: str | None) -> bool:
+        return (
+            not self.restricted
+            or facility_id in self.facilities
+            or department_id in self.departments
+            or provider_id in self.providers
+        )
+
+
 class User(BaseModel):
     """A stored account. `password_hash` never leaves the server."""
 
@@ -54,6 +79,12 @@ class User(BaseModel):
     # The one organisation whose data this account can reach. None (an account from before
     # organisations) can't sign in until `python -m app.orgs migrate` assigns one.
     organisation_id: str | None = None
+    scope: AccessScope = Field(default_factory=AccessScope)
+
+    @property
+    def effective_scope(self) -> AccessScope:
+        """Administrators always see the whole organisation."""
+        return AccessScope() if self.role == Role.ADMIN else self.scope
 
     @property
     def permissions(self) -> frozenset[Permission]:
@@ -72,6 +103,7 @@ class UserSummary(BaseModel):
     active: bool
     created_at: datetime
     password_changed_at: datetime
+    scope: AccessScope
 
 
 class UserCreate(BaseModel):
@@ -89,6 +121,9 @@ class UserUpdate(BaseModel):
     ] | None = None
     role: Role | None = None
     active: bool | None = None
+    scope: AccessScope | None = Field(
+        default=None, description="Limit what the account sees; empty lists = whole organisation"
+    )
 
 
 class PasswordReset(BaseModel):
@@ -105,6 +140,9 @@ class CurrentUser(BaseModel):
 
     username: str
     organisation: OrganisationSummary
+    access: str | None = Field(
+        default=None, description="What a limited account sees, e.g. 'Cardiology · Dr. Robinson'"
+    )
     display_name: str
     role: Role
     permissions: list[Permission]

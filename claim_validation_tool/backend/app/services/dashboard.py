@@ -43,11 +43,16 @@ def build_dashboard(
     statuses: pd.DataFrame,
     payers: dict[str, Payer],
 ) -> Dashboard:
-    """`claims`/`denials` are the full repository frames; `statuses` comes from StatusSnapshot."""
-    data_range = Period(
-        start=date.fromisoformat(claims["service_date"].min()),
-        end=date.fromisoformat(claims["service_date"].max()),
-    )
+    """`claims`/`denials` are the frames the account can see; `statuses` comes from
+    StatusSnapshot. An account limited to an area with no claims gets an empty dashboard."""
+    if claims.empty:
+        today = date.today()
+        data_range = Period(start=today, end=today)
+    else:
+        data_range = Period(
+            start=date.fromisoformat(claims["service_date"].min()),
+            end=date.fromisoformat(claims["service_date"].max()),
+        )
     scoped = claims
     if query.payer_id is not None:
         scoped = scoped[scoped["payer_id"] == query.payer_id]

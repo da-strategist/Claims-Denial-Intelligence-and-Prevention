@@ -14,7 +14,7 @@ from functools import lru_cache
 from pathlib import Path
 from threading import Lock
 
-from app.models import MIN_PASSWORD_LENGTH, Role, User
+from app.models import AccessScope, MIN_PASSWORD_LENGTH, Role, User
 
 DEFAULT_USERS_FILE = Path(__file__).resolve().parents[2] / "users.json"
 
@@ -124,8 +124,11 @@ class UserStore:
         active: bool | None = None,
         display_name: str | None = None,
         organisation_id: str | None = None,
+        scope: AccessScope | None = None,
     ) -> User:
         changes: dict = {}
+        if scope is not None:
+            changes["scope"] = scope
         if organisation_id is not None:
             changes["organisation_id"] = organisation_id
         if display_name is not None:

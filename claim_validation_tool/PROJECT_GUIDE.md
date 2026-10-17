@@ -55,6 +55,15 @@ carry `organisation_id`; one without a working organisation is refused (fail clo
 or dashboard shows another organisation's data; the route walk in `conftest.api_routes` also
 fails if it finds suspiciously few routes, so the check can't silently pass.
 
+**Need-to-know scope:** `OrgClaims` is a `ScopedClaims` (`data/scoped.py`), the organisation's
+repository as the signed-in account may see it (`User.scope`, an `AccessScope` of facilities,
+departments, providers; empty = whole organisation; admins always whole). Every method is
+written out, so a method added to the repository isn't reachable until its scoping is
+decided. Out-of-scope claims are "not found"; creating one is 403. The validation snapshot
+stays organisation-wide (`.base`) and callers look up only what they can see.
+`test_scope.py` covers each kind of limit, every claim route, the Overview, patients,
+new claims, saved forms, and the admin safeguards.
+
 **Conventions:**
 - All API routes prefixed with `/api/`
 - Never reach data through a global: take the organisation's stores from `services/org_context.py`

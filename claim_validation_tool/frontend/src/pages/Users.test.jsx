@@ -5,11 +5,13 @@ import { AuthContext } from '../hooks/useAuth'
 import { mockApi, reply, sentBodies } from '../test/mockApi'
 import Users from './Users'
 
-const account = (username, display_name, role, active = true) => ({
+const NO_LIMITS = { departments: [], facilities: [], providers: [] }
+const account = (username, display_name, role, active = true, scope = NO_LIMITS) => ({
   username,
   display_name,
   role,
   active,
+  scope,
   created_at: '2026-10-01T10:00:00Z',
   password_changed_at: '2026-10-01T10:00:00Z',
 })
@@ -35,6 +37,12 @@ function setup(extra = {}) {
       return accounts.find((a) => a.username === 'amina')
     },
     'POST /users/amina/password': () => reply(204),
+    'GET /departments': () => [
+      { department_id: 'DEPT02', department_name: 'Internal Medicine' },
+      { department_id: 'DEPT03', department_name: 'Cardiology' },
+    ],
+    'GET /facilities': () => [{ facility_id: 'FAC001', facility_name: 'Main Campus' }],
+    'GET /providers': () => [{ provider_id: 'PROV001', provider_name: 'Dr. Carol Robinson' }],
     ...extra,
   })
   render(
@@ -110,4 +118,32 @@ describe('Users', () => {
     await user.selectOptions(within(amina).getByLabelText('Role for amina'), 'analyst')
     expect(await screen.findByText(/Amina Bello: amina is the only active administrator/)).toBeInTheDocument()
   })
+
+  it('limits what a person sees, and shows it on their row', async () => {
+    const fetchMock = setup()
+    const amina = await row('Amina Bello')
+    expect(within(amina).getByText('Sees: Whole organisation')).toBeInTheDocument()
+    await user.click(within(amina).getByRole('button', { name: 'Change access for amina' }))
+    const editor = within(amina).getByRole('form', { name: 'Access for amina' })
+    await user.click(within(editor).getByLabelText(/Only these departments/))
+    const save = within(editor).getByRole('button', { name: 'Save access' })
+    expect(save).toBeDisabled() // limited to nothing would hide everything
+    await user.click(await within(editor).findByLabelText('Cardiology'))
+    await user.click(within(editor).getByLabelText('Dr. Carol Robinson'))
+    await user.click(save)
+
+    expect(await screen.findByText('Amina Bello now sees only their part of the organisation.')).toBeInTheDocument()
+    expect(sentBodies(fetchMock, 'PATCH /users/amina')).toEqual([
+      { scope: { departments: ['DEPT03'], facilities: [], providers: ['PROV001'] } },
+    ])
+    expect(await within(await row('Amina Bello')).findByText('Sees: Cardiology · Dr. Carol Robinson')).toBeInTheDocument()
+  })
+
+  it('has no access limits for administrators', async () => {
+    setup()
+    const me = await row('Jubril Olalekan')
+    expect(within(me).getByText(/Whole organisation \(administrators always are\)/)).toBeInTheDocument()
+    expect(within(me).queryByRole('button', { name: /Change access/ })).not.toBeInTheDocument()
+  })
 })
+

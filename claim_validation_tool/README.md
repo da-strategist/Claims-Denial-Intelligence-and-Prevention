@@ -132,6 +132,16 @@ organisation's name. `uv run python -m app.orgs list` shows organisations; `add`
 new one over its CSVs. `migrate` moves a single-organisation install into "meridian" and is
 safe to run twice. An automated test tries every API route with another organisation's IDs.
 
+**Need-to-know access.** By default everyone sees their whole organisation. An administrator
+can limit a person, on the Users page (**Change** under their name), to some departments,
+facilities, and/or providers; they then see a claim if it matches any of those. The limit
+applies everywhere: claim lists and the queue, claim details, fixes, the assistant, 837 and
+PDF downloads, the Overview's figures, saved forms and draft claims, and which providers they
+can pick for a new claim. They can still find any registered patient to start a claim, but
+only see that patient's claims and history inside their access. A limited person sees
+"Showing only: …" on Overview, Claims, and New Claim. Administrators are always
+organisation-wide. Changes apply on the person's next action.
+
 ### Accounts
 
 The first administrator is created on the command line, as above. After that, administrators

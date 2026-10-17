@@ -1,4 +1,4 @@
-import PageHeader, { Notice, Page } from '../components/PageHeader'
+import PageHeader, { AccessNote, Notice, Page } from '../components/PageHeader'
 import { useId, useState } from 'react'
 import {
   CoverageFields,
@@ -508,6 +508,8 @@ export default function NewClaim() {
         title="New claim"
         subtitle="Enter a claim for a registered patient. Save a draft at any point; it’s checked against the rules when you create it."
       />
+
+      <AccessNote />
 
       {lists.error && <Notice>Could not load the form’s lists — {lists.error}</Notice>}
 

@@ -13,8 +13,10 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
+from app.data.scoped import ScopedClaims
 from app.data.users import UserStore, get_user_store
 from app.models import (
+    AccessScope,
     PasswordReset,
     Permission,
     Role,
@@ -25,7 +27,7 @@ from app.models import (
 )
 from app.models.auth import Username
 from app.services.auth import SessionStore, SignedIn, audit_note, get_session_store, require
-from app.services.org_context import OrgId
+from app.services.org_context import OrgClaims, OrgId
 
 router = APIRouter(
     prefix="/api/users", tags=["users"], dependencies=[require(Permission.USERS_MANAGE)]
@@ -75,8 +77,9 @@ def update_user(
     me: SignedIn,
     request: Request,
     org_id: OrgId,
+    claims: OrgClaims,
 ) -> UserSummary:
-    """Rename, change role, or disable / enable an account."""
+    """Rename, change role, limit what the account sees (`scope`), or disable / enable it."""
     target = _target(users, username, org_id)
     is_me = target.username == me.username
     if is_me and body.role is not None and body.role != target.role:
@@ -97,8 +100,20 @@ def update_user(
             detail=f"{target.username} is the only active administrator; make someone else an administrator first",
         )
 
-    changes = body.model_dump(exclude_none=True)
-    audit_note(request, **changes)
+    new_role = body.role or target.role
+    if body.scope is not None and body.scope.restricted:
+        if new_role == Role.ADMIN:
+            raise HTTPException(
+                status_code=422, detail="Administrators always see the whole organisation"
+            )
+        _check_scope_ids(body.scope, claims)
+
+    changes = body.model_dump(exclude_none=True, exclude={"scope"})
+    if body.scope is not None:
+        changes["scope"] = body.scope
+    elif new_role == Role.ADMIN and target.scope.restricted:
+        changes["scope"] = AccessScope()  # promoted: the old limits no longer apply
+    audit_note(request, **body.model_dump(exclude_none=True, mode="json"))
     user = users.update(target.username, **changes)
     if body.active is False:
         sessions.end_all(user.username)
@@ -124,6 +139,19 @@ def reset_password(
         raise HTTPException(status_code=422, detail=str(err)) from err
     if target.username != me.username:
         sessions.end_all(target.username)
+
+
+def _check_scope_ids(scope: AccessScope, claims: ScopedClaims) -> None:
+    """Every limit must be one of the organisation's own facilities, departments, providers."""
+    known = {
+        "facilities": {f.facility_id for f in claims.list_facilities()},
+        "departments": {d.department_id for d in claims.list_departments()},
+        "providers": {p.provider_id for p in claims.list_providers()},
+    }
+    for kind, ids in known.items():
+        unknown = [i for i in getattr(scope, kind) if i not in ids]
+        if unknown:
+            raise HTTPException(status_code=422, detail=f"Unknown {kind}: {', '.join(unknown)}")
 
 
 def _active_admins(users: UserStore, org_id: str) -> int:

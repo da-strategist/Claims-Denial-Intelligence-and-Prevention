@@ -10,6 +10,7 @@ from datetime import date
 from functools import lru_cache
 from pathlib import Path
 from threading import Lock
+from collections.abc import Callable
 from typing import Any
 
 import pandas as pd
@@ -207,11 +208,19 @@ class ClaimsRepository:
 
     # --- Claims -------------------------------------------------------------
 
-    def list_claims(self, query: ClaimQuery, statuses: pd.DataFrame | None = None) -> Page[Claim]:
+    def list_claims(
+        self,
+        query: ClaimQuery,
+        statuses: pd.DataFrame | None = None,
+        within: Callable[[pd.DataFrame], pd.Series] | None = None,
+    ) -> Page[Claim]:
         """`statuses` (StatusSnapshot: status and risk_score by claim_id) is needed to filter
-        on `needs_attention` or sort by `risk_score`."""
+        on `needs_attention` or sort by `risk_score`. `within` keeps only the rows a user may
+        see (ScopedClaims passes the account's access scope)."""
         self._age_open_claims()
         df = self._filter_claims(query)
+        if within is not None:
+            df = df[within(df)]
         if statuses is not None:
             df = df.assign(risk_score=df["claim_id"].map(statuses["risk_score"]).fillna(0))
             if query.needs_attention is not None:

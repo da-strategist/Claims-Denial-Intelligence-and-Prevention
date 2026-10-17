@@ -28,14 +28,14 @@ const DASHBOARD = (drafts) => ({
   drafts,
 })
 
-function renderAs(permissions, drafts) {
+function renderAs(permissions, drafts, access = null) {
   mockApi({
     'GET /dashboard': () => DASHBOARD(drafts),
     'GET /payers': () => [],
     'GET /departments': () => [],
   })
   render(
-    <AuthContext.Provider value={{ user: { display_name: 'Test biller', permissions } }}>
+    <AuthContext.Provider value={{ user: { display_name: 'Test biller', permissions, access } }}>
       <Dashboard />
     </AuthContext.Provider>,
   )
@@ -67,4 +67,10 @@ describe('Overview: needs attention and draft claims', () => {
     await screen.findByRole('link', { name: 'Review claims' })
     expect(screen.queryByText(/draft claims to finish/)).not.toBeInTheDocument()
   })
+
+  it('tells a limited person what they’re seeing', async () => {
+    renderAs(BILLER, { claims: 0, with_problems: 0 }, 'Cardiology · Dr. Carol Robinson')
+    expect(await screen.findByText('Showing only: Cardiology · Dr. Carol Robinson')).toBeInTheDocument()
+  })
 })
+

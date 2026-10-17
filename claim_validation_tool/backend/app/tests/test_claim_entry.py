@@ -6,7 +6,6 @@ import pytest
 
 from app.data import repository
 from app.data.corrections import CorrectionStore, get_correction_store
-from app.tests.conftest import FIXTURES_DIR
 
 # PAT000003 (Donald Davis) is registered with PAY001 as primary payer and has no claims;
 # PROV001 is in DEPT02; CPT 99213 has a $95 standard charge
