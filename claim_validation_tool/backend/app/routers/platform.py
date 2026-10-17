@@ -150,7 +150,9 @@ def record_baa(
 
 
 @router.post("/organisations/{org_id}/delete", response_model=DeleteResult)
-def delete(org_id: OrgId, body: DeleteRequest, users: Users, request: Request) -> DeleteResult:
+def delete(
+    org_id: OrgId, body: DeleteRequest, users: Users, me: SignedIn, request: Request
+) -> DeleteResult:
     """Delete a suspended organisation for good: its data key (crypto-shredding), its
     folder, and its accounts. Export its data first if it's leaving. Can't be undone."""
     org = _org(org_id)
@@ -159,7 +161,7 @@ def delete(org_id: OrgId, body: DeleteRequest, users: Users, request: Request) -
     if org.status != OrgStatus.SUSPENDED:
         raise HTTPException(status_code=409, detail="Suspend the organisation before deleting it")
     audit_note(request, organisation=org_id)
-    done = delete_organisation(org_id)
+    done = delete_organisation(org_id, me.username)
     forget_organisation(org_id)
     audit_note(request, done=done)
     return DeleteResult(organisation=_info(get_org_registry().get(org_id), users), done=done)
@@ -220,6 +222,8 @@ def end_emergency_access(grant_id: str, me: SignedIn, request: Request) -> Emerg
     grant = get_emergency_access().end(grant_id, me.username)
     if grant is None:
         raise HTTPException(status_code=404, detail=f"No emergency access {grant_id}")
+    if not get_org_registry().has_data(grant.organisation_id):
+        return grant  # the organisation was deleted; the platform log has this request
     get_audit_log(grant.organisation_id).record(
         username=me.username,
         role=me.role,

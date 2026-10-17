@@ -7,13 +7,17 @@ import io
 import json
 import shutil
 import zipfile
+from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 from cryptography.fernet import Fernet, InvalidToken
 
 from app.data import secure_files
 from app.data.audit import AuditLog
-from app.data.org_lifecycle import encrypt_organisation
+from app.data.corrections import get_correction_store
+from app.data.new_claims import get_new_claim_store
+from app.data.org_lifecycle import encrypt_organisation, rotate_master_key
+from app.data.repository import get_repository
 from app.data.orgs import get_org_registry, org_cipher_for
 from app.data.secure_files import EncryptionError, is_encrypted, org_cipher
 from app.models import Role
@@ -178,6 +182,7 @@ BAA = {"signed_on": "2026-10-01", "reference": "BAA-2026-014", "signatory": "Dr.
 
 def test_without_a_baa_production_sign_in_is_blocked(client, monkeypatch):
     monkeypatch.setenv("RCM_ENVIRONMENT", "production")
+    monkeypatch.setenv("RCM_COOKIE_SECURE", "1")
     login = {"username": "admin2", "password": "Fixture-password-1"}
     with TestClient(client.app) as lakeside:
         res = lakeside.post("/api/auth/login", json=login)
@@ -214,3 +219,53 @@ def test_secure_files_round_trip(tmp_path):
     assert secure_files.read_text(plain, cipher) == "{}"  # plain still reads (migration)
     with pytest.raises(EncryptionError):
         secure_files.read_text(path, None)
+
+
+def test_a_deleted_organisation_never_comes_back(client):
+    # Emergency access still open when the organisation is suspended and deleted
+    sign_in(client, Role.PLATFORM)
+    grant = client.post(
+        "/api/platform/organisations/lakeside/emergency-access",
+        json={"reason": "Ticket 4471: claims page fails to load", "minutes": 30},
+    ).json()
+    client.post("/api/platform/organisations/lakeside/suspend")
+    done = client.post("/api/platform/organisations/lakeside/delete", json={"confirm": "lakeside"}).json()["done"]
+    assert "ended 1 open emergency access grant(s)" in done
+    folder = org_folder("lakeside")
+    # Ending the grant again, or anything else touching its files, must not recreate them
+    assert client.post(f"/api/platform/emergency-access/{grant['id']}/end").status_code == 200
+    with pytest.raises(LookupError):
+        org_cipher_for("lakeside")
+    assert not folder.exists()
+
+
+def test_rotating_the_master_key_lets_the_old_one_go(client, monkeypatch):
+    claim_id = create(client).json()["claim"]["claim_id"]
+    new_key = Fernet.generate_key().decode()
+    monkeypatch.setenv("RCM_MASTER_KEY", f"{new_key},{TEST_MASTER_KEY}")
+    from app import orgs as cli
+
+    assert cli.main(["rotate-key"]) == 0
+    assert rotate_master_key("meridian") is False  # already done
+    monkeypatch.setenv("RCM_MASTER_KEY", new_key)  # the old key is gone
+    for cache in (org_cipher, get_repository, get_new_claim_store, get_correction_store):
+        cache.cache_clear()
+    assert client.get(f"/api/claims/{claim_id}").status_code == 200
+
+
+def test_concurrent_first_use_makes_one_data_key(tmp_path, monkeypatch):
+    monkeypatch.setenv("RCM_MASTER_KEY", TEST_MASTER_KEY)
+    folder = tmp_path / "neworg"
+    org_cipher.cache_clear()
+    with ThreadPoolExecutor(8) as pool:
+        ciphers = list(pool.map(lambda _: org_cipher.__wrapped__(folder), range(16)))
+    token = ciphers[0].encrypt(b"x")
+    assert all(c.decrypt(token) == b"x" for c in ciphers)
+
+
+def test_production_needs_https_cookies(anon_client, monkeypatch):
+    monkeypatch.setenv("RCM_ENVIRONMENT", "production")
+    monkeypatch.delenv("RCM_COOKIE_SECURE", raising=False)
+    with pytest.raises(RuntimeError, match="RCM_COOKIE_SECURE"):
+        with TestClient(anon_client.app):
+            pass

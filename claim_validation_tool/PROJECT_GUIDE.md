@@ -78,7 +78,7 @@ organisation's data key (`data_key.enc`) with `RCM_MASTER_KEY`, or returns None 
 is set (plain text). `read_text`/`write_text`/`append_line`/`iter_lines` accept plain or
 encrypted content, so files can be encrypted in place. Stores take a `cipher` from their
 getter (`org_cipher_for(org_id)`); `_read_table` reads `<name>.csv.enc` when present. A new
-store holding PHI must go through these helpers. `data/org_lifecycle.py` encrypts,
+store holding PHI must go through these helpers, and must get its path from `org_file`, which refuses deleted organisations (`OrgRegistry.has_data`). `data/org_lifecycle.py` encrypts,
 exports, and deletes an organisation; `routers/organisation.py` serves the export;
 `Organisation.baa` and `OrgStatus.DELETED` are in `data/orgs.py`; `organisation_problem`
 blocks sign-in without a BAA when `RCM_ENVIRONMENT=production`. The test client runs with

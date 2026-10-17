@@ -1,4 +1,5 @@
 import logging
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
@@ -9,6 +10,7 @@ from app.data.audit import AuditLog, get_audit_log, get_platform_audit_log
 from app.data.orgs import OrgStatus, get_org_registry
 from app.data.secure_files import MASTER_KEY_ENV, master_key, production
 from app.data.users import get_user_store
+from app.services.auth import cookie_secure
 from app.models import Role
 from app.routers import (
     aifix,
@@ -35,6 +37,12 @@ from app.services.status_snapshot import get_status_snapshot
 logger = logging.getLogger("uvicorn.error")
 
 
+def allowed_origins() -> list[str]:
+    """Web addresses the app is served from (RCM_ALLOWED_ORIGINS, comma-separated)."""
+    raw = os.environ.get("RCM_ALLOWED_ORIGINS", "http://localhost:5173")
+    return [origin.strip() for origin in raw.split(",") if origin.strip()]
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     if master_key() is None:
@@ -42,6 +50,8 @@ async def lifespan(app: FastAPI):
             # Patient data is never written unencrypted in production
             raise RuntimeError(f"RCM_ENVIRONMENT=production needs {MASTER_KEY_ENV} (encryption at rest)")
         logger.warning(f"{MASTER_KEY_ENV} isn't set: organisations' data is saved unencrypted")
+    if production() and not cookie_secure():
+        raise RuntimeError("RCM_ENVIRONMENT=production needs RCM_COOKIE_SECURE=1 (HTTPS only)")
     if production():
         for org in get_org_registry().list():
             if org.status == OrgStatus.ACTIVE and org.baa is None:
@@ -76,7 +86,7 @@ app = FastAPI(
 # Allow React dev server to call the API
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=allowed_origins(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -150,7 +160,7 @@ def _audit_log_for(user, username: str | None) -> AuditLog:
     accounts); the platform log for requests that belong to no organisation."""
     account = user or (get_user_store().get(username) if username else None)
     org_id = account.organisation_id if account else None
-    if org_id and get_org_registry().get(org_id) is not None:
+    if org_id and get_org_registry().has_data(org_id):
         return get_audit_log(org_id)
     return get_platform_audit_log()
 

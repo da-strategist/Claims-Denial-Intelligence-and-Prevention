@@ -162,6 +162,7 @@ key and encrypt an existing install with the API stopped:
 ```bash
 uv run python -m app.orgs new-master-key    # add to backend/.env as RCM_MASTER_KEY=…, and back it up separately
 uv run python -m app.orgs encrypt           # safe to run twice
+uv run python -m app.orgs rotate-key        # after putting a new key first in RCM_MASTER_KEY
 ```
 
 Without the master key the data can't be read, so keep a copy somewhere separate (a
@@ -219,8 +220,9 @@ App: http://localhost:5173. The Vite dev server proxies `/api` to port 8000.
 | `RCM_SESSION_IDLE_MINUTES` | `15` | Sign out after this long without a request |
 | `RCM_SESSION_MAX_HOURS` | `8` | Longest a session lasts |
 | `RCM_COOKIE_SECURE` | off | Set to `1` behind HTTPS so the session cookie is never sent over plain HTTP |
-| `RCM_MASTER_KEY` | unset | Turns on encryption at rest: wraps each organisation's data key (`orgs/<id>/data_key.enc`). Comma-separate several to rotate (the first is used for new keys) |
-| `RCM_ENVIRONMENT` | unset | `production` refuses to start without `RCM_MASTER_KEY` and blocks sign-in for organisations without a BAA on record |
+| `RCM_MASTER_KEY` | unset | Turns on encryption at rest: wraps each organisation's data key (`orgs/<id>/data_key.enc`). To replace it: put the new key first, comma, then the old; run `python -m app.orgs rotate-key`; then remove the old |
+| `RCM_ENVIRONMENT` | unset | `production` refuses to start without `RCM_MASTER_KEY` or `RCM_COOKIE_SECURE=1`, and blocks sign-in for organisations without a BAA on record |
+| `RCM_ALLOWED_ORIGINS` | `http://localhost:5173` | Web addresses the app is served from (comma-separated), for the browser's cross-origin check |
 | `VITE_API_BASE` | `/api` | API base URL for the frontend |
 
 Each organisation's app data persists in its folder (git-ignored, readable only by the account

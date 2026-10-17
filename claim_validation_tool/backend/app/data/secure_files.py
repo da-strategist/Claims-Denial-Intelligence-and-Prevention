@@ -13,7 +13,8 @@ the CSVs in its own data folder (saved as <name>.csv.enc).
 - Deleting an organisation's data key makes any copy of its encrypted files unreadable
   (crypto-shredding), including copies in backups.
 - Several master keys may be given, comma-separated: the first wraps new data keys, the
-  rest still unwrap older ones (rotation).
+  rest still unwrap older ones. To retire an old master key, put the new one first, run
+  `python -m app.orgs rotate-key` (re-wraps every data key with it), then remove the old.
 
 Settings without PHI (rules.json, edi_settings.json) stay plain text so they can be read
 and reviewed.
@@ -23,6 +24,7 @@ import os
 from collections.abc import Iterator
 from functools import lru_cache
 from pathlib import Path
+from threading import Lock
 
 from cryptography.fernet import Fernet, InvalidToken, MultiFernet
 
@@ -30,7 +32,8 @@ MASTER_KEY_ENV = "RCM_MASTER_KEY"
 ENVIRONMENT_ENV = "RCM_ENVIRONMENT"
 DATA_KEY_FILE = "data_key.enc"
 ENCRYPTED_SUFFIX = ".enc"
-_TOKEN_PREFIX = b"gAAAAA"  # every Fernet token starts with this (version byte + timestamp)
+_TOKEN_PREFIX = b"gAAAAA"
+_KEY_LOCK = Lock()  # one data key per organisation, even when first requests arrive together  # every Fernet token starts with this (version byte + timestamp)
 
 
 class EncryptionError(RuntimeError):
@@ -73,16 +76,47 @@ def org_cipher(folder: Path) -> Fernet | None:
                 f"{folder.name}'s data is encrypted; set {MASTER_KEY_ENV} to read it"
             )
         return None
-    if key_file.exists():
-        try:
-            return Fernet(master.decrypt(key_file.read_bytes()))
-        except InvalidToken:
-            raise EncryptionError(
-                f"{MASTER_KEY_ENV} doesn't unlock {folder.name}'s data key"
-            ) from None
-    folder.mkdir(mode=0o700, parents=True, exist_ok=True)
-    _write_bytes(key_file, master.encrypt(Fernet.generate_key()))
-    return Fernet(master.decrypt(key_file.read_bytes()))
+    with _KEY_LOCK:
+        if not key_file.exists():
+            folder.mkdir(mode=0o700, parents=True, exist_ok=True)
+            try:
+                # O_EXCL: never replace a key another process has just created
+                fd = os.open(key_file, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+                with os.fdopen(fd, "wb") as f:
+                    f.write(master.encrypt(Fernet.generate_key()))
+            except FileExistsError:
+                pass
+    return Fernet(_unwrap(master, key_file))
+
+
+def _unwrap(master: MultiFernet, key_file: Path) -> bytes:
+    try:
+        return master.decrypt(key_file.read_bytes())
+    except InvalidToken:
+        raise EncryptionError(
+            f"{MASTER_KEY_ENV} doesn't unlock {key_file.parent.name}'s data key"
+        ) from None
+
+
+def rewrap_data_key(folder: Path) -> bool:
+    """Re-wrap the organisation's data key with the first master key. The data key itself,
+    and so every encrypted file, is unchanged. False if there's no key or it already was."""
+    master = master_key()
+    if master is None:
+        raise EncryptionError(f"Set {MASTER_KEY_ENV} first")
+    key_file = folder / DATA_KEY_FILE
+    if not key_file.exists():
+        return False
+    data_key = _unwrap(master, key_file)
+    primary = Fernet(os.environ[MASTER_KEY_ENV].split(",")[0].strip())
+    try:
+        if primary.decrypt(key_file.read_bytes()) == data_key:
+            return False
+    except InvalidToken:
+        pass
+    write_bytes(key_file, primary.encrypt(data_key))
+    org_cipher.cache_clear()
+    return True
 
 
 def shred(folder: Path) -> bool:
@@ -106,7 +140,7 @@ def _decrypt(data: bytes, cipher: Fernet | None, where: Path) -> bytes:
         raise EncryptionError(f"{where.name} can't be decrypted with this key") from None
 
 
-def _write_bytes(path: Path, data: bytes) -> None:
+def write_bytes(path: Path, data: bytes) -> None:
     """Atomically, readable only by the account running the API."""
     tmp = path.with_name(path.name + ".tmp")
     fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
@@ -121,7 +155,7 @@ def read_text(path: Path, cipher: Fernet | None) -> str:
 
 def write_text(path: Path, text: str, cipher: Fernet | None) -> None:
     data = text.encode()
-    _write_bytes(path, cipher.encrypt(data) if cipher else data)
+    write_bytes(path, cipher.encrypt(data) if cipher else data)
 
 
 def append_line(path: Path, line: str, cipher: Fernet | None) -> None:
@@ -150,11 +184,11 @@ def encrypt_file(path: Path, cipher: Fernet, *, by_line: bool = False) -> bool:
         out = b"".join(
             (line if is_encrypted(line) else cipher.encrypt(line)) + b"\n" for line in lines
         )
-        _write_bytes(path, out)
+        write_bytes(path, out)
         return True
     if is_encrypted(data):
         return False
-    _write_bytes(path, cipher.encrypt(data))
+    write_bytes(path, cipher.encrypt(data))
     return True
 
 

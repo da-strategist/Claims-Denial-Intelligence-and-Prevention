@@ -218,7 +218,11 @@ hold PHI:
   refuses to start without one. Reads accept plain or encrypted files, so an install is
   encrypted where it stands: `uv run python -m app.orgs encrypt`.
 - Several master keys may be given, comma-separated: the first wraps new data keys, the
-  others still open older ones (rotation).
+  others still open older ones. To retire a master key, put the new one first, run
+  `python -m app.orgs rotate-key` (re-wraps each data key; the files don't change), then
+  remove the old one.
+- A deleted organisation's files are never recreated: nothing reads or writes them once it
+  is deleted, and deletion ends any open emergency access to it.
 - **Meridian's claims tables are in `Data/raw_data`,** outside its folder: they're the
   sample source data, not a copy we own, so they're not encrypted or deleted here (the
   tools say so). Real organisations' tables are loaded into their own folder.

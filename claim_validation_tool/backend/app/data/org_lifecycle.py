@@ -18,15 +18,18 @@ import shutil
 import zipfile
 from datetime import UTC, datetime
 
+from app.data.emergency import get_emergency_access
 from app.data.orgs import OrgStatus, get_org_registry, org_cipher_for
 from app.data.secure_files import (
     ENCRYPTED_SUFFIX,
     EncryptionError,
     encrypt_file,
+    rewrap_data_key,
     iter_lines,
     read_text,
     shred,
     table_path,
+    write_bytes,
 )
 from app.data.users import get_user_store
 from app.sample_org import ORGANISATION_TABLES  # its own tables; the code sets are shared
@@ -68,8 +71,7 @@ def encrypt_organisation(org_id: str) -> list[str]:
         plain = data_dir / f"{table}.csv"
         if plain.exists():
             encrypted = plain.with_name(plain.name + ENCRYPTED_SUFFIX)
-            encrypted.write_bytes(plain.read_bytes())
-            encrypt_file(encrypted, cipher)
+            write_bytes(encrypted, cipher.encrypt(plain.read_bytes()))
             plain.unlink()
             done.append(f"encrypted {table}.csv -> {table}.csv{ENCRYPTED_SUFFIX}")
     return done
@@ -120,7 +122,7 @@ def export_organisation(org_id: str, exported_by: str) -> tuple[bytes, dict]:
     return buffer.getvalue(), manifest
 
 
-def delete_organisation(org_id: str) -> list[str]:
+def delete_organisation(org_id: str, by: str = "platform") -> list[str]:
     """Delete a suspended organisation for good: its data key first (so any copy of its
     encrypted files, backups included, is unreadable), then its folder and accounts. The
     registry keeps a record that it existed, so its ID is never reused."""
@@ -133,6 +135,9 @@ def delete_organisation(org_id: str) -> list[str]:
     folder, data_dir = registry.folder(org_id), registry.data_dir(org_id)
     external = not owns_data_dir(org_id)
     done = []
+    ended = get_emergency_access().end_for_organisation(org_id, by)
+    if ended:
+        done.append(f"ended {len(ended)} open emergency access grant(s)")
     if shred(folder):
         done.append("destroyed its data key: encrypted copies anywhere can't be read")
     if folder.exists():
@@ -146,3 +151,12 @@ def delete_organisation(org_id: str) -> list[str]:
         done.append(f"did not delete {data_dir}: it's outside the organisation's folder")
     registry.mark_deleted(org_id)
     return done
+
+
+def rotate_master_key(org_id: str) -> bool:
+    """Re-lock the organisation's data key with the first master key in RCM_MASTER_KEY, so
+    older master keys can then be removed. False if it already was."""
+    registry = get_org_registry()
+    if not registry.has_data(org_id):
+        raise LookupError(f"No organisation {org_id}")
+    return rewrap_data_key(registry.folder(org_id))

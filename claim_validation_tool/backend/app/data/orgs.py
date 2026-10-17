@@ -72,6 +72,12 @@ class OrgRegistry:
     def get(self, org_id: str) -> Organisation | None:
         return self._orgs.get(org_id)
 
+    def has_data(self, org_id: str) -> bool:
+        """Whether the organisation exists and wasn't deleted: only then may its files be
+        read or written (a deleted one's folder must never be recreated)."""
+        org = self._orgs.get(org_id)
+        return org is not None and org.status != OrgStatus.DELETED
+
     def add(self, org_id: str, name: str, data_dir: Path) -> Organisation:
         with self._lock:
             if org_id in self._orgs:
@@ -142,7 +148,7 @@ def get_org_registry() -> OrgRegistry:
 def org_file(org_id: str, name: str) -> Path:
     """Path of one of the organisation's app-data files, e.g. org_file(org, "rules.json")."""
     registry = get_org_registry()
-    if registry.get(org_id) is None:
+    if not registry.has_data(org_id):
         raise LookupError(f"No organisation {org_id}")
     path = registry.folder(org_id) / name
     # Created on first use, readable only by the account running the API (it holds PHI)
@@ -155,6 +161,6 @@ def org_cipher_for(org_id: str):
     from app.data.secure_files import org_cipher
 
     registry = get_org_registry()
-    if registry.get(org_id) is None:
+    if not registry.has_data(org_id):
         raise LookupError(f"No organisation {org_id}")
     return org_cipher(registry.folder(org_id))

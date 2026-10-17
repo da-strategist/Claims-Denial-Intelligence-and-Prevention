@@ -6,6 +6,7 @@
     uv run python -m app.orgs add acme --name "Acme Health" --data-dir /path/to/acme/csvs
     uv run python -m app.orgs new-master-key              # prints a key for RCM_MASTER_KEY
     uv run python -m app.orgs encrypt                     # encrypt every organisation's files
+    uv run python -m app.orgs rotate-key                  # re-wrap data keys with the first master key
 
 `encrypt` turns on encryption at rest for files written before RCM_MASTER_KEY was set
 (stop the API and back up the orgs folder first). It is safe to run twice.
@@ -24,7 +25,7 @@ from pathlib import Path
 from app.data.corrections import DEFAULT_CORRECTIONS_FILE
 from app.data.drafts import DEFAULT_DRAFTS_FILE
 from app.data.new_claims import DEFAULT_NEW_CLAIMS_FILE
-from app.data.org_lifecycle import encrypt_organisation
+from app.data.org_lifecycle import encrypt_organisation, rotate_master_key
 from app.data.orgs import OrgStatus, get_org_registry
 from app.data.registrations import DEFAULT_REGISTRATIONS_FILE
 from app.data.repository import DEFAULT_DATA_DIR
@@ -102,6 +103,9 @@ def main(argv: list[str] | None = None) -> int:
     commands.add_parser("new-master-key", help=f"print a new key for {MASTER_KEY_ENV}")
     encrypt = commands.add_parser("encrypt", help="encrypt existing files (needs the master key)")
     encrypt.add_argument("org_id", nargs="?", help="one organisation (default: all)")
+    commands.add_parser(
+        "rotate-key", help="re-wrap every data key with the first key in RCM_MASTER_KEY"
+    )
     args = parser.parse_args(argv)
     registry = get_org_registry()
     try:
@@ -130,6 +134,12 @@ def main(argv: list[str] | None = None) -> int:
                 for org_id in orgs:
                     for line in encrypt_organisation(org_id) or [f"{org_id}: nothing to encrypt"]:
                         print(line)
+            case "rotate-key":
+                for org in registry.list():
+                    if org.status != OrgStatus.DELETED:
+                        changed = rotate_master_key(org.id)
+                        print(f"{org.id}: {'re-wrapped' if changed else 'already on the first key'}")
+                print("Once every organisation is re-wrapped, the older keys can be removed.")
             case "add":
                 org = registry.add(args.org_id, args.name, Path(args.data_dir).resolve())
                 print(f"created organisation {org.id} ({org.name})")

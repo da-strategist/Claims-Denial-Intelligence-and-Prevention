@@ -84,6 +84,17 @@ class EmergencyAccessStore:
                 self._save()
             return grant
 
+    def end_for_organisation(self, organisation_id: str, by: str) -> list[EmergencyAccess]:
+        """End every open grant to the organisation (it is being deleted)."""
+        now = datetime.now(UTC)
+        with self._lock:
+            ended = [g for g in self._grants if g.organisation_id == organisation_id and g.active(now)]
+            for grant in ended:
+                grant.ended_at, grant.ended_by = now, by
+            if ended:
+                self._save()
+            return ended
+
     def _save(self) -> None:
         payload = {"grants": [g.model_dump(mode="json") for g in self._grants]}
         tmp = self.path.with_suffix(".tmp")

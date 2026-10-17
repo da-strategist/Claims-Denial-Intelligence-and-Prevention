@@ -120,9 +120,14 @@ continuous claims:
   separately, run `uv run python -m app.orgs encrypt` with the API stopped, and set
   `RCM_ENVIRONMENT=production` so the API refuses to start without it. Losing the master
   key loses the data. See DATA_SEGREGATION_PLAN.md §9.
+- **Encrypt before the first real file.** Encrypting later leaves plain-text copies behind
+  in earlier backups (e.g. Time Machine snapshots) and in deleted disk blocks. On a new
+  server, set the master key before any real patient data is loaded.
+- **HTTPS.** Production mode needs `RCM_COOKIE_SECURE=1`; set `RCM_ALLOWED_ORIGINS` to the
+  address the app is served from.
 - **BAAs.** Record each organisation's signed BAA on the Platform page before loading its
   real data; in production mode an organisation without one can't sign in.
-- **Compliance items still open**: HTTPS (`RCM_COOKIE_SECURE=1`), moving the master key to
+- **Compliance items still open**: an HTTPS certificate in front of the API, moving the master key to
   a cloud key service, single sign-on, a BAA/DPA with Anthropic and the clearinghouse, and
   audit-log retention.
 
