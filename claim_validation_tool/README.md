@@ -162,7 +162,8 @@ key and encrypt an existing install with the API stopped:
 ```bash
 uv run python -m app.orgs new-master-key    # add to backend/.env as RCM_MASTER_KEY=…, and back it up separately
 uv run python -m app.orgs encrypt           # safe to run twice
-uv run python -m app.orgs rotate-key        # after putting a new key first in RCM_MASTER_KEY
+uv run python -m app.orgs rotate-key        # after putting a new key first in RCM_MASTER_KEY, or choosing a new RCM_KEY_PROVIDER
+uv run python -m app.orgs key-status        # which key provider holds each organisation's key
 ```
 
 Without the master key the data can't be read, so keep a copy somewhere separate (a
@@ -240,6 +241,7 @@ secure, so the HTTPS-only cookie is still sent).
 | `RCM_SESSION_MAX_HOURS` | `8` | Longest a session lasts |
 | `RCM_COOKIE_SECURE` | off | Set to `1` behind HTTPS so the session cookie is never sent over plain HTTP |
 | `RCM_MASTER_KEY` | unset | Turns on encryption at rest: wraps each organisation's data key (`orgs/<id>/data_key.enc`). To replace it: put the new key first, comma, then the old; run `python -m app.orgs rotate-key`; then remove the old |
+| `RCM_KEY_PROVIDER` | `local` | Where the master key lives: `local` uses `RCM_MASTER_KEY`. Cloud key services (`aws-kms`, `azure-keyvault`, `gcp-kms`) are planned; see `DATA_SEGREGATION_PLAN.md` §9.6 |
 | `RCM_ENVIRONMENT` | unset | `production` refuses to start without `RCM_MASTER_KEY` or `RCM_COOKIE_SECURE=1`, and blocks sign-in for organisations without a BAA on record |
 | `RCM_ALLOWED_ORIGINS` | `http://localhost:5173` | Web addresses the app is served from (comma-separated), for the browser's cross-origin check |
 | `VITE_API_BASE` | `/api` | API base URL for the frontend |

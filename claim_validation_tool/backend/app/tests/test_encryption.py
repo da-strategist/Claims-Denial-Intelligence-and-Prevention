@@ -19,7 +19,8 @@ from app.data.new_claims import get_new_claim_store
 from app.data.org_lifecycle import encrypt_organisation, rotate_master_key
 from app.data.repository import get_repository
 from app.data.orgs import get_org_registry, org_cipher_for
-from app.data.secure_files import EncryptionError, is_encrypted, org_cipher
+from app.data.key_providers import KeyProviderError, register, unregister
+from app.data.secure_files import EncryptionError, data_key_provider, is_encrypted, org_cipher
 from app.models import Role
 from app.tests.conftest import TEST_MASTER_KEY, TestClient, org_folder, sign_in, use_data_dir
 from app.tests.test_claim_entry import create
@@ -267,5 +268,90 @@ def test_production_needs_https_cookies(anon_client, monkeypatch):
     monkeypatch.setenv("RCM_ENVIRONMENT", "production")
     monkeypatch.delenv("RCM_COOKIE_SECURE", raising=False)
     with pytest.raises(RuntimeError, match="RCM_COOKIE_SECURE"):
+        with TestClient(anon_client.app):
+            pass
+
+
+class FakeKms:
+    """Stands in for a cloud key service: its own master key, never in the environment."""
+
+    name = "test-kms"
+
+    def __init__(self, key: bytes) -> None:
+        self._key, self.calls = Fernet(key), []
+
+    def wrap(self, data_key: bytes) -> bytes:
+        self.calls.append("wrap")
+        return self._key.encrypt(data_key)
+
+    def unwrap(self, wrapped: bytes) -> bytes:
+        self.calls.append("unwrap")
+        try:
+            return self._key.decrypt(wrapped)
+        except InvalidToken:
+            raise KeyProviderError("test-kms doesn't unlock this data key") from None
+
+    def is_current(self, wrapped: bytes) -> bool:
+        return True
+
+
+@pytest.fixture
+def fake_kms():
+    kms = FakeKms(Fernet.generate_key())
+    register("test-kms", lambda: kms)
+    yield kms
+    unregister("test-kms")
+
+
+def test_moving_the_master_key_to_another_provider(client, monkeypatch, fake_kms, capsys):
+    from app import orgs as cli
+
+    claim_id = create(client).json()["claim"]["claim_id"]
+    assert data_key_provider(org_folder()) == "local"
+    # Switch provider, keeping the local key so existing data keys still open, and re-wrap
+    monkeypatch.setenv("RCM_KEY_PROVIDER", "test-kms")
+    assert cli.main(["rotate-key"]) == 0
+    assert "now held by test-kms" in capsys.readouterr().out
+    assert data_key_provider(org_folder()) == "test-kms"
+    # The local master key can go: everything still opens, through the key service
+    monkeypatch.delenv("RCM_MASTER_KEY")
+    for cache in (org_cipher, get_repository, get_new_claim_store, get_correction_store):
+        cache.cache_clear()
+    assert client.get(f"/api/claims/{claim_id}").status_code == 200
+    assert "unwrap" in fake_kms.calls
+    cli.main(["key-status"])
+    assert "meridian       test-kms" in capsys.readouterr().out
+
+
+def test_new_organisations_get_keys_from_the_active_provider(client, monkeypatch, fake_kms):
+    monkeypatch.setenv("RCM_KEY_PROVIDER", "test-kms")
+    org_cipher.cache_clear()
+    sign_in(client, Role.PLATFORM)
+    client.post("/api/platform/organisations", json={"id": "acme", "name": "Acme Health"})
+    assert org_cipher_for("acme") is not None
+    assert data_key_provider(org_folder("acme")) == "test-kms"
+    assert json.loads((org_folder("acme") / "data_key.enc").read_text())["provider"] == "test-kms"
+
+
+def test_a_key_held_by_a_provider_that_isnt_set_up_is_refused(client, monkeypatch, fake_kms):
+    monkeypatch.setenv("RCM_KEY_PROVIDER", "test-kms")
+    org_cipher.cache_clear()
+    from app import orgs as cli
+
+    cli.main(["rotate-key"])
+    unregister("test-kms")
+    monkeypatch.setenv("RCM_KEY_PROVIDER", "local")
+    org_cipher.cache_clear()
+    with pytest.raises(EncryptionError, match="test-kms"):
+        org_cipher(org_folder())
+
+
+@pytest.mark.parametrize(
+    ("name", "message"),
+    [("aws-kms", "AWS KMS \\(aws-kms\\) isn't built yet"), ("awskms", "Unknown key provider 'awskms'")],
+)
+def test_unbuilt_or_misspelt_providers_stop_startup(anon_client, monkeypatch, name, message):
+    monkeypatch.setenv("RCM_KEY_PROVIDER", name)
+    with pytest.raises(EncryptionError, match=message):
         with TestClient(anon_client.app):
             pass

@@ -1,10 +1,11 @@
 """Encryption at rest for each organisation's patient data (envelope encryption).
 
-A master key (RCM_MASTER_KEY, a Fernet key kept outside the data folders: in .env now, a
-cloud key service at go-live) wraps one data key per organisation, saved wrapped in
-orgs/<id>/data_key.enc. That data key encrypts the organisation's files holding PHI:
-new claims, drafts, corrections, patient registrations, its audit log (line by line), and
-the CSVs in its own data folder (saved as <name>.csv.enc).
+A master key wraps one data key per organisation, saved wrapped in orgs/<id>/data_key.enc.
+Where the master key lives is a key provider (key_providers.py, RCM_KEY_PROVIDER): today
+RCM_MASTER_KEY in the environment (.env); a cloud key service at go-live. The data key
+encrypts the organisation's files holding PHI: new claims, drafts, corrections, patient
+registrations, its audit log (line by line), and the CSVs in its own data folder (saved as
+<name>.csv.enc).
 
 - Without a master key everything is read and written as plain text (development and
   tests); RCM_ENVIRONMENT=production refuses to start without one (main.py).
@@ -12,28 +13,39 @@ the CSVs in its own data folder (saved as <name>.csv.enc).
   (`python -m app.orgs encrypt`) and nothing breaks halfway.
 - Deleting an organisation's data key makes any copy of its encrypted files unreadable
   (crypto-shredding), including copies in backups.
-- Several master keys may be given, comma-separated: the first wraps new data keys, the
-  rest still unwrap older ones. To retire an old master key, put the new one first, run
-  `python -m app.orgs rotate-key` (re-wraps every data key with it), then remove the old.
+- `python -m app.orgs rotate-key` re-wraps every data key with the active provider's
+  current master key (retiring an old key, or moving to another provider); the data files
+  don't change.
 
 Settings without PHI (rules.json, edi_settings.json) stay plain text so they can be read
 and reviewed.
 """
 
+import base64
+import json
 import os
 from collections.abc import Iterator
 from functools import lru_cache
 from pathlib import Path
 from threading import Lock
 
-from cryptography.fernet import Fernet, InvalidToken, MultiFernet
+from cryptography.fernet import Fernet, InvalidToken
 
-MASTER_KEY_ENV = "RCM_MASTER_KEY"
+from app.data.key_providers import (
+    LOCAL,
+    MASTER_KEY_ENV,
+    KeyProvider,
+    KeyProviderError,
+    active_provider,
+    new_local_master_key,
+    provider,
+)
+
 ENVIRONMENT_ENV = "RCM_ENVIRONMENT"
 DATA_KEY_FILE = "data_key.enc"
 ENCRYPTED_SUFFIX = ".enc"
-_TOKEN_PREFIX = b"gAAAAA"
-_KEY_LOCK = Lock()  # one data key per organisation, even when first requests arrive together  # every Fernet token starts with this (version byte + timestamp)
+_TOKEN_PREFIX = b"gAAAAA"  # every Fernet token starts with this (version byte + timestamp)
+_KEY_LOCK = Lock()  # one data key per organisation, even when first requests arrive together
 
 
 class EncryptionError(RuntimeError):
@@ -45,17 +57,15 @@ def production() -> bool:
 
 
 def new_master_key() -> str:
-    return Fernet.generate_key().decode()
+    return new_local_master_key()
 
 
-def master_key() -> MultiFernet | None:
-    raw = os.environ.get(MASTER_KEY_ENV, "").strip()
-    if not raw:
-        return None
+def key_provider() -> KeyProvider | None:
+    """The provider locking data keys, or None when encryption is off."""
     try:
-        return MultiFernet([Fernet(k.strip()) for k in raw.split(",") if k.strip()])
-    except ValueError as err:
-        raise EncryptionError(f"{MASTER_KEY_ENV} is not a valid key: {err}") from None
+        return active_provider()
+    except KeyProviderError as err:
+        raise EncryptionError(str(err)) from None
 
 
 def is_encrypted(data: bytes | str) -> bool:
@@ -64,13 +74,39 @@ def is_encrypted(data: bytes | str) -> bool:
     return data.lstrip().startswith(_TOKEN_PREFIX)
 
 
+# A wrapped data key on disk: a bare token for the local provider (as written before
+# providers existed), else {"provider": name, "wrapped": base64} so it names who locked it
+def _encode(name: str, wrapped: bytes) -> bytes:
+    if name == LOCAL:
+        return wrapped
+    return json.dumps({"provider": name, "wrapped": base64.b64encode(wrapped).decode()}).encode()
+
+
+def _decode(stored: bytes) -> tuple[str, bytes]:
+    if stored.lstrip().startswith(b"{"):
+        data = json.loads(stored)
+        return data["provider"], base64.b64decode(data["wrapped"])
+    return LOCAL, stored.strip()
+
+
+def _unwrap(key_file: Path) -> bytes:
+    name, wrapped = _decode(key_file.read_bytes())
+    try:
+        holder = provider(name)
+        if holder is None:
+            raise KeyProviderError(f"set up the {name} key provider to read it")
+        return holder.unwrap(wrapped)
+    except KeyProviderError as err:
+        raise EncryptionError(f"{key_file.parent.name}'s data key: {err}") from None
+
+
 @lru_cache(maxsize=None)
 def org_cipher(folder: Path) -> Fernet | None:
     """The data key of the organisation whose app-data folder this is (created on first
-    use), or None without a master key."""
-    master = master_key()
+    use), or None when encryption is off."""
+    active = key_provider()
     key_file = folder / DATA_KEY_FILE
-    if master is None:
+    if active is None:
         if key_file.exists():
             raise EncryptionError(
                 f"{folder.name}'s data is encrypted; set {MASTER_KEY_ENV} to read it"
@@ -83,38 +119,33 @@ def org_cipher(folder: Path) -> Fernet | None:
                 # O_EXCL: never replace a key another process has just created
                 fd = os.open(key_file, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
                 with os.fdopen(fd, "wb") as f:
-                    f.write(master.encrypt(Fernet.generate_key()))
+                    f.write(_encode(active.name, active.wrap(Fernet.generate_key())))
             except FileExistsError:
                 pass
-    return Fernet(_unwrap(master, key_file))
+    return Fernet(_unwrap(key_file))
 
 
-def _unwrap(master: MultiFernet, key_file: Path) -> bytes:
-    try:
-        return master.decrypt(key_file.read_bytes())
-    except InvalidToken:
-        raise EncryptionError(
-            f"{MASTER_KEY_ENV} doesn't unlock {key_file.parent.name}'s data key"
-        ) from None
+def data_key_provider(folder: Path) -> str | None:
+    """Which provider locked the organisation's data key, or None if it has none."""
+    key_file = folder / DATA_KEY_FILE
+    return _decode(key_file.read_bytes())[0] if key_file.exists() else None
 
 
 def rewrap_data_key(folder: Path) -> bool:
-    """Re-wrap the organisation's data key with the first master key. The data key itself,
-    and so every encrypted file, is unchanged. False if there's no key or it already was."""
-    master = master_key()
-    if master is None:
-        raise EncryptionError(f"Set {MASTER_KEY_ENV} first")
+    """Re-wrap the organisation's data key with the active provider's current master key.
+    The data key itself, and so every encrypted file, is unchanged. False if there's no
+    key or it already was."""
+    active = key_provider()
+    if active is None:
+        raise EncryptionError(f"Set {MASTER_KEY_ENV} (or another key provider) first")
     key_file = folder / DATA_KEY_FILE
     if not key_file.exists():
         return False
-    data_key = _unwrap(master, key_file)
-    primary = Fernet(os.environ[MASTER_KEY_ENV].split(",")[0].strip())
-    try:
-        if primary.decrypt(key_file.read_bytes()) == data_key:
-            return False
-    except InvalidToken:
-        pass
-    write_bytes(key_file, primary.encrypt(data_key))
+    data_key = _unwrap(key_file)
+    name, wrapped = _decode(key_file.read_bytes())
+    if name == active.name and active.is_current(wrapped):
+        return False
+    write_bytes(key_file, _encode(active.name, active.wrap(data_key)))
     org_cipher.cache_clear()
     return True
 

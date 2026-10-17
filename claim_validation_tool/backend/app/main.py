@@ -8,7 +8,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.data import get_reference_data, get_repository, get_rule_repository
 from app.data.audit import AuditLog, get_audit_log, get_platform_audit_log
 from app.data.orgs import OrgStatus, get_org_registry
-from app.data.secure_files import MASTER_KEY_ENV, master_key, production
+from app.data.key_providers import LOCAL
+from app.data.secure_files import MASTER_KEY_ENV, key_provider, production
 from app.data.users import get_user_store
 from app.services.auth import cookie_secure
 from app.models import Role
@@ -45,11 +46,17 @@ def allowed_origins() -> list[str]:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    if master_key() is None:
+    keys = key_provider()  # an unknown or unbuilt provider stops startup here
+    if keys is None:
         if production():
             # Patient data is never written unencrypted in production
             raise RuntimeError(f"RCM_ENVIRONMENT=production needs {MASTER_KEY_ENV} (encryption at rest)")
         logger.warning(f"{MASTER_KEY_ENV} isn't set: organisations' data is saved unencrypted")
+    elif keys.name == LOCAL and production():
+        logger.warning(
+            f"The master key is in the environment ({MASTER_KEY_ENV}): move it to a key "
+            "service before loading real patient data (RCM_KEY_PROVIDER, PHASES.md)"
+        )
     if production() and not cookie_secure():
         raise RuntimeError("RCM_ENVIRONMENT=production needs RCM_COOKIE_SECURE=1 (HTTPS only)")
     if production():

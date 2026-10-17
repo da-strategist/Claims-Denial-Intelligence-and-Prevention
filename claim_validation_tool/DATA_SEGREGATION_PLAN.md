@@ -257,3 +257,34 @@ per client: its own server or container, its own `RCM_ORGS_DIR` holding that one
 organisation, its own users file, and its own master key. Nothing in the code changes; the
 platform role is then only needed for emergency access.
 
+### 9.6 Key providers (where the master key lives)
+
+`backend/app/data/key_providers.py`. `RCM_KEY_PROVIDER` chooses the provider that locks
+organisations' data keys; each `data_key.enc` records which provider locked it.
+
+| Provider | `RCM_KEY_PROVIDER` | Status |
+|---|---|---|
+| Master key in the environment (`RCM_MASTER_KEY`, `.env`) | `local` (default) | Built; in use |
+| AWS Key Management Service | `aws-kms` | Planned |
+| Azure Key Vault | `azure-keyvault` | Planned |
+| Google Cloud KMS | `gcp-kms` | Planned |
+
+With a cloud provider the master key never leaves the key service: the app asks it to lock
+or unlock a data key, access is controlled by the cloud account's permissions, and every
+use is in the service's audit trail. Choosing a planned provider before it's built stops
+the API at startup with a clear message, as does a misspelt name.
+
+**Adding one** (decided at go-live): a class with `name`, `wrap(data_key)`,
+`unwrap(wrapped)`, and `is_current(wrapped)`, a factory that builds it from its settings
+(e.g. the KMS key ARN) or returns None when they're missing, and `register(name, factory)`.
+The cloud SDK becomes a dependency then. `test_encryption.py` shows a stand-in provider
+passing the same tests.
+
+**Moving the key** to a provider, with no change to any data file:
+
+1. Configure the new provider and set `RCM_KEY_PROVIDER` to it; keep `RCM_MASTER_KEY`.
+2. `uv run python -m app.orgs rotate-key`: every data key is re-locked by the new provider.
+3. `uv run python -m app.orgs key-status`: every organisation shows the new provider.
+4. Remove `RCM_MASTER_KEY` from `.env` (keep the password-manager copy until backups made
+   before the move have expired, since those hold data keys it locked).
+

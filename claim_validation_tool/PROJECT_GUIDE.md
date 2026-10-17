@@ -74,7 +74,8 @@ are also recorded in the organisation's own log. `routers/platform.py`, `test_pl
 
 **Encryption at rest, export, deletion, BAA (Phase D):** `data/secure_files.py` is the one
 place files holding PHI are read and written: `org_cipher(folder)` unwraps the
-organisation's data key (`data_key.enc`) with `RCM_MASTER_KEY`, or returns None when no key
+organisation's data key (`data_key.enc`) through its key provider (`data/key_providers.py`:
+`local` = `RCM_MASTER_KEY`; cloud providers plug in with `register`), or returns None when no key
 is set (plain text). `read_text`/`write_text`/`append_line`/`iter_lines` accept plain or
 encrypted content, so files can be encrypted in place. Stores take a `cipher` from their
 getter (`org_cipher_for(org_id)`); `_read_table` reads `<name>.csv.enc` when present. A new

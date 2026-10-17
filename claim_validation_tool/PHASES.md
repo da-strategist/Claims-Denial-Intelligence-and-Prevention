@@ -129,8 +129,10 @@ continuous claims:
   first). Tested locally with `deploy/https-local.sh`; see the README.
 - **BAAs.** Record each organisation's signed BAA on the Platform page before loading its
   real data; in production mode an organisation without one can't sign in.
-- **Compliance items still open**: moving the master key to
-  a cloud key service, single sign-on, a BAA/DPA with Anthropic and the clearinghouse, and
+- **Key service.** Pick a cloud key service, add its provider (`key_providers.py`, about one
+  small class; see DATA_SEGREGATION_PLAN.md §9.6), and move the key to it with `rotate-key`.
+  Production logs a warning while the key is still in `.env`.
+- **Compliance items still open**: single sign-on, a BAA/DPA with Anthropic and the clearinghouse, and
   audit-log retention.
 
 ## Planned feature updates: claim submission

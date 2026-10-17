@@ -156,6 +156,7 @@ def anon_client(monkeypatch, tmp_path) -> TestClient:
     # Encryption at rest is on, as in production: every test runs over encrypted files
     monkeypatch.setenv("RCM_MASTER_KEY", TEST_MASTER_KEY)
     monkeypatch.delenv("RCM_ENVIRONMENT", raising=False)
+    monkeypatch.delenv("RCM_KEY_PROVIDER", raising=False)
     # The assistant never calls Claude in tests; tests that need an LLM inject a fake one
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     caches = (

@@ -6,7 +6,8 @@
     uv run python -m app.orgs add acme --name "Acme Health" --data-dir /path/to/acme/csvs
     uv run python -m app.orgs new-master-key              # prints a key for RCM_MASTER_KEY
     uv run python -m app.orgs encrypt                     # encrypt every organisation's files
-    uv run python -m app.orgs rotate-key                  # re-wrap data keys with the first master key
+    uv run python -m app.orgs rotate-key                  # re-wrap data keys with the active key provider
+    uv run python -m app.orgs key-status                  # which provider holds each organisation's key
 
 `encrypt` turns on encryption at rest for files written before RCM_MASTER_KEY was set
 (stop the API and back up the orgs folder first). It is safe to run twice.
@@ -30,7 +31,8 @@ from app.data.orgs import OrgStatus, get_org_registry
 from app.data.registrations import DEFAULT_REGISTRATIONS_FILE
 from app.data.repository import DEFAULT_DATA_DIR
 from app.data.rules import DEFAULT_RULES_FILE
-from app.data.secure_files import MASTER_KEY_ENV, EncryptionError, new_master_key
+from app.data.key_providers import active_name
+from app.data.secure_files import MASTER_KEY_ENV, EncryptionError, data_key_provider, new_master_key
 from app.data.users import get_user_store
 from app.sample_org import generate
 from app.services.edi_settings import DEFAULT_EDI_SETTINGS_FILE
@@ -104,8 +106,9 @@ def main(argv: list[str] | None = None) -> int:
     encrypt = commands.add_parser("encrypt", help="encrypt existing files (needs the master key)")
     encrypt.add_argument("org_id", nargs="?", help="one organisation (default: all)")
     commands.add_parser(
-        "rotate-key", help="re-wrap every data key with the first key in RCM_MASTER_KEY"
+        "rotate-key", help="re-wrap every data key with the active key provider's current key"
     )
+    commands.add_parser("key-status", help="which key provider holds each organisation's data key")
     args = parser.parse_args(argv)
     registry = get_org_registry()
     try:
@@ -139,7 +142,13 @@ def main(argv: list[str] | None = None) -> int:
                     if org.status != OrgStatus.DELETED:
                         changed = rotate_master_key(org.id)
                         print(f"{org.id}: {'re-wrapped' if changed else 'already on the first key'}")
-                print("Once every organisation is re-wrapped, the older keys can be removed.")
+                print(f"Every data key is now held by {active_name()}; older keys can be removed.")
+            case "key-status":
+                print(f"active key provider: {active_name()}")
+                for org in registry.list():
+                    if org.status != OrgStatus.DELETED:
+                        held = data_key_provider(registry.folder(org.id)) or "no data key (unencrypted)"
+                        print(f"{org.id:14} {held}")
             case "add":
                 org = registry.add(args.org_id, args.name, Path(args.data_dir).resolve())
                 print(f"created organisation {org.id} ({org.name})")
