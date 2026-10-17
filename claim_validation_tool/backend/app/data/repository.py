@@ -6,6 +6,7 @@ models, so listing a page of claims never materializes all 120K records.
 """
 
 import re
+from io import StringIO
 from datetime import date
 from functools import lru_cache
 from pathlib import Path
@@ -14,10 +15,12 @@ from collections.abc import Callable
 from typing import Any
 
 import pandas as pd
+from cryptography.fernet import Fernet
 
 from app.data.corrections import get_correction_store
 from app.data.new_claims import NewClaimStore, get_new_claim_store
-from app.data.orgs import get_org_registry
+from app.data.orgs import get_org_registry, org_cipher_for
+from app.data.secure_files import read_text, table_path
 from app.models.aifix import CORRECTABLE_FIELDS
 from app.models.rule import RULE_FIELDS, parse_condition_value
 from app.models import (
@@ -77,8 +80,11 @@ def _today() -> date:
     return date.today()
 
 
-def _read_table(data_dir: Path, name: str) -> pd.DataFrame:
-    df = pd.read_csv(data_dir / f"{name}.csv", dtype=str, keep_default_na=False)
+def _read_table(data_dir: Path, name: str, cipher: Fernet | None = None) -> pd.DataFrame:
+    """One table, from <name>.csv.enc if it's been encrypted (secure_files.py), else <name>.csv."""
+    path = table_path(data_dir, name)
+    source = StringIO(read_text(path, cipher)) if path.suffix == ".enc" else path
+    df = pd.read_csv(source, dtype=str, keep_default_na=False)
     df = df.astype(_NUMERIC_COLUMNS.get(name, {}))
     for column in _BOOL_COLUMNS.get(name, []):
         df[column] = df[column].astype("int64").astype(bool)
@@ -87,13 +93,18 @@ def _read_table(data_dir: Path, name: str) -> pd.DataFrame:
 
 class ClaimsRepository:
     def __init__(
-        self, data_dir: Path = DEFAULT_DATA_DIR, new_claims: NewClaimStore | None = None
+        self,
+        data_dir: Path = DEFAULT_DATA_DIR,
+        new_claims: NewClaimStore | None = None,
+        cipher: Fernet | None = None,
     ) -> None:
-        """`new_claims` saves claims entered in the app; they are replayed here on startup."""
+        """`new_claims` saves claims entered in the app; they are replayed here on startup.
+        `cipher` decrypts tables that have been encrypted (secure_files.py)."""
         self.data_dir = data_dir
-        self._claims = _read_table(data_dir, "fact_claims")
-        self._lines = _read_table(data_dir, "fact_claim_lines")
-        self._denials = _read_table(data_dir, "fact_denials")
+        self.cipher = cipher
+        self._claims = _read_table(data_dir, "fact_claims", cipher)
+        self._lines = _read_table(data_dir, "fact_claim_lines", cipher)
+        self._denials = _read_table(data_dir, "fact_denials", cipher)
 
         # Derived columns used by validation rules and risk scoring
         self._claims["days_to_submission"] = (
@@ -129,23 +140,23 @@ class ClaimsRepository:
 
         self._payers = {
             row["payer_id"]: Payer.model_validate(row)
-            for row in _read_table(data_dir, "dim_payers").to_dict("records")
+            for row in _read_table(data_dir, "dim_payers", cipher).to_dict("records")
         }
         self._providers = {
             row["provider_id"]: Provider.model_validate(row)
-            for row in _read_table(data_dir, "dim_providers").to_dict("records")
+            for row in _read_table(data_dir, "dim_providers", cipher).to_dict("records")
         }
         self._departments = [
             Department.model_validate(row)
-            for row in _read_table(data_dir, "dim_departments").to_dict("records")
+            for row in _read_table(data_dir, "dim_departments", cipher).to_dict("records")
         ]
         self._facilities = {
             row["facility_id"]: Facility.model_validate(row)
-            for row in _read_table(data_dir, "dim_facilities").to_dict("records")
+            for row in _read_table(data_dir, "dim_facilities", cipher).to_dict("records")
         }
 
         # Registered patients. Claims can only be entered for these.
-        self._patients = _read_table(data_dir, "dim_patients")
+        self._patients = _read_table(data_dir, "dim_patients", cipher)
         self._patients["search_name"] = (
             self._patients["first_name"] + " " + self._patients["last_name"]
         ).str.lower()
@@ -652,7 +663,7 @@ class ClaimsRepository:
 def get_repository(org_id: str) -> ClaimsRepository:
     """The organisation's claims: its own CSVs plus the claims it entered in the app."""
     data_dir = get_org_registry().data_dir(org_id)
-    repo = ClaimsRepository(data_dir, get_new_claim_store(org_id))
+    repo = ClaimsRepository(data_dir, get_new_claim_store(org_id), org_cipher_for(org_id))
     corrections = get_correction_store(org_id)
     # Drop corrections whose claim no longer exists (e.g. the new-claims file was removed),
     # so a new claim reusing the ID doesn't inherit them

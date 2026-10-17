@@ -7,26 +7,29 @@ readable only by this account.
 """
 
 import json
-import os
 from datetime import date
 from functools import lru_cache
 from pathlib import Path
 from threading import Lock
 from typing import Any
 
-from app.data.orgs import org_file
+from cryptography.fernet import Fernet
+
+from app.data.orgs import org_cipher_for, org_file
+from app.data.secure_files import read_text, write_text
 
 DEFAULT_NEW_CLAIMS_FILE = Path(__file__).resolve().parents[2] / "new_claims.json"
 
 
 class NewClaimStore:
-    def __init__(self, path: Path | None = None) -> None:
+    def __init__(self, path: Path | None = None, cipher: Fernet | None = None) -> None:
         self.path = path
+        self._cipher = cipher
         self._records: list[dict[str, Any]] = []
         self._next_control = 1
         self._lock = Lock()
         if path is not None and path.exists():
-            data = json.loads(path.read_text())
+            data = json.loads(read_text(path, cipher))
             self._records = data["claims"]
             self._next_control = data.get("next_control_number", 1)
 
@@ -70,15 +73,11 @@ class NewClaimStore:
         """Write every record atomically, readable only by this account. Caller holds the lock."""
         if self.path is None:
             return
-        tmp = self.path.with_suffix(".tmp")
-        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-        with os.fdopen(fd, "w") as f:
-            payload = {"next_control_number": self._next_control, "claims": self._records}
-            f.write(json.dumps(payload, indent=2))
-        tmp.replace(self.path)
+        payload = {"next_control_number": self._next_control, "claims": self._records}
+        write_text(self.path, json.dumps(payload, indent=2), self._cipher)
 
 
 @lru_cache(maxsize=None)
 def get_new_claim_store(org_id: str) -> NewClaimStore:
     """Claims the organisation entered in the app, saved in its folder."""
-    return NewClaimStore(org_file(org_id, "new_claims.json"))
+    return NewClaimStore(org_file(org_id, "new_claims.json"), org_cipher_for(org_id))

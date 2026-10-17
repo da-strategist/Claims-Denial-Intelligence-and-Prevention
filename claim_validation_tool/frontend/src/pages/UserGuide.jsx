@@ -236,8 +236,39 @@ const SECTIONS = [
             in person or by phone, not by email. The same can be done on the server with{' '}
             <code className="font-mono text-xs">python -m app.users</code>.
           </Term>
+          <Term name="Export all data">
+            On the Audit Log page: one zip with everything your organisation has here (claims,
+            drafts, corrections, patient details, the audit log, your accounts without passwords),
+            decrypted, with a manifest to check it’s complete. It holds patient data: store and
+            send it only as your HIPAA policies allow. Each download is in the audit log.
+          </Term>
         </dl>
       </>
+    ),
+  },
+  {
+    id: 'platform',
+    title: 'For the platform',
+    permission: 'platform:manage',
+    body: () => (
+      <dl className="divide-y divide-gray-100">
+        <Term name="Organisations">
+          Create an organisation, add its first administrator, and suspend or reactivate it.
+          You see names and account counts, never patients or claims.
+        </Term>
+        <Term name="BAA">
+          Record each organisation’s signed business associate agreement before it loads real
+          patient data. Without one, its people can’t sign in once the service runs in production.
+        </Term>
+        <Term name="Emergency access">
+          Read-only, time-limited, with a reason the organisation sees in its audit log.
+        </Term>
+        <Term name="Delete">
+          Only a suspended organisation, by typing its ID. Its encryption key is destroyed, then
+          its data and accounts. It can’t be undone, so its administrators should export their
+          data first.
+        </Term>
+      </dl>
     ),
   },
 ]

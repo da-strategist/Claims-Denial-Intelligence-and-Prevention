@@ -10,20 +10,24 @@ from functools import lru_cache
 from pathlib import Path
 from threading import Lock
 
-from app.data.orgs import org_file
+from cryptography.fernet import Fernet
+
+from app.data.orgs import org_cipher_for, org_file
+from app.data.secure_files import read_text, write_text
 from app.models import Correction
 
 DEFAULT_CORRECTIONS_FILE = Path(__file__).resolve().parents[2] / "claim_corrections.json"
 
 
 class CorrectionStore:
-    def __init__(self, path: Path | None = None) -> None:
+    def __init__(self, path: Path | None = None, cipher: Fernet | None = None) -> None:
         self.path = path
+        self._cipher = cipher
         self._corrections: list[Correction] = []
         self._next_number = 1
         self._lock = Lock()
         if path is not None and path.exists():
-            data = json.loads(path.read_text())
+            data = json.loads(read_text(path, cipher))
             self._corrections = [Correction.model_validate(c) for c in data["corrections"]]
             self._next_number = data["next_number"]
 
@@ -83,12 +87,10 @@ class CorrectionStore:
             "next_number": self._next_number,
             "corrections": [c.model_dump(mode="json") for c in self._corrections],
         }
-        tmp = self.path.with_suffix(".tmp")
-        tmp.write_text(json.dumps(payload, indent=2))
-        tmp.replace(self.path)
+        write_text(self.path, json.dumps(payload, indent=2), self._cipher)
 
 
 @lru_cache(maxsize=None)
 def get_correction_store(org_id: str) -> CorrectionStore:
     """The organisation's AI Fix corrections, saved in its folder."""
-    return CorrectionStore(org_file(org_id, "claim_corrections.json"))
+    return CorrectionStore(org_file(org_id, "claim_corrections.json"), org_cipher_for(org_id))

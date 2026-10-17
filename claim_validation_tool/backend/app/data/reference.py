@@ -20,7 +20,7 @@ class ReferenceData:
             df = _read_table(repo.data_dir, name)
             return {row[key]: row for row in df.to_dict("records")}
 
-        contracts = _read_table(repo.data_dir, "dim_payer_contracts")
+        contracts = _read_table(repo.data_dir, "dim_payer_contracts", repo.cipher)
         contracts = contracts[contracts["status"] == "Active"]
         return cls(
             carc=by_key("ref_carc_codes", "carc_code"),

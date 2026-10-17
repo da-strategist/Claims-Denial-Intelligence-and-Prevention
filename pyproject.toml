@@ -12,6 +12,7 @@ dependencies = [
     "uvicorn>=0.34.0",
     "anthropic>=1.15.0",
     "reportlab>=5.0.1",
+    "cryptography>=50.0.2",
 ]
 
 [dependency-groups]

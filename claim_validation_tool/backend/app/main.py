@@ -7,7 +7,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.data import get_reference_data, get_repository, get_rule_repository
 from app.data.audit import AuditLog, get_audit_log, get_platform_audit_log
 from app.data.orgs import OrgStatus, get_org_registry
+from app.data.secure_files import MASTER_KEY_ENV, master_key, production
 from app.data.users import get_user_store
+from app.models import Role
 from app.routers import (
     aifix,
     assistant,
@@ -18,6 +20,7 @@ from app.routers import (
     departments,
     drafts,
     jab,
+    organisation,
     patients,
     payers,
     reference,
@@ -34,6 +37,15 @@ logger = logging.getLogger("uvicorn.error")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    if master_key() is None:
+        if production():
+            # Patient data is never written unencrypted in production
+            raise RuntimeError(f"RCM_ENVIRONMENT=production needs {MASTER_KEY_ENV} (encryption at rest)")
+        logger.warning(f"{MASTER_KEY_ENV} isn't set: organisations' data is saved unencrypted")
+    if production():
+        for org in get_org_registry().list():
+            if org.status == OrgStatus.ACTIVE and org.baa is None:
+                logger.warning(f"{org.id} has no business associate agreement on record: its accounts can't sign in")
     # Load each organisation's data once at startup so the first request isn't slow
     orgs = [org for org in get_org_registry().list() if org.status == OrgStatus.ACTIVE]
     if not orgs:
@@ -47,7 +59,7 @@ async def lifespan(app: FastAPI):
     users = get_user_store().list()
     if not users:
         logger.warning("No user accounts yet: create one with `uv run python -m app.users add`")
-    if any(user.organisation_id is None for user in users):
+    if any(user.organisation_id is None and user.role != Role.PLATFORM for user in users):
         logger.warning(
             "Some accounts have no organisation and can't sign in: run `uv run python -m app.orgs migrate`"
         )
@@ -73,6 +85,7 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(audit.router)
 app.include_router(users.router)
+app.include_router(organisation.router)
 app.include_router(platform.router)
 app.include_router(claims.router)
 app.include_router(drafts.router)

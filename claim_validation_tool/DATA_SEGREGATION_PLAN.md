@@ -1,6 +1,6 @@
 # Data segregation plan: organisations and need-to-know access
 
-**Status:** design agreed 2026-10-17 (decisions in §8). **Phases A (organisation wall), B (need-to-know scope), and C (platform administration and emergency access) built**; D (go-live hardening) to come.
+**Status:** design agreed 2026-10-17 (decisions in §8). **All four phases built**: A (organisation wall), B (need-to-know scope), C (platform administration and emergency access), and D (encryption at rest, data export, deletion, BAA tracking; §9). A separate deployment per client remains an option (§9.5).
 **Goal:** many organisations (hospitals, practices) can use one hosted ClaustraRCM, each
 completely walled off from the others; inside each organisation, people see only the
 facilities, departments, or providers they work for (HIPAA's minimum necessary standard).
@@ -193,3 +193,63 @@ Each phase ends with all tests passing and is committed separately.
    written to the organisation's own audit log (§3.4).
 5. **Second sample organisation:** "Lakeside Family Practice", generated and marked as
    sample data, used by the tests and available for demos.
+6. **Encryption keys (Phase D):** the master key lives in the environment (`backend/.env`)
+   for now and moves to a cloud key service (AWS KMS, Azure Key Vault, Google Cloud KMS)
+   at go-live.
+7. **BAA (Phase D):** each organisation's BAA is recorded by the platform. A missing BAA is
+   flagged on the Platform page, and blocks sign-in when `RCM_ENVIRONMENT=production`.
+
+## 9. Phase D as built
+
+### 9.1 Encryption at rest
+
+Envelope encryption (`backend/app/data/secure_files.py`). A master key (`RCM_MASTER_KEY`,
+a Fernet key: AES-128-CBC with HMAC-SHA256) wraps one data key per organisation, stored
+wrapped in `orgs/<id>/data_key.enc`. The data key encrypts the organisation's files that
+hold PHI:
+
+| Encrypted | Stays plain text |
+|---|---|
+| `new_claims.json`, `claim_drafts.json`, `claim_corrections.json`, `patient_registrations.json` | `rules.json`, `edi_settings.json` (settings, no PHI) |
+| `logs/audit.jsonl`, each line on its own (the hash chain is over the plain text, so `verify` still works) | `organisations.json`, `break_glass.json`, the users file (no PHI; passwords are hashed) |
+| Its own claims tables (`dim_patients`, `fact_claims`, …) when they're in its folder, as `<table>.csv.enc` | The shared code sets (public) and the platform audit log |
+
+- Without a master key everything is plain text (development); `RCM_ENVIRONMENT=production`
+  refuses to start without one. Reads accept plain or encrypted files, so an install is
+  encrypted where it stands: `uv run python -m app.orgs encrypt`.
+- Several master keys may be given, comma-separated: the first wraps new data keys, the
+  others still open older ones (rotation).
+- **Meridian's claims tables are in `Data/raw_data`,** outside its folder: they're the
+  sample source data, not a copy we own, so they're not encrypted or deleted here (the
+  tools say so). Real organisations' tables are loaded into their own folder.
+- Every backend test runs with encryption on, plus tests that no patient ID, address,
+  member ID, or date of birth is on disk in plain text.
+
+### 9.2 Data export
+
+An organisation's administrator downloads everything it has here (Audit log page,
+**Export all data**): one zip, decrypted, with its app files, audit log, own claims
+tables, its accounts (no passwords), and a manifest of each file's size and SHA-256. The
+download is in its audit log. Emergency access can't export.
+
+### 9.3 Deletion
+
+Platform only, from the Platform page: the organisation must be suspended first and its ID
+typed to confirm. Its data key is destroyed first (crypto-shredding: encrypted copies
+anywhere, backups included, can't be read), then its folder and accounts are deleted. The
+registry keeps a record (name, when) so the ID is never reused. A claims folder outside the
+organisation's folder is reported, not deleted.
+
+### 9.4 Business associate agreements
+
+The platform records each organisation's BAA (signed on, reference, signatory, who recorded
+it). Missing ones are flagged on the Platform page; in production mode its accounts can't
+sign in until one is recorded, and startup logs a warning per organisation without one.
+
+### 9.5 Separate deployment per client
+
+For a client that wants physical rather than logical separation, run one copy of the API
+per client: its own server or container, its own `RCM_ORGS_DIR` holding that one
+organisation, its own users file, and its own master key. Nothing in the code changes; the
+platform role is then only needed for emergency access.
+

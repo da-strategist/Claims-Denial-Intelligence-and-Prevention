@@ -6,7 +6,7 @@ inside an organisation takes emergency access (data/emergency.py), which is read
 time-limited, needs a reason, and is written to the organisation's own audit log.
 """
 
-from datetime import datetime
+from datetime import UTC, date, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -14,13 +14,15 @@ from pydantic import BaseModel, Field
 
 from app.data.audit import get_audit_log, get_platform_audit_log
 from app.data.emergency import MAX_MINUTES, MIN_MINUTES, EmergencyAccess, get_emergency_access
-from app.data.orgs import OrgId, OrgStatus, get_org_registry
+from app.data.org_lifecycle import delete_organisation
+from app.data.orgs import BusinessAssociateAgreement, OrgId, OrgStatus, get_org_registry
 from app.data.repository import get_repository
 from app.data.users import UserStore, get_user_store
 from app.models import AuditEvent, Permission, Role, UserSummary
 from app.models.auth import Username
 from app.sample_org import empty
 from app.services.auth import SessionStore, SignedIn, audit_note, get_session_store, require
+from app.services.org_context import forget_organisation
 
 router = APIRouter(
     prefix="/api/platform", tags=["platform"], dependencies=[require(Permission.PLATFORM_MANAGE)]
@@ -37,6 +39,8 @@ class OrganisationInfo(BaseModel):
     created_at: datetime
     accounts: int
     active_admins: int
+    baa: BusinessAssociateAgreement | None
+    deleted_at: datetime | None
 
 
 class OrganisationCreate(BaseModel):
@@ -48,6 +52,21 @@ class FirstAdmin(BaseModel):
     username: Username
     display_name: str = Field(min_length=1, max_length=80)
     password: str = Field(min_length=1, max_length=256)
+
+
+class BaaRecord(BaseModel):
+    signed_on: date
+    reference: str = Field(min_length=1, max_length=120)
+    signatory: str = Field(min_length=1, max_length=120)
+
+
+class DeleteRequest(BaseModel):
+    confirm: str = Field(description="The organisation's ID, typed out")
+
+
+class DeleteResult(BaseModel):
+    organisation: "OrganisationInfo"
+    done: list[str]
 
 
 class EmergencyRequest(BaseModel):
@@ -64,6 +83,8 @@ def _info(org, users: UserStore) -> OrganisationInfo:
         created_at=org.created_at,
         accounts=len(members),
         active_admins=sum(1 for u in members if u.role == Role.ADMIN and u.active),
+        baa=org.baa,
+        deleted_at=org.deleted_at,
     )
 
 
@@ -71,6 +92,8 @@ def _org(org_id: str):
     org = get_org_registry().get(org_id)
     if org is None:
         raise HTTPException(status_code=404, detail=f"No organisation {org_id}")
+    if org.status == OrgStatus.DELETED:
+        raise HTTPException(status_code=409, detail=f"{org.name} was deleted")
     return org
 
 
@@ -110,6 +133,36 @@ def suspend_organisation(org_id: OrgId, users: Users, sessions: Sessions) -> Org
 def reactivate_organisation(org_id: OrgId, users: Users) -> OrganisationInfo:
     _org(org_id)
     return _info(get_org_registry().set_status(org_id, OrgStatus.ACTIVE), users)
+
+
+@router.post("/organisations/{org_id}/baa", response_model=OrganisationInfo)
+def record_baa(
+    org_id: OrgId, body: BaaRecord, users: Users, me: SignedIn, request: Request
+) -> OrganisationInfo:
+    """Record the organisation's signed business associate agreement. Until there is one,
+    its accounts can't sign in when RCM_ENVIRONMENT=production."""
+    _org(org_id)
+    audit_note(request, organisation=org_id, baa_reference=body.reference)
+    baa = BusinessAssociateAgreement(
+        **body.model_dump(), recorded_by=me.username, recorded_at=datetime.now(UTC)
+    )
+    return _info(get_org_registry().set_baa(org_id, baa), users)
+
+
+@router.post("/organisations/{org_id}/delete", response_model=DeleteResult)
+def delete(org_id: OrgId, body: DeleteRequest, users: Users, request: Request) -> DeleteResult:
+    """Delete a suspended organisation for good: its data key (crypto-shredding), its
+    folder, and its accounts. Export its data first if it's leaving. Can't be undone."""
+    org = _org(org_id)
+    if body.confirm.strip() != org_id:
+        raise HTTPException(status_code=422, detail=f"Type {org_id} to confirm")
+    if org.status != OrgStatus.SUSPENDED:
+        raise HTTPException(status_code=409, detail="Suspend the organisation before deleting it")
+    audit_note(request, organisation=org_id)
+    done = delete_organisation(org_id)
+    forget_organisation(org_id)
+    audit_note(request, done=done)
+    return DeleteResult(organisation=_info(get_org_registry().get(org_id), users), done=done)
 
 
 @router.post(

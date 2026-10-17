@@ -115,8 +115,16 @@ continuous claims:
 - **837 settings.** Complete `backend/edi_settings.json` (submitter, clearinghouse, billing
   provider with NPI, EIN and ZIP+4, payer IDs), give facilities ZIP+4 addresses, set `mode`
   to `production`, and validate a test file with the clearinghouse first.
-- **Compliance items still open**: HTTPS (`RCM_COOKIE_SECURE=1`), encryption at rest,
-  single sign-on, a BAA/DPA with Anthropic and the clearinghouse, and audit-log retention.
+- **Encryption at rest.** Generate a master key (`uv run python -m app.orgs new-master-key`),
+  put it in the key service (in `backend/.env` until then) with a backup copy kept
+  separately, run `uv run python -m app.orgs encrypt` with the API stopped, and set
+  `RCM_ENVIRONMENT=production` so the API refuses to start without it. Losing the master
+  key loses the data. See DATA_SEGREGATION_PLAN.md §9.
+- **BAAs.** Record each organisation's signed BAA on the Platform page before loading its
+  real data; in production mode an organisation without one can't sign in.
+- **Compliance items still open**: HTTPS (`RCM_COOKIE_SECURE=1`), moving the master key to
+  a cloud key service, single sign-on, a BAA/DPA with Anthropic and the clearinghouse, and
+  audit-log retention.
 
 ## Planned feature updates: claim submission
 

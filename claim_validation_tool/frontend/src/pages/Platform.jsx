@@ -9,16 +9,20 @@ import { useAuth } from '../hooks/useAuth'
 import {
   addOrganisationAdmin,
   createOrganisation,
+  deleteOrganisation,
   endEmergencyAccess,
   listEmergencyAccess,
   listOrganisations,
   listPlatformAudit,
+  recordBaa,
   setOrganisationActive,
   startEmergencyAccess,
 } from '../services/api'
 import { passwordProblems } from '../utils/password'
 
 const DURATIONS = [15, 30, 60, 120, 240]
+const day = (iso) =>
+  new Date(`${iso}T00:00:00`).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })
 const when = (iso) =>
   new Date(iso).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })
 
@@ -189,9 +193,105 @@ function EmergencyForm({ org, onStarted, onCancel }) {
   )
 }
 
+function BaaForm({ org, onDone, onCancel }) {
+  const [form, setForm] = useState({ signed_on: '', reference: '', signatory: '' })
+  const [error, setError] = useState(null)
+  const set = (key) => (e) => setForm({ ...form, [key]: e.target.value })
+  return (
+    <form
+      aria-label={`Business associate agreement for ${org.name}`}
+      className="space-y-3 rounded-xl bg-gray-50 p-4"
+      onSubmit={async (e) => {
+        e.preventDefault()
+        setError(null)
+        try {
+          await recordBaa(org.id, form)
+          onDone(`${org.name}’s business associate agreement is on record.`)
+        } catch (err) {
+          setError(err.message)
+        }
+      }}
+    >
+      <p className="text-sm text-gray-600">
+        Record the signed agreement before loading real patient data. In production, an organisation without one
+        can’t sign in.
+      </p>
+      <div className="grid gap-3 sm:grid-cols-3">
+        <Field label="Signed on">
+          {(id) => <input id={id} type="date" required className={INPUT_CLASS} value={form.signed_on} onChange={set('signed_on')} />}
+        </Field>
+        <Field label="Reference">
+          {(id) => <input id={id} required maxLength={120} placeholder="e.g. BAA-2026-014" className={INPUT_CLASS} value={form.reference} onChange={set('reference')} />}
+        </Field>
+        <Field label="Signed by (for the organisation)">
+          {(id) => <input id={id} required maxLength={120} className={INPUT_CLASS} value={form.signatory} onChange={set('signatory')} />}
+        </Field>
+      </div>
+      {error && <Notice>Could not record it — {error}</Notice>}
+      <div className="flex gap-2">
+        <button type="submit" className="btn-primary btn-sm">Record agreement</button>
+        <button type="button" className="btn-secondary btn-sm" onClick={onCancel}>Cancel</button>
+      </div>
+    </form>
+  )
+}
+
+function DeleteForm({ org, onDone, onCancel }) {
+  const [typed, setTyped] = useState('')
+  const [error, setError] = useState(null)
+  return (
+    <form
+      aria-label={`Delete ${org.name}`}
+      className="space-y-3 rounded-xl bg-red-50/60 p-4 ring-1 ring-red-100"
+      onSubmit={async (e) => {
+        e.preventDefault()
+        setError(null)
+        try {
+          const result = await deleteOrganisation(org.id, typed)
+          onDone(`${org.name} was deleted: ${result.done.join('; ')}.`)
+        } catch (err) {
+          setError(err.message)
+        }
+      }}
+    >
+      <p className="text-sm text-red-900">
+        This destroys {org.name}’s encryption key, deletes its data and its {org.accounts} account
+        {org.accounts === 1 ? '' : 's'}, and can’t be undone. Copies in backups become unreadable. If it’s leaving,
+        have one of its administrators export its data first.
+      </p>
+      <Field label={`Type ${org.id} to confirm`}>
+        {(id) => (
+          <input
+            id={id}
+            autoComplete="off"
+            className={`${INPUT_CLASS} font-mono sm:w-64`}
+            value={typed}
+            onChange={(e) => setTyped(e.target.value)}
+          />
+        )}
+      </Field>
+      {error && <Notice>Could not delete it — {error}</Notice>}
+      <div className="flex gap-2">
+        <button type="submit" disabled={typed.trim() !== org.id} className="btn-danger btn-sm">Delete for good</button>
+        <button type="button" className="btn-secondary btn-sm" onClick={onCancel}>Cancel</button>
+      </div>
+    </form>
+  )
+}
+
+function DeletedRow({ org }) {
+  return (
+    <li className="py-4 text-sm text-gray-500">
+      <span className="font-medium text-gray-700">{org.name}</span> · <span className="font-mono">{org.id}</span> ·
+      deleted {when(org.deleted_at)}
+    </li>
+  )
+}
+
 function OrganisationRow({ org, onDone, onError, onStarted }) {
-  const [open, setOpen] = useState(null) // 'admin' | 'emergency' | 'suspend'
+  const [open, setOpen] = useState(null) // 'admin' | 'emergency' | 'suspend' | 'baa' | 'delete'
   const suspended = org.status === 'suspended'
+  if (org.status === 'deleted') return <DeletedRow org={org} />
   return (
     <li className="py-4">
       <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
@@ -206,9 +306,19 @@ function OrganisationRow({ org, onDone, onError, onStarted }) {
               <span className="text-amber-700">no active administrator</span>
             )}
           </div>
+          <div className="text-xs text-gray-500">
+            {org.baa ? (
+              `BAA ${org.baa.reference}, signed ${day(org.baa.signed_on)} by ${org.baa.signatory}`
+            ) : (
+              <span className="text-amber-700">No business associate agreement on record</span>
+            )}
+          </div>
         </div>
         <div className="flex flex-wrap items-center gap-1">
           <button type="button" className="btn-quiet btn-sm" onClick={() => setOpen('admin')}>Add admin</button>
+          <button type="button" className="btn-quiet btn-sm" aria-label={`Record BAA for ${org.name}`} onClick={() => setOpen('baa')}>
+            {org.baa ? 'Update BAA' : 'Record BAA'}
+          </button>
           {!suspended && (
             <button type="button" className="btn-quiet btn-sm" onClick={() => setOpen('emergency')}>
               Emergency access
@@ -234,16 +344,26 @@ function OrganisationRow({ org, onDone, onError, onStarted }) {
               <button type="button" className="btn-secondary btn-sm" onClick={() => setOpen(null)}>Keep</button>
             </span>
           ) : suspended ? (
-            <button
-              type="button"
-              className="btn-quiet btn-sm"
-              onClick={async () => {
-                await setOrganisationActive(org.id, true)
-                onDone(`${org.name} is active again.`)
-              }}
-            >
-              Reactivate
-            </button>
+            <>
+              <button
+                type="button"
+                className="btn-quiet btn-sm"
+                onClick={async () => {
+                  await setOrganisationActive(org.id, true)
+                  onDone(`${org.name} is active again.`)
+                }}
+              >
+                Reactivate
+              </button>
+              <button
+                type="button"
+                className="btn btn-sm text-gray-500 hover:bg-red-50 hover:text-red-700"
+                aria-label={`Delete ${org.name}`}
+                onClick={() => setOpen('delete')}
+              >
+                Delete…
+              </button>
+            </>
           ) : (
             <button
               type="button"
@@ -259,6 +379,16 @@ function OrganisationRow({ org, onDone, onError, onStarted }) {
       {open === 'admin' && (
         <div className="mt-3">
           <AddAdmin org={org} onCancel={() => setOpen(null)} onDone={(m) => { setOpen(null); onDone(m) }} />
+        </div>
+      )}
+      {open === 'baa' && (
+        <div className="mt-3">
+          <BaaForm org={org} onCancel={() => setOpen(null)} onDone={(m) => { setOpen(null); onDone(m) }} />
+        </div>
+      )}
+      {open === 'delete' && (
+        <div className="mt-3">
+          <DeleteForm org={org} onCancel={() => setOpen(null)} onDone={(m) => { setOpen(null); onDone(m) }} />
         </div>
       )}
       {open === 'emergency' && (

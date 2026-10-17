@@ -12,14 +12,16 @@ Two sources, entered first:
 
 import hashlib
 import json
-import os
 import random
 from datetime import UTC, date, datetime, timedelta
 from functools import lru_cache
 from pathlib import Path
 from threading import Lock
 
-from app.data.orgs import org_file
+from cryptography.fernet import Fernet
+
+from app.data.orgs import org_cipher_for, org_file
+from app.data.secure_files import read_text, write_text
 from app.models import (
     Address,
     ClaimBilling,
@@ -87,12 +89,13 @@ def _years_before(day: date, years: int) -> date:
 
 
 class RegistrationStore:
-    def __init__(self, path: Path | None = None) -> None:
+    def __init__(self, path: Path | None = None, cipher: Fernet | None = None) -> None:
         self.path = path
+        self._cipher = cipher
         self._entered: dict[str, PatientRegistration] = {}
         self._lock = Lock()
         if path is not None and path.exists():
-            for item in json.loads(path.read_text())["registrations"]:
+            for item in json.loads(read_text(path, cipher))["registrations"]:
                 registration = PatientRegistration.model_validate(item)
                 self._entered[registration.patient_id] = registration
 
@@ -140,14 +143,10 @@ class RegistrationStore:
         if self.path is None:
             return
         payload = {"registrations": [r.model_dump(mode="json") for r in self._entered.values()]}
-        tmp = self.path.with_suffix(".tmp")
-        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-        with os.fdopen(fd, "w") as f:
-            f.write(json.dumps(payload, indent=2))
-        tmp.replace(self.path)
+        write_text(self.path, json.dumps(payload, indent=2), self._cipher)
 
 
 @lru_cache(maxsize=None)
 def get_registration_store(org_id: str) -> RegistrationStore:
     """The organisation's patient registrations, saved in its folder."""
-    return RegistrationStore(org_file(org_id, "patient_registrations.json"))
+    return RegistrationStore(org_file(org_id, "patient_registrations.json"), org_cipher_for(org_id))

@@ -100,6 +100,11 @@ export const startEmergencyAccess = (orgId, reason, minutes) =>
     method: 'POST',
     body: { reason, minutes },
   })
+export const recordBaa = (orgId, baa) =>
+  request(`/platform/organisations/${encodeURIComponent(orgId)}/baa`, { method: 'POST', body: baa })
+/** Deletes a suspended organisation for good; `confirm` is its ID, typed out. */
+export const deleteOrganisation = (orgId, confirm) =>
+  request(`/platform/organisations/${encodeURIComponent(orgId)}/delete`, { method: 'POST', body: { confirm } })
 export const listEmergencyAccess = (options) => request('/platform/emergency-access', options)
 export const endEmergencyAccess = (grantId) =>
   request(`/platform/emergency-access/${encodeURIComponent(grantId)}/end`, { method: 'POST' })
@@ -155,6 +160,9 @@ export const listDepartments = (options) => request('/departments', options)
 /** A patient's date of birth, address, and policies, to fill a new claim with. */
 export const getPatientRegistration = (patientId) =>
   request(`/patients/${encodeURIComponent(patientId)}/registration`)
+
+/** Link to download all the organisation's data, decrypted, as a zip (administrators). */
+export const organisationExportUrl = () => `${API_BASE}/organisation/export`
 
 /** Link to download the 837 file a claim was submitted with. */
 export const claim837Url = (claimId) => `${API_BASE}/claims/${encodeURIComponent(claimId)}/837`

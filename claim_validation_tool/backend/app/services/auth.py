@@ -19,6 +19,7 @@ from fastapi import Depends, HTTPException, Request
 
 from app.data.emergency import get_emergency_access
 from app.data.orgs import OrgStatus, get_org_registry
+from app.data.secure_files import production
 from app.data.users import UserStore, get_user_store
 from app.models import Permission, Role, User
 
@@ -33,6 +34,7 @@ PERMISSION_LABELS = {
     Permission.RULES_WRITE: "change validation rules",
     Permission.AUDIT_READ: "read the audit log",
     Permission.USERS_MANAGE: "manage user accounts",
+    Permission.DATA_EXPORT: "export the organisation's data",
     Permission.PLATFORM_MANAGE: "manage the platform",
 }
 
@@ -180,8 +182,13 @@ def organisation_problem(user: User) -> str | None:
     org = get_org_registry().get(user.organisation_id)
     if org is None:
         return "Your account's organisation no longer exists. Ask an administrator."
+    if org.status == OrgStatus.DELETED:
+        return "Your account's organisation no longer exists. Ask an administrator."
     if org.status != OrgStatus.ACTIVE:
         return "Your organisation's access is suspended."
+    if org.baa is None and production():
+        # No real patient data without a signed business associate agreement
+        return "Your organisation's business associate agreement isn't on record yet."
     return None
 
 

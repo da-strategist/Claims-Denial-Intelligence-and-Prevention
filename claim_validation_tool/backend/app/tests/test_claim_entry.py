@@ -304,16 +304,17 @@ def test_rules_can_flag_overdue_claims(client, today):
 
 def test_startup_drops_corrections_for_claims_that_no_longer_exist(anon_client):
     # A manual claim was corrected, then its saved claim was lost and the server restarted
+    from app.data.orgs import org_cipher_for
     from app.tests.conftest import org_folder
 
-    path = org_folder("meridian") / "claim_corrections.json"
-    store = CorrectionStore(path)
+    path, cipher = org_folder("meridian") / "claim_corrections.json", org_cipher_for("meridian")
+    store = CorrectionStore(path, cipher)
     store.add("CLM0000005", "CLM0000005:RULE-002", {"pa_number": (None, "OLD-AUTH")})
     store.add("CLM0000002", "CLM0000002:RULE-008", {"is_clean_claim": ("false", "true")})
     for cache in (repository.get_repository, get_correction_store):
         cache.cache_clear()
     repo = repository.get_repository("meridian")
-    assert CorrectionStore(path).overrides() == {"CLM0000002": {"is_clean_claim": "true"}}
+    assert CorrectionStore(path, cipher).overrides() == {"CLM0000002": {"is_clean_claim": "true"}}
     assert repo.get_claim("CLM0000002").has_corrections is True
 
 

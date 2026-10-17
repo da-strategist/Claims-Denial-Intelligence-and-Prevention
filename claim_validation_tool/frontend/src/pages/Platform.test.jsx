@@ -68,4 +68,57 @@ describe('Platform', () => {
     expect(await screen.findByText(/Riverbend Clinic is ready/)).toBeInTheDocument()
     expect(sentBodies(fetchMock, 'POST /platform/organisations')).toEqual([{ id: 'riverbend', name: 'Riverbend Clinic' }])
   })
+
+  it('flags a missing BAA and records one', async () => {
+    const user = userEvent.setup()
+    const fetchMock = setup({
+      'POST /platform/organisations/acme/baa': ({ body }) => ({ ...ORGS[1], baa: body }),
+    })
+    const acme = await row('Acme Health')
+    expect(within(acme).getByText('No business associate agreement on record')).toBeInTheDocument()
+    await user.click(within(acme).getByRole('button', { name: 'Record BAA for Acme Health' }))
+    const form = within(acme).getByRole('form', { name: 'Business associate agreement for Acme Health' })
+    await user.type(within(form).getByLabelText('Signed on'), '2026-10-01')
+    await user.type(within(form).getByLabelText('Reference'), 'BAA-2026-014')
+    await user.type(within(form).getByLabelText(/Signed by/), 'Dr. Ada Obi')
+    await user.click(within(form).getByRole('button', { name: 'Record agreement' }))
+    expect(await screen.findByText('Acme Health’s business associate agreement is on record.')).toBeInTheDocument()
+    expect(sentBodies(fetchMock, 'POST /platform/organisations/acme/baa')).toEqual([
+      { signed_on: '2026-10-01', reference: 'BAA-2026-014', signatory: 'Dr. Ada Obi' },
+    ])
+  })
+
+  it('deletes a suspended organisation only once its ID is typed', async () => {
+    const user = userEvent.setup()
+    const suspended = { ...ORGS[1], status: 'suspended' }
+    const fetchMock = setup({
+      'GET /platform/organisations': () => [ORGS[0], suspended],
+      'POST /platform/organisations/acme/delete': () => ({
+        organisation: { ...suspended, status: 'deleted' },
+        done: ['deleted its folder (acme/)'],
+      }),
+    })
+    const lakeside = await row('Lakeside Family Practice')
+    expect(within(lakeside).queryByRole('button', { name: /Delete/ })).not.toBeInTheDocument() // active
+    const acme = await row('Acme Health')
+    await user.click(within(acme).getByRole('button', { name: 'Delete Acme Health' }))
+    const form = within(acme).getByRole('form', { name: 'Delete Acme Health' })
+    const go = within(form).getByRole('button', { name: 'Delete for good' })
+    await user.type(within(form).getByLabelText('Type acme to confirm'), 'Acme')
+    expect(go).toBeDisabled()
+    await user.clear(within(form).getByLabelText('Type acme to confirm'))
+    await user.type(within(form).getByLabelText('Type acme to confirm'), 'acme')
+    await user.click(go)
+    expect(await screen.findByText(/Acme Health was deleted: deleted its folder/)).toBeInTheDocument()
+    expect(sentBodies(fetchMock, 'POST /platform/organisations/acme/delete')).toEqual([{ confirm: 'acme' }])
+  })
+
+  it('shows deleted organisations as a record only', async () => {
+    setup({
+      'GET /platform/organisations': () => [{ ...ORGS[1], status: 'deleted', deleted_at: '2026-10-17T12:00:00Z' }],
+    })
+    const acme = await row('Acme Health')
+    expect(within(acme).getByText(/deleted/)).toBeInTheDocument()
+    expect(within(acme).queryByRole('button')).not.toBeInTheDocument()
+  })
 })

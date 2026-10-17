@@ -72,6 +72,18 @@ scope, and audit routing apply unchanged; `current_org_id` refuses platform acco
 without a grant. `/api/platform/*` requests always go to the platform audit log; grants
 are also recorded in the organisation's own log. `routers/platform.py`, `test_platform.py`.
 
+**Encryption at rest, export, deletion, BAA (Phase D):** `data/secure_files.py` is the one
+place files holding PHI are read and written: `org_cipher(folder)` unwraps the
+organisation's data key (`data_key.enc`) with `RCM_MASTER_KEY`, or returns None when no key
+is set (plain text). `read_text`/`write_text`/`append_line`/`iter_lines` accept plain or
+encrypted content, so files can be encrypted in place. Stores take a `cipher` from their
+getter (`org_cipher_for(org_id)`); `_read_table` reads `<name>.csv.enc` when present. A new
+store holding PHI must go through these helpers. `data/org_lifecycle.py` encrypts,
+exports, and deletes an organisation; `routers/organisation.py` serves the export;
+`Organisation.baa` and `OrgStatus.DELETED` are in `data/orgs.py`; `organisation_problem`
+blocks sign-in without a BAA when `RCM_ENVIRONMENT=production`. The test client runs with
+a master key, so every API test runs encrypted; `test_encryption.py` checks what's on disk.
+
 **Conventions:**
 - All API routes prefixed with `/api/`
 - Never reach data through a global: take the organisation's stores from `services/org_context.py`

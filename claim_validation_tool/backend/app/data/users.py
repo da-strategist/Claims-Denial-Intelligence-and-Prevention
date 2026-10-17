@@ -9,6 +9,7 @@ import hmac
 import json
 import os
 import secrets
+from collections.abc import Iterable
 from datetime import UTC, datetime
 from functools import lru_cache
 from pathlib import Path
@@ -151,6 +152,13 @@ class UserStore:
             self._users[user.username] = user
             self._save()
         return user
+
+    def remove(self, usernames: Iterable[str]) -> None:
+        """Delete these accounts (their organisation was deleted)."""
+        with self._lock:
+            for username in usernames:
+                self._users.pop(username, None)
+            self._save()
 
     def _save(self) -> None:
         """Write all users atomically, readable only by this account. Caller holds the lock."""

@@ -14,7 +14,10 @@ from pathlib import Path
 from threading import Lock
 from typing import Any
 
-from app.data.orgs import org_file
+from cryptography.fernet import Fernet
+
+from app.data.orgs import org_cipher_for, org_file
+from app.data.secure_files import append_line, iter_lines
 from app.models import AuditEvent, AuditOutcome, AuditQuery, AuditVerification, Role
 
 DEFAULT_AUDIT_FILE = Path(__file__).resolve().parents[2] / "logs" / "audit.jsonl"
@@ -34,8 +37,9 @@ def outcome_for(status_code: int) -> AuditOutcome:
 
 
 class AuditLog:
-    def __init__(self, path: Path | None = None) -> None:
+    def __init__(self, path: Path | None = None, cipher: Fernet | None = None) -> None:
         self.path = path
+        self._cipher = cipher  # each line encrypted on its own; the chain is over plain text
         self._memory: list[str] = []  # events when there's no file (tests)
         self._lock = Lock()
         self._seq, self._last_hash = 0, GENESIS_HASH
@@ -116,23 +120,19 @@ class AuditLog:
         if self.path is None:
             yield from self._memory
         elif self.path.exists():
-            with self.path.open() as f:
-                yield from (line for line in f if line.strip())
+            yield from iter_lines(self.path, self._cipher)
 
     def _append(self, line: str) -> None:
         if self.path is None:
             self._memory.append(line)
             return
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        fd = os.open(self.path, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
-        with os.fdopen(fd, "a") as f:
-            f.write(line + "\n")
+        append_line(self.path, line, self._cipher)
 
 
 @lru_cache(maxsize=None)
 def get_audit_log(org_id: str) -> AuditLog:
     """The organisation's audit log, in its folder; only its administrators read it."""
-    return AuditLog(org_file(org_id, "logs/audit.jsonl"))
+    return AuditLog(org_file(org_id, "logs/audit.jsonl"), org_cipher_for(org_id))
 
 
 @lru_cache(maxsize=1)

@@ -14,14 +14,14 @@ organisation's data is never in another's stores. See DATA_SEGREGATION_PLAN.md.
 
 import json
 import os
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from enum import StrEnum
 from functools import lru_cache
 from pathlib import Path
 from threading import Lock
 from typing import Annotated
 
-from pydantic import BaseModel, StringConstraints
+from pydantic import BaseModel, Field, StringConstraints
 
 DEFAULT_ORGS_DIR = Path(__file__).resolve().parents[2] / "orgs"
 
@@ -31,6 +31,18 @@ OrgId = Annotated[str, StringConstraints(pattern=r"^[a-z][a-z0-9-]{1,31}$")]
 class OrgStatus(StrEnum):
     ACTIVE = "active"
     SUSPENDED = "suspended"
+    DELETED = "deleted"  # its data and accounts are gone; the entry stays as a record
+
+
+class BusinessAssociateAgreement(BaseModel):
+    """The organisation's signed BAA (HIPAA 45 CFR 164.502(e)): the platform handles its PHI
+    as a business associate, so one must be in place before real patient data is loaded."""
+
+    signed_on: date
+    reference: str = Field(min_length=1, max_length=120, description="Contract number or file reference")
+    signatory: str = Field(min_length=1, max_length=120, description="Who signed for the organisation")
+    recorded_by: str
+    recorded_at: datetime
 
 
 class Organisation(BaseModel):
@@ -39,6 +51,8 @@ class Organisation(BaseModel):
     data_dir: str  # its claims CSVs; relative paths are from the orgs folder
     status: OrgStatus = OrgStatus.ACTIVE
     created_at: datetime
+    baa: BusinessAssociateAgreement | None = None
+    deleted_at: datetime | None = None
 
 
 class OrgRegistry:
@@ -73,6 +87,23 @@ class OrgRegistry:
     def set_status(self, org_id: str, status: OrgStatus) -> Organisation:
         with self._lock:
             org = self._require(org_id).model_copy(update={"status": status})
+            self._orgs[org_id] = org
+            self._save()
+            return org
+
+    def set_baa(self, org_id: str, baa: BusinessAssociateAgreement) -> Organisation:
+        with self._lock:
+            org = self._require(org_id).model_copy(update={"baa": baa})
+            self._orgs[org_id] = org
+            self._save()
+            return org
+
+    def mark_deleted(self, org_id: str) -> Organisation:
+        """Keep the entry (who it was, when it went) so its ID is never reused."""
+        with self._lock:
+            org = self._require(org_id).model_copy(
+                update={"status": OrgStatus.DELETED, "deleted_at": datetime.now(UTC)}
+            )
             self._orgs[org_id] = org
             self._save()
             return org
@@ -117,3 +148,13 @@ def org_file(org_id: str, name: str) -> Path:
     # Created on first use, readable only by the account running the API (it holds PHI)
     path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     return path
+
+
+def org_cipher_for(org_id: str):
+    """The organisation's data key (secure_files.py), or None when encryption is off."""
+    from app.data.secure_files import org_cipher
+
+    registry = get_org_registry()
+    if registry.get(org_id) is None:
+        raise LookupError(f"No organisation {org_id}")
+    return org_cipher(registry.folder(org_id))

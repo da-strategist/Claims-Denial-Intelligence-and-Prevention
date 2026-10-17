@@ -2,8 +2,15 @@ import { useState } from 'react'
 import PageHeader, { Notice, Page } from '../components/PageHeader'
 import { FIELD_CLASS } from '../constants'
 import { useApi } from '../hooks/useApi'
+import { useAuth } from '../hooks/useAuth'
 import EmergencyAccessList from '../components/EmergencyAccessList'
-import { endOrgEmergencyAccess, listAuditEvents, listOrgEmergencyAccess, verifyAuditLog } from '../services/api'
+import {
+  endOrgEmergencyAccess,
+  listAuditEvents,
+  listOrgEmergencyAccess,
+  organisationExportUrl,
+  verifyAuditLog,
+} from '../services/api'
 
 // Success is the norm, so it stays quiet
 const OUTCOME_STYLES = {
@@ -39,7 +46,6 @@ function Details({ event }) {
   return <span className="text-gray-600">{parts.join(' · ') || '—'}</span>
 }
 
-/** Who did what to which record, newest first (admins only). */
 /** The platform's emergency access to this organisation: shown first when any is active. */
 function EmergencySection() {
   const { data: grants, reload } = useApi((options) => listOrgEmergencyAccess(options))
@@ -64,7 +70,9 @@ function EmergencySection() {
   )
 }
 
+/** Who did what to which record, newest first (admins only). */
 export default function AuditLog() {
+  const auth = useAuth()
   const [draft, setDraft] = useState(EMPTY_FILTERS)
   const [filters, setFilters] = useState(EMPTY_FILTERS)
   const { data: events, loading, error } = useApi(
@@ -77,7 +85,17 @@ export default function AuditLog() {
       <PageHeader
         title="Audit log"
         subtitle="Every request: who made it, the records involved, and whether it was allowed."
-      />
+      >
+        {auth?.user?.permissions?.includes('data:export') && (
+          <a
+            href={organisationExportUrl()}
+            className="btn-secondary"
+            title="A zip of all your organisation’s data, decrypted, with a manifest. It holds PHI; the download is recorded here."
+          >
+            Export all data
+          </a>
+        )}
+      </PageHeader>
       <ChainStatus />
       <EmergencySection />
 

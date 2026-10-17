@@ -95,3 +95,17 @@ OrgAudit = Annotated[AuditLog, Depends(_audit)]
 OrgKnowledge = Annotated[KnowledgeBase, Depends(_knowledge)]
 OrgRetriever = Annotated[Retriever, Depends(_retriever)]
 OrgNames = Annotated[NameScrubber, Depends(_names)]
+
+
+def forget_organisation(org_id: str) -> None:
+    """Drop everything held in memory for a deleted organisation. The caches can't drop
+    one organisation's entry, so they're cleared; others reload on their next request."""
+    from app.data.new_claims import get_new_claim_store
+    from app.data.secure_files import org_cipher
+
+    for cache in (
+        get_repository, get_new_claim_store, get_rule_repository, get_correction_store,
+        get_draft_store, get_registration_store, get_reference_data, get_status_snapshot,
+        get_audit_log, get_knowledge_base, get_retriever, get_name_scrubber, org_cipher,
+    ):
+        cache.cache_clear()

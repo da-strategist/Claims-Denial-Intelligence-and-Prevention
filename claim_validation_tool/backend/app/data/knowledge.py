@@ -162,9 +162,9 @@ def _payer_sources(data_dir: Path) -> tuple[list[Source], dict[str, str]]:
     return sources, names
 
 
-def _contract_sources(data_dir: Path, payer_names: dict[str, str]) -> list[Source]:
+def _contract_sources(data_dir: Path, payer_names: dict[str, str], cipher=None) -> list[Source]:
     sources = []
-    for row in _read_table(data_dir, "dim_payer_contracts").to_dict("records"):
+    for row in _read_table(data_dir, "dim_payer_contracts", cipher).to_dict("records"):
         payer_id, category = row["payer_id"], row["cpt_category"]
         name = payer_names.get(payer_id, payer_id)
         end = row["end_date"] or "open-ended"
@@ -211,14 +211,15 @@ class KnowledgeBase:
     payer_names: dict[str, str]
 
     @classmethod
-    def load(cls, data_dir: Path) -> "KnowledgeBase":
+    def load(cls, data_dir: Path, cipher=None) -> "KnowledgeBase":
+        """`cipher` decrypts the organisation's own tables (its payer contracts)."""
         payers, payer_names = _payer_sources(data_dir)
         sources = [
             *_coverage_sources(data_dir),
             *_ncci_sources(data_dir),
             *_mue_sources(data_dir),
             *payers,
-            *_contract_sources(data_dir, payer_names),
+            *_contract_sources(data_dir, payer_names, cipher),
             *_carc_sources(data_dir),
             *_rarc_sources(data_dir),
             *_fee_schedule_sources(data_dir),
@@ -232,4 +233,5 @@ class KnowledgeBase:
 @lru_cache(maxsize=None)
 def get_knowledge_base(org_id: str) -> KnowledgeBase:
     """The organisation's knowledge base, from the same data directory as its claims."""
-    return KnowledgeBase.load(get_repository(org_id).data_dir)
+    repo = get_repository(org_id)
+    return KnowledgeBase.load(repo.data_dir, repo.cipher)

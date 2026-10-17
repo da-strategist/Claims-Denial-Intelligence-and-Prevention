@@ -39,6 +39,7 @@ class Permission(StrEnum):
     RULES_WRITE = "rules:write"  # create, edit, test, and delete validation rules
     AUDIT_READ = "audit:read"
     USERS_MANAGE = "users:manage"  # create accounts, change roles, reset passwords, disable
+    DATA_EXPORT = "data:export"  # download all the organisation's data
     PLATFORM_MANAGE = "platform:manage"  # organisations, their first admins, emergency access
 
 

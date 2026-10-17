@@ -4,6 +4,11 @@
     uv run python -m app.orgs migrate                     # one-time: today's data -> "meridian"
     uv run python -m app.orgs add-sample                  # the synthetic "lakeside" practice
     uv run python -m app.orgs add acme --name "Acme Health" --data-dir /path/to/acme/csvs
+    uv run python -m app.orgs new-master-key              # prints a key for RCM_MASTER_KEY
+    uv run python -m app.orgs encrypt                     # encrypt every organisation's files
+
+`encrypt` turns on encryption at rest for files written before RCM_MASTER_KEY was set
+(stop the API and back up the orgs folder first). It is safe to run twice.
 
 `migrate` moves a single-organisation install's files into backend/orgs/meridian/ and
 assigns every account without an organisation to it. It never overwrites a file and is
@@ -19,10 +24,12 @@ from pathlib import Path
 from app.data.corrections import DEFAULT_CORRECTIONS_FILE
 from app.data.drafts import DEFAULT_DRAFTS_FILE
 from app.data.new_claims import DEFAULT_NEW_CLAIMS_FILE
-from app.data.orgs import get_org_registry
+from app.data.org_lifecycle import encrypt_organisation
+from app.data.orgs import OrgStatus, get_org_registry
 from app.data.registrations import DEFAULT_REGISTRATIONS_FILE
 from app.data.repository import DEFAULT_DATA_DIR
 from app.data.rules import DEFAULT_RULES_FILE
+from app.data.secure_files import MASTER_KEY_ENV, EncryptionError, new_master_key
 from app.data.users import get_user_store
 from app.sample_org import generate
 from app.services.edi_settings import DEFAULT_EDI_SETTINGS_FILE
@@ -92,6 +99,9 @@ def main(argv: list[str] | None = None) -> int:
     add.add_argument("org_id")
     add.add_argument("--name", required=True)
     add.add_argument("--data-dir", required=True, help="folder with the organisation's claims CSVs")
+    commands.add_parser("new-master-key", help=f"print a new key for {MASTER_KEY_ENV}")
+    encrypt = commands.add_parser("encrypt", help="encrypt existing files (needs the master key)")
+    encrypt.add_argument("org_id", nargs="?", help="one organisation (default: all)")
     args = parser.parse_args(argv)
     registry = get_org_registry()
     try:
@@ -105,10 +115,25 @@ def main(argv: list[str] | None = None) -> int:
                     print(line)
             case "add-sample":
                 print(add_sample())
+            case "new-master-key":
+                print(new_master_key())
+                print(
+                    f"Put it in backend/.env as {MASTER_KEY_ENV}=<key> and keep a copy somewhere "
+                    "safe and separate (a password manager or key vault): without it the "
+                    "encrypted data can't be read.",
+                    file=sys.stderr,
+                )
+            case "encrypt":
+                orgs = [args.org_id] if args.org_id else [
+                    o.id for o in registry.list() if o.status != OrgStatus.DELETED
+                ]
+                for org_id in orgs:
+                    for line in encrypt_organisation(org_id) or [f"{org_id}: nothing to encrypt"]:
+                        print(line)
             case "add":
                 org = registry.add(args.org_id, args.name, Path(args.data_dir).resolve())
                 print(f"created organisation {org.id} ({org.name})")
-    except (ValueError, LookupError) as err:
+    except (ValueError, LookupError, EncryptionError) as err:
         print(err, file=sys.stderr)
         return 1
     return 0

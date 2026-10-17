@@ -147,8 +147,29 @@ organisation-wide. Changes apply on the person's next action.
 no organisation and sees no patient data. Its **Platform** page lists organisations (status,
 accounts, active admins), creates new ones (starting with the shared code sets and empty
 tables for their own data), adds an organisation's administrator, and suspends or
-reactivates organisations (suspending signs their users out at once). Organisations'
-administrators can't create platform accounts.
+reactivates organisations (suspending signs their users out at once). It records each
+organisation's business associate agreement (BAA); a missing one is flagged, and in
+production mode (`RCM_ENVIRONMENT=production`) blocks the organisation's sign-ins. A
+suspended organisation can be deleted for good, by typing its ID: its encryption key is
+destroyed first, then its data and accounts; a record of it stays so its ID isn't reused.
+Organisations' administrators can't create platform accounts.
+
+**Encryption at rest.** With `RCM_MASTER_KEY` set, each organisation's files holding patient
+data (new claims, drafts, corrections, registrations, its audit log, and claims tables in
+its own folder) are encrypted with its own key, which the master key protects. Create the
+key and encrypt an existing install with the API stopped:
+
+```bash
+uv run python -m app.orgs new-master-key    # add to backend/.env as RCM_MASTER_KEY=…, and back it up separately
+uv run python -m app.orgs encrypt           # safe to run twice
+```
+
+Without the master key the data can't be read, so keep a copy somewhere separate (a
+password manager or key vault). Production mode refuses to start without one. Details in
+`DATA_SEGREGATION_PLAN.md` §9.
+
+**Data export.** An organisation's administrators download all its data, decrypted, as one
+zip with a manifest (Audit log page, **Export all data**). The download is in its audit log.
 
 **Emergency (break-glass) access.** To look inside an organisation, e.g. for a support case,
 a platform account starts emergency access with a written reason (20+ characters) for 15
@@ -198,6 +219,8 @@ App: http://localhost:5173. The Vite dev server proxies `/api` to port 8000.
 | `RCM_SESSION_IDLE_MINUTES` | `15` | Sign out after this long without a request |
 | `RCM_SESSION_MAX_HOURS` | `8` | Longest a session lasts |
 | `RCM_COOKIE_SECURE` | off | Set to `1` behind HTTPS so the session cookie is never sent over plain HTTP |
+| `RCM_MASTER_KEY` | unset | Turns on encryption at rest: wraps each organisation's data key (`orgs/<id>/data_key.enc`). Comma-separate several to rotate (the first is used for new keys) |
+| `RCM_ENVIRONMENT` | unset | `production` refuses to start without `RCM_MASTER_KEY` and blocks sign-in for organisations without a BAA on record |
 | `VITE_API_BASE` | `/api` | API base URL for the frontend |
 
 Each organisation's app data persists in its folder (git-ignored, readable only by the account
@@ -235,7 +258,8 @@ All routes are under `/api`; full schemas at `/docs`.
 | Sign-in | `POST /auth/login` · `POST /auth/logout` · `GET /auth/me` |
 | Audit | `GET /audit` (username, record_id, outcome, limit) · `GET /audit/verify` |
 | Users | `GET /users` · `POST /users` · `PATCH /users/{username}` · `POST /users/{username}/password` (administrators) |
-| Platform | `GET/POST /platform/organisations` · `POST /platform/organisations/{id}/suspend` · `…/reactivate` · `…/admins` · `…/emergency-access` · `GET /platform/emergency-access` · `POST /platform/emergency-access/{id}/end` · `GET /platform/audit` (platform accounts) |
+| Platform | `GET/POST /platform/organisations` · `POST /platform/organisations/{id}/suspend` · `…/reactivate` · `…/admins` · `…/baa` · `…/delete` · `…/emergency-access` · `GET /platform/emergency-access` · `POST /platform/emergency-access/{id}/end` · `GET /platform/audit` (platform accounts) |
+| Organisation | `GET /organisation/export` (administrators: zip of all its data) |
 | Emergency access (organisation side) | `GET /audit/emergency-access` · `POST /audit/emergency-access/{id}/end` (administrators) |
 | Claims | `GET /claims` (search, filter, sort, page) · `POST /claims` · `GET /claims/{id}` · `POST /claims/{id}/submit` · `GET /claims/{id}/837` · `GET /claims/{id}/claim-form.pdf` · `GET /claims/{id}/837-readable.pdf` |
 | Saved drafts | `GET /drafts` · `POST /drafts` · `GET /drafts/{id}` · `PUT /drafts/{id}` · `DELETE /drafts/{id}` (billers and admins) |
@@ -285,8 +309,9 @@ claim_validation_tool/
 - Synthetic data: payer, coding (LCD/NCCI/MUE), and contract checks are limited to what it contains.
   Some defaults suit only this sample (the Overview opens on All time, sample patient details are
   generated); `PHASES.md` lists what to change before going live on real claims.
-- Not yet fit for real patient data: no HTTPS or encryption at rest, local accounts rather than
-  single sign-on, and no agreement (BAA/DPA) with Anthropic. Sessions live in memory, so a
+- Not yet fit for real patient data: no HTTPS, the encryption master key sits in `.env` rather
+  than a key service, local accounts rather than single sign-on, and no agreement (BAA/DPA)
+  with Anthropic. Sessions live in memory, so a
   restart signs everyone out, and the audit log has no rotation or retention policy.
 - AI Fix is rule-based; the assistant handles the ambiguous cases. Its knowledge is limited to
   the reference tables: there are no payer policy manuals, so it can't say which services a
