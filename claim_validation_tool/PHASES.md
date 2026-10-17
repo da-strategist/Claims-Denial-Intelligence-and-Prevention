@@ -97,6 +97,30 @@ Tasks:
 
 ---
 
+## Planned feature updates: claim submission
+
+Not scheduled; to be built when the need arises. Today a claim goes Draft -> Pending
+with its 837 saved and downloadable, and stays Pending (turning Overdue) because nothing
+comes back from the payer. Suggested order: 1 then 2 complete the cycle without any
+outside partner; 3 and 5 matter once real volume flows; 4 can be added at any time.
+
+1. **Record payer decisions.** Enter the payer's decision by hand (paid and adjusted
+   amounts, CARC/RARC denial codes), or import an 835 remittance file to update claims
+   in bulk. Claims become Paid or Denied; denials enter the Needs attention queue with
+   appeal suggestions and feed the Overview and future risk scores. Model it on
+   `Data/raw_data/fact_remittance.csv`.
+2. **Correct and resubmit, or void.** Send a corrected replacement (837 claim frequency
+   code 7) or void one sent in error (code 8), as a new 837 linked to the original
+   claim and its payer claim number. Depends on 1 for the payer's response.
+3. **Batch submission.** Submit selected claims together and produce one 837 per day
+   (one interchange, many claims) for the clearinghouse.
+4. **Second approval before submission.** One person prepares, another approves (maker /
+   checker), recorded in the audit log. Independent of the others.
+5. **Clearinghouse connection.** Send 837s automatically (SFTP or API) and read back the
+   999 and 277CA acknowledgements (accepted / rejected). Needs a chosen vendor,
+   credentials, and a business associate agreement first; complete
+   `backend/edi_settings.json` and validate a test file with them before going live.
+
 ## Summary
 
 | Phase | Status |

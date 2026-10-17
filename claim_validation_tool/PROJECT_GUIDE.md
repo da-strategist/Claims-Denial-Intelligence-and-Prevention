@@ -15,13 +15,15 @@ This tool validates healthcare claims against configurable rules, identifies den
 - `app/main.py` — FastAPI app instance, CORS, audit middleware, routers, data preload at startup
 - `app/users.py` — account management CLI
 - `app/routers/` — one file per API domain:
-  - `claims.py` — search, detail, manual entry, and submission of claims
+  - `claims.py` — search, detail, manual entry, submission (with its 837), and the 837 and PDF downloads
+  - `drafts.py` — saved drafts of the New Claim form
   - `rules.py` — CRUD and dry-run testing for validation rules
   - `validation.py` — run the validation engine against claims
   - `aifix.py` — fix suggestions, applying them, and undoing corrections
   - `assistant.py` — clarification questions answered with cited reference records
   - `dashboard.py` — aggregated KPIs and chart data
-  - `patients.py`, `payers.py`, `departments.py`, `reference.py` — lookups for the UI
+  - `patients.py` — patient search and each patient's registration (billing details to fill a claim)
+  - `payers.py`, `departments.py`, `reference.py` — lookups for the UI
   - `jab.py` — JAB Audit integration contracts (conceptual)
   - `auth.py`, `audit.py` — sign-in and out; reading and verifying the audit log
 - `app/models/` — Pydantic schemas for request/response contracts
@@ -33,8 +35,11 @@ This tool validates healthcare claims against configurable rules, identifies den
   - `status_snapshot.py` — cached validation of every claim, invalidated on data or rule changes
   - `dashboard.py`, `jab.py` — dashboard aggregates and JAB contract schemas
   - `auth.py` — sessions, login throttling, and the `require(permission)` route dependency
-- `app/data/` — data access: in-memory claims repository over the synthetic CSVs, JSON-backed
-  rule and correction stores, reference data (CPT, ICD-10, contracts, CARC/RARC), and the
+  - `edi837.py`, `edi_settings.py`, `edi_reader.py`, `claim_pdf.py` — build the 837 at submission
+    from the claim and the organisation settings, read a saved 837 back, and render its PDFs
+- `app/data/` — data access: claims repository over the synthetic CSVs (claims entered in the app
+  are saved in `new_claims.json` and replayed on startup), JSON-backed rule, correction, saved-draft
+  (`drafts.py`) and patient registration (`registrations.py`) stores, reference data (CPT, ICD-10, contracts, CARC/RARC), and the
   assistant's knowledge base (`knowledge.py`: one citable source per reference-table row),
   user accounts (`users.py`), and the hash-chained audit log (`audit.py`)
 - `app/evals/` — the assistant's evaluation set and runner
@@ -55,11 +60,14 @@ This tool validates healthcare claims against configurable rules, identifies den
 - `src/pages/` — one component per view:
   - `Dashboard.jsx` — KPI cards, charts
   - `ClaimsWorkbench.jsx` — claim table with expandable rows; opens on the Needs attention queue (`needs_attention=true`, sorted by `risk_score`)
-  - `NewClaim.jsx` — manual claim entry for registered patients
+  - `NewClaim.jsx` — claim entry for registered patients, with the 837 billing fields filled from
+    their registration, Save draft, and the shared Drafts panel (saved forms and draft claims)
   - `RuleManager.jsx` — rule list + rule builder panel
   - `JabAudit.jsx` — conceptual audit workflow
+  - `AuditLog.jsx` — the audit log (admins)
+  - `UserGuide.jsx` — task-by-task help, filtered to the signed-in role
 - `src/components/` — reusable pieces (StatusBadge, KpiCard, ConditionBuilder, etc.)
-- `src/index.css` — the design system: colour tokens (one blue accent; red, amber and green only where they mean something), and the shared `btn-primary`, `btn-secondary`, `btn-quiet`, `btn-danger`, `card`, `field` and `eyebrow` classes. New UI should use these rather than one-off colours.
+- `src/index.css` — the design system: colour tokens (one blue accent for actions; green for good, amber for review, red for problems: Paid, Pass and low risk are green; warnings and medium risk amber; errors, denials and high risk red), and the shared `btn-primary`, `btn-secondary`, `btn-quiet`, `btn-danger`, `card`, `field` and `eyebrow` classes. New UI should use these rather than one-off colours.
 - `src/components/PageHeader.jsx` — `Page` (width and padding), `PageHeader` (title, one line of context, actions) and `Notice` (inline error/warning); every page uses them
 - `src/services/api.js` — centralized fetch wrapper for all backend calls
 - `src/hooks/` — custom hooks for data fetching and state

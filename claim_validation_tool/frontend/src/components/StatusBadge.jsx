@@ -2,11 +2,11 @@ import { VALIDATION_STATUSES } from '../constants'
 
 const PILL = 'inline-flex items-center whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium'
 
-// Only a denial is a problem; the rest are just where the claim is
+// Paid is green, a denial red; Draft and Pending are just where the claim is
 const CLAIM_STATUS_STYLES = {
   Draft: 'border border-dashed border-gray-300 text-gray-600',
   Pending: 'bg-accent-soft text-accent',
-  Paid: 'bg-gray-100 text-gray-600',
+  Paid: 'bg-emerald-50 text-emerald-700',
   Denied: 'bg-red-50 text-red-700',
 }
 

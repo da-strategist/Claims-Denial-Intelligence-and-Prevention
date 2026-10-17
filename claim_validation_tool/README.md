@@ -10,8 +10,8 @@ FastAPI backend and a React frontend over a synthetic 120,000-claim data set.
 | Page | Purpose |
 |---|---|
 | **Overview** | Opens on the number of claims that need attention, with a button straight to them. Then KPIs (denial rate, clean claim rate, days in AR, net collection, at-risk claims) against the prior period, revenue trend, validation status, top denial reasons, AR aging, payer performance. Filter by period, payer, department. |
-| **Claims** | Opens on the **Needs attention** queue: claims with validation errors (Error or AI Fix), riskiest first. **All claims** shows every submitted claim (drafts are finished on New Claim). Search and filter; each row shows its validation result and 0–100 risk score. Expand a claim for findings, risk breakdown, lines, denials, and **AI Fix** suggestions that can be applied and undone. Suggestions that need judgement (medical necessity, NCCI/modifiers, payer prior auth, appeals) offer **Ask the assistant**. |
-| **New Claim** | Enter a draft claim for a registered patient: billed payer (defaults to the registered primary) plus secondary/tertiary coverage, up to 12 diagnoses each supported by a service line, prior authorization. A **Drafts** panel on the right lists everything waiting to be finished, shared by every biller: **saved forms** (from **Save draft**: unfinished, not validated, deleted 30 days after the last save) and **draft claims** (created and validated, not yet submitted). Opening a draft claim shows its problems, AI fixes, and **Mark as submitted**, which is only allowed once no rule error or warning remains. The same check applies to claims sent through the API. |
+| **Claims** | Opens on the **Needs attention** queue: claims with validation errors (Error or AI Fix), riskiest first. **All claims** shows every submitted claim (drafts are finished on New Claim). Search and filter; each row shows its validation result and 0–100 risk score. Expand a claim for findings, risk breakdown, lines, denials, and **AI Fix** suggestions that can be applied and undone. Suggestions that need judgement (medical necessity, NCCI/modifiers, payer prior auth, appeals) offer **Ask the assistant**. A submitted claim shows its 837 with downloads (the file, a CMS-1500/UB-04 PDF, a readable PDF). Colours carry meaning: green for Paid, Pass and low risk; amber for warnings and medium risk; red for errors, denials and high risk. |
+| **New Claim** | Enter a draft claim for a registered patient: selecting them fills in their primary payer, date of birth, address and member ID from their registration; billed payer plus secondary/tertiary coverage, each with its policy, up to 12 diagnoses each supported by a service line, prior authorization. A **Drafts** panel on the right lists everything waiting to be finished, shared by every biller: **saved forms** (from **Save draft**: unfinished, not validated, deleted 30 days after the last save) and **draft claims** (created and validated, not yet submitted). Opening a draft claim shows its problems, AI fixes, and **Mark as submitted**, which is only allowed once no rule error or warning remains. The same check applies to claims sent through the API. |
 | **Rules** | Create, edit, enable/disable, and test rules (field + operator + value conditions, AND/OR, scoped to payers, departments, or claim types). Changes apply to every claim immediately. |
 | **JAB Audit** | Conceptual integration with the JAB Audit underpayment recovery platform: workflow, architecture, and the proposed API contracts. |
 | **User Guide** | Short task-by-task help for billers, analysts, and administrators. Each person sees only the sections their role can use. |
@@ -217,8 +217,10 @@ claim_validation_tool/
 │   ├── users.py            # Account management CLI (python -m app.users)
 │   ├── routers/            # One module per API area
 │   ├── models/             # Pydantic request/response schemas
-│   ├── services/           # Validation engine, risk scorer, AI fix, assistant, dashboard, JAB
-│   ├── data/               # Claims repository, rule/correction/user stores, audit log, knowledge base
+│   ├── services/           # Validation engine, risk scorer, AI fix, assistant, dashboard, JAB,
+│   │                       #   837 builder/reader/settings, claim PDFs
+│   ├── data/               # Claims repository, rule/correction/user/draft/new-claim/registration
+│   │                       #   stores, audit log, knowledge base
 │   ├── evals/              # Assistant evaluation set and runner
 │   └── tests/              # pytest suite and fixture CSVs
 └── frontend/src/

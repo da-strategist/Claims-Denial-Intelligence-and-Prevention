@@ -196,10 +196,11 @@ const SECTIONS = [
         <Term name={<ValidationBadge status="warning" />}>Needs review; blocks submission until resolved.</Term>
         <Term name={<ValidationBadge status="error" />}>Will likely be denied; blocks submission.</Term>
         <Term name={<ValidationBadge status="aifix" />}>An error on a high-risk claim (60+); a fix is suggested.</Term>
-        <Term name="Risk score">0–100 likelihood of denial. Under 30 is low, 30–59 medium, 60+ high (red).</Term>
+        <Term name="Risk score">0–100 likelihood of denial. Under 30 is low (green), 30–59 medium (amber), 60+ high (red).</Term>
         <Term name={<ClaimStatusBadge status="Draft" />}>Created, not yet submitted.</Term>
         <Term name={<ClaimStatusBadge status="Pending" />}>Submitted, waiting for the payer.</Term>
         <Term name={<ClaimStatusBadge status="Pending" overdue />}>Waiting longer than this payer usually takes to pay.</Term>
+        <Term name={<ClaimStatusBadge status="Paid" />}>Paid by the payer.</Term>
         <Term name={<ClaimStatusBadge status="Denied" />}>Refused by the payer; the claim shows why and how to appeal.</Term>
       </dl>
     ),

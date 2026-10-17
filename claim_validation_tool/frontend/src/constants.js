@@ -1,7 +1,7 @@
 // `dot` marks the status in tables; `color` is the matching chart fill.
-// Pass stays quiet: colour is for claims that need someone's attention.
+// Green for good, amber for review, red for problems, violet for AI Fix.
 export const VALIDATION_STATUSES = {
-  pass: { label: 'Pass', dot: 'bg-gray-300', text: 'text-gray-500', color: '#c7c7cc' },
+  pass: { label: 'Pass', dot: 'bg-emerald-500', text: 'text-emerald-700', color: '#10b981' },
   warning: { label: 'Warning', dot: 'bg-amber-500', text: 'text-amber-700', color: '#f5a623' },
   error: { label: 'Error', dot: 'bg-red-500', text: 'text-red-700', color: '#e5484d' },
   aifix: { label: 'AI Fix', dot: 'bg-violet-500', text: 'text-violet-700', color: '#7c5cff' },

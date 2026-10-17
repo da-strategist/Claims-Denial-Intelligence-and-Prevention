@@ -1,11 +1,11 @@
 // Same cut-offs the backend uses: 60+ with an error routes a claim to AI Fix
 function riskLevel(score) {
   if (score >= 60) return { label: 'High', bar: 'bg-red-500', text: 'text-red-700 font-semibold' }
-  if (score >= 30) return { label: 'Medium', bar: 'bg-amber-500', text: 'text-gray-900' }
-  return { label: 'Low', bar: 'bg-gray-300', text: 'text-gray-500' }
+  if (score >= 30) return { label: 'Medium', bar: 'bg-amber-500', text: 'text-amber-700' }
+  return { label: 'Low', bar: 'bg-emerald-500', text: 'text-emerald-700' }
 }
 
-/** Compact 0-100 risk score with a bar, for table cells. Only high risk is loud. */
+/** Compact 0-100 risk score with a bar, for table cells: green low, amber medium, red high. */
 export default function RiskScore({ score }) {
   if (score === undefined || score === null) {
     return <span className="text-sm text-gray-300">—</span>
