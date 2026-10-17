@@ -15,6 +15,7 @@ from app.routers import (
     claims,
     dashboard,
     departments,
+    drafts,
     jab,
     patients,
     payers,
@@ -61,6 +62,7 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(audit.router)
 app.include_router(claims.router)
+app.include_router(drafts.router)
 app.include_router(payers.router)
 app.include_router(departments.router)
 app.include_router(rules.router)
@@ -97,7 +99,7 @@ def _audit(request: Request, status_code: int) -> None:
     route = request.scope.get("route")
     records = {k: str(v) for k, v in request.scope.get("path_params", {}).items()}
     # Record IDs noted by the route (e.g. the claim a new claim was entered as)
-    for key in ("claim_id", "patient_id"):
+    for key in ("claim_id", "patient_id", "draft_id"):
         if detail.get(key):
             records[key] = str(detail.pop(key))
     username = user.username if user else detail.pop("attempted_username", None)

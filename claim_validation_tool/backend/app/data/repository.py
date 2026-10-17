@@ -16,9 +16,12 @@ from typing import Any
 import pandas as pd
 
 from app.data.corrections import get_correction_store
+from app.data.new_claims import NewClaimStore, get_new_claim_store
 from app.models.aifix import CORRECTABLE_FIELDS
 from app.models.rule import RULE_FIELDS, parse_condition_value
 from app.models import (
+    AT_RISK_STATUSES,
+    EdiFile,
     Claim,
     ClaimDetail,
     ClaimLine,
@@ -82,7 +85,10 @@ def _read_table(data_dir: Path, name: str) -> pd.DataFrame:
 
 
 class ClaimsRepository:
-    def __init__(self, data_dir: Path = DEFAULT_DATA_DIR) -> None:
+    def __init__(
+        self, data_dir: Path = DEFAULT_DATA_DIR, new_claims: NewClaimStore | None = None
+    ) -> None:
+        """`new_claims` saves claims entered in the app; they are replayed here on startup."""
         self.data_dir = data_dir
         self._claims = _read_table(data_dir, "fact_claims")
         self._lines = _read_table(data_dir, "fact_claim_lines")
@@ -101,6 +107,12 @@ class ClaimsRepository:
         self._claims["additional_icd10"] = ""
         self._claims["other_payer_ids"] = ""
         self._pending_ids: set[str] = set()
+        self._draft_ids: set[str] = set()
+        # What claims entered in the app carry beyond the source columns (billing details
+        # and line revenue codes for the 837), and the 837 each was submitted with
+        self._billing: dict[str, dict[str, Any]] = {}
+        self._revenue_codes: dict[str, list[str | None]] = {}
+        self._edi: dict[str, EdiFile] = {}
 
         # AI Fix corrections are layered over these columns; keep the originals to restore
         self._claims["has_corrections"] = False
@@ -153,6 +165,17 @@ class ClaimsRepository:
             index=self._claims.index,
         )
 
+        # Claims entered in the app, replayed in order with the dates they were submitted
+        self._new_claims = None
+        for record in (new_claims.records() if new_claims else []):
+            claim_id = record["fields"]["claim_id"]
+            self.add_claim(record["fields"], record["lines"])
+            if record["submitted_on"]:
+                self.submit_claim(claim_id, on=date.fromisoformat(record["submitted_on"]))
+            if record.get("edi"):
+                self._edi[claim_id] = EdiFile.model_validate(record["edi"]["summary"])
+        self._new_claims = new_claims
+
     # --- Corrections overlay ------------------------------------------------
 
     def apply_overrides(self, overrides: dict[str, dict[str, str]]) -> None:
@@ -184,9 +207,16 @@ class ClaimsRepository:
 
     # --- Claims -------------------------------------------------------------
 
-    def list_claims(self, query: ClaimQuery) -> Page[Claim]:
-        self._age_pending()
+    def list_claims(self, query: ClaimQuery, statuses: pd.DataFrame | None = None) -> Page[Claim]:
+        """`statuses` (StatusSnapshot: status and risk_score by claim_id) is needed to filter
+        on `needs_attention` or sort by `risk_score`."""
+        self._age_open_claims()
         df = self._filter_claims(query)
+        if statuses is not None:
+            df = df.assign(risk_score=df["claim_id"].map(statuses["risk_score"]).fillna(0))
+            if query.needs_attention is not None:
+                at_risk = df["claim_id"].map(statuses["status"]).isin(AT_RISK_STATUSES)
+                df = df[at_risk if query.needs_attention else ~at_risk]
         df = df.sort_values(
             [query.sort_by, "claim_id"],
             ascending=[not query.sort_desc, True],
@@ -202,21 +232,26 @@ class ClaimsRepository:
         )
 
     def get_claim(self, claim_id: str) -> ClaimDetail | None:
-        self._age_pending()
+        self._age_open_claims()
         pos = self._claim_pos([claim_id])[0]
         if pos == -1:
             return None
         row = self._claims.iloc[pos].to_dict()
         lines = self._rows(self._lines, self._lines_by_claim.get(claim_id))
         denials = self._rows(self._denials, self._denials_by_claim.get(claim_id))
+        lines = sorted(lines, key=lambda line: line["line_number"])
+        for line, revenue_code in zip(lines, self._revenue_codes.get(claim_id, [])):
+            line["revenue_code"] = revenue_code
         return ClaimDetail.model_validate(
             {
                 **row,
-                "lines": sorted(lines, key=lambda line: line["line_number"]),
+                "lines": lines,
                 "denials": denials,
                 "patient": self._patient(row["patient_id"]),
                 "payer": self._payers.get(row["payer_id"]),
                 "provider": self._providers.get(row["provider_id"]),
+                "billing": self._billing.get(claim_id),
+                "edi": self._edi.get(claim_id),
             }
         )
 
@@ -226,7 +261,7 @@ class ClaimsRepository:
         With `claim_ids`, returns those claims in the order given, skipping unknown IDs.
         Without, returns every claim. Callers must not mutate the result.
         """
-        self._age_pending()
+        self._age_open_claims()
         if claim_ids is None:
             return self._claims
         positions = self._claim_pos(claim_ids)
@@ -238,8 +273,8 @@ class ClaimsRepository:
         `fields` holds every fact_claims column (dates as ISO strings; additional_icd10
         and other_payer_ids as lists). `lines` hold cpt_code, cpt_category, modifier,
         units, charge_amount, and icd10_pointer; IDs and numbering are assigned here.
-        New claims live until the server restarts. Raises ValueError if the claim_id
-        is taken or the patient isn't registered.
+        With a NewClaimStore the claim is saved, so it survives restarts. Raises ValueError
+        if the claim_id is taken or the patient isn't registered.
         """
         claim_id = fields["claim_id"]
         patient = self._patient(fields["patient_id"])
@@ -282,18 +317,50 @@ class ClaimsRepository:
             )
             if fields["status"] == ClaimStatus.PENDING:
                 self._pending_ids.add(claim_id)
+            elif fields["status"] == ClaimStatus.DRAFT:
+                self._draft_ids.add(claim_id)
             self.version += 1
+        if fields.get("billing"):
+            self._billing[claim_id] = fields["billing"]
+        self._revenue_codes[claim_id] = [line.get("revenue_code") for line in lines]
+        if self._new_claims is not None:
+            self._new_claims.add(fields, lines)
         claim = self.get_claim(claim_id)
         assert claim is not None
         return claim
 
-    def submit_claim(self, claim_id: str) -> ClaimDetail:
-        """Mark a Draft as submitted today: it becomes Pending and starts aging in AR.
+    def submission_frame(self, claim_id: str) -> pd.DataFrame:
+        """The claim as it would be if submitted today, for the final rule check.
+
+        A draft carries its planned submission date; the rules must judge the date it
+        actually goes out (e.g. Timely Filing Risk), and the denials known by then.
+        """
+        today = _today()
+        frame = self.claims_frame([claim_id]).copy()
+        if frame.empty:
+            return frame
+        row = frame.iloc[0]
+        frame["submission_date"] = today.isoformat()
+        frame["days_to_submission"] = (today - date.fromisoformat(row["service_date"])).days
+        frame["days_in_ar"] = 0
+        prior, prior_preventable = self._prior_denials(row["patient_id"], today.isoformat())
+        frame["has_prior_denial"] = prior
+        frame["has_prior_preventable_denial"] = prior_preventable
+        return frame
+
+    def submit_claim(
+        self,
+        claim_id: str,
+        on: date | None = None,
+        edi: tuple[str, EdiFile] | None = None,
+    ) -> ClaimDetail:
+        """Mark a Draft as submitted `on` a date (today by default): it becomes Pending and
+        starts aging in AR.
 
         Raises LookupError for an unknown claim, ValueError if it isn't a Draft or its
         service date is still in the future.
         """
-        today = _today()
+        day = on or _today()
         with self._overlay_lock:
             pos = self._claim_pos([claim_id])[0]
             if pos == -1:
@@ -301,22 +368,39 @@ class ClaimsRepository:
             row = self._claims.iloc[pos]
             if row["status"] != ClaimStatus.DRAFT:
                 raise ValueError(f"Only draft claims can be submitted; {claim_id} is {row['status']}")
-            if row["service_date"] > today.isoformat():
+            if row["service_date"] > day.isoformat():
                 raise ValueError("A claim can't be submitted before its service date")
             self._claims.loc[pos, "status"] = ClaimStatus.PENDING.value
-            self._claims.loc[pos, "submission_date"] = today.isoformat()
+            self._claims.loc[pos, "submission_date"] = day.isoformat()
             self._claims.loc[pos, "days_to_submission"] = (
-                today - date.fromisoformat(row["service_date"])
+                day - date.fromisoformat(row["service_date"])
             ).days
             self._claims.loc[pos, "days_in_ar"] = 0
-            prior, prior_preventable = self._prior_denials(row["patient_id"], today.isoformat())
+            prior, prior_preventable = self._prior_denials(row["patient_id"], day.isoformat())
             self._claims.loc[pos, "has_prior_denial"] = prior
             self._claims.loc[pos, "has_prior_preventable_denial"] = prior_preventable
+            self._draft_ids.discard(claim_id)
             self._pending_ids.add(claim_id)
             self.version += 1
+        if edi is not None:
+            self._edi[claim_id] = edi[1]
+        if self._new_claims is not None and on is None:
+            saved = {"text": edi[0], "summary": edi[1].model_dump(mode="json")} if edi else None
+            self._new_claims.mark_submitted(claim_id, day, saved)
         claim = self.get_claim(claim_id)
         assert claim is not None
         return claim
+
+    def next_control_number(self) -> int:
+        """Interchange control number for the next 837 (1, 2, … without a store)."""
+        if self._new_claims is not None:
+            return self._new_claims.next_control_number()
+        self._control = getattr(self, "_control", 0) + 1
+        return self._control
+
+    def edi_text(self, claim_id: str) -> str | None:
+        """The 837 a claim was submitted with, if it was submitted from the app."""
+        return self._new_claims.edi_text(claim_id) if self._new_claims is not None else None
 
     def denials_frame(self) -> pd.DataFrame:
         """All denials, unfiltered. Treat as read-only."""
@@ -439,32 +523,59 @@ class ClaimsRepository:
         self._lines = pd.concat([self._lines, new], ignore_index=True)
         self._lines_by_claim = self._lines.groupby("claim_id", sort=False).indices
 
-    def _age_pending(self) -> None:
-        """Bring pending claims' days in AR and overdue flag up to today.
+    def _age_open_claims(self) -> None:
+        """Bring drafts and pending claims up to today; runs before every read.
 
-        Pending claims age with the calendar, so this runs before every read. It only
-        touches pending rows and only bumps `version` when a value actually changes.
+        A draft whose planned submission date has passed can now go out no earlier than
+        today, so its days to submission (and the denials known by then) move with the
+        calendar. Pending claims age in AR and turn overdue. Only those rows are touched,
+        and `version` is bumped only when a value actually changes.
         """
-        if not self._pending_ids:
+        if not self._pending_ids and not self._draft_ids:
             return
         today = _today()
         with self._overlay_lock:
-            positions = self._claim_pos(sorted(self._pending_ids))
-            rows = self._claims.iloc[positions]
-            days = rows["submission_date"].map(
-                lambda submitted: max((today - date.fromisoformat(submitted)).days, 0)
-            )
-            limits = rows["payer_id"].map(
-                lambda payer_id: self._payers[payer_id].avg_days_to_pay
-                if payer_id in self._payers
-                else None
-            )
-            overdue = limits.notna() & (days > limits.fillna(0))
-            if days.equals(rows["days_in_ar"]) and overdue.equals(rows["is_overdue"]):
-                return
-            self._claims.loc[rows.index, "days_in_ar"] = days.astype("int64")
-            self._claims.loc[rows.index, "is_overdue"] = overdue.astype(bool)
-            self.version += 1
+            changed = self._age_drafts(today)
+            changed = self._age_pending(today) or changed
+            if changed:
+                self.version += 1
+
+    def _age_drafts(self, today: date) -> bool:
+        """Move past planned submission dates up to today. Caller holds the lock."""
+        if not self._draft_ids:
+            return False
+        rows = self._claims.iloc[self._claim_pos(sorted(self._draft_ids))]
+        late = rows[rows["submission_date"] < today.isoformat()]
+        for index, row in late.iterrows():
+            prior, prior_preventable = self._prior_denials(row["patient_id"], today.isoformat())
+            self._claims.loc[index, "submission_date"] = today.isoformat()
+            self._claims.loc[index, "days_to_submission"] = (
+                today - date.fromisoformat(row["service_date"])
+            ).days
+            self._claims.loc[index, "has_prior_denial"] = prior
+            self._claims.loc[index, "has_prior_preventable_denial"] = prior_preventable
+        return not late.empty
+
+    def _age_pending(self, today: date) -> bool:
+        """Days in AR and the overdue flag for pending claims. Caller holds the lock."""
+        if not self._pending_ids:
+            return False
+        positions = self._claim_pos(sorted(self._pending_ids))
+        rows = self._claims.iloc[positions]
+        days = rows["submission_date"].map(
+            lambda submitted: max((today - date.fromisoformat(submitted)).days, 0)
+        )
+        limits = rows["payer_id"].map(
+            lambda payer_id: self._payers[payer_id].avg_days_to_pay
+            if payer_id in self._payers
+            else None
+        )
+        overdue = limits.notna() & (days > limits.fillna(0))
+        if days.equals(rows["days_in_ar"]) and overdue.equals(rows["is_overdue"]):
+            return False
+        self._claims.loc[rows.index, "days_in_ar"] = days.astype("int64")
+        self._claims.loc[rows.index, "is_overdue"] = overdue.astype(bool)
+        return True
 
     def _add_prior_denial_flags(self) -> None:
         """Flag claims whose patient had a denial issued before this claim was submitted.
@@ -507,6 +618,8 @@ class ClaimsRepository:
             value = getattr(q, column)
             if value is not None:
                 mask &= df[column] == value
+        if not q.include_drafts:
+            mask &= df["status"] != ClaimStatus.DRAFT
         if q.is_clean_claim is not None:
             mask &= df["is_clean_claim"] == q.is_clean_claim
         if q.overdue is not None:
@@ -530,10 +643,10 @@ class ClaimsRepository:
 def get_repository() -> ClaimsRepository:
     """Process-wide repository, usable as a FastAPI dependency."""
     data_dir = Path(os.environ.get("RCM_DATA_DIR", DEFAULT_DATA_DIR))
-    repo = ClaimsRepository(data_dir)
+    repo = ClaimsRepository(data_dir, get_new_claim_store())
     corrections = get_correction_store()
-    # Corrections to manually entered claims outlive them (those claims are in-memory);
-    # drop them so a new claim reusing the ID doesn't inherit them
+    # Drop corrections whose claim no longer exists (e.g. the new-claims file was removed),
+    # so a new claim reusing the ID doesn't inherit them
     for claim_id in repo.missing_claim_ids(list(corrections.overrides())):
         corrections.clear_claim(claim_id)
     repo.apply_overrides(corrections.overrides())

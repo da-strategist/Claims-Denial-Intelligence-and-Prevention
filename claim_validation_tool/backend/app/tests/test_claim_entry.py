@@ -19,11 +19,22 @@ NEW_CLAIM = {
     "claim_type": "Professional",
     "service_date": "2026-01-05",
     "submission_date": "2026-01-06",
+    "billing": {
+        "patient_birth_date": "1976-05-02",
+        "patient_address": {"line1": "12 Oak St", "city": "Charlotte", "state": "NC", "zip_code": "28205"},
+        "policy": {"member_id": "MBR123456"},
+    },
 }
 
 
 def create(client, **changes):
-    return client.post("/api/claims", json={**NEW_CLAIM, **changes})
+    body = {**NEW_CLAIM, **changes}
+    # Each other payer needs its policy; give one unless the test sets billing itself
+    others = body.get("other_payer_ids", [])
+    if others and "billing" not in changes:
+        policies = [{"member_id": f"OTHER{n}"} for n in range(len(others))]
+        body["billing"] = {**NEW_CLAIM["billing"], "other_policies": policies}
+    return client.post("/api/claims", json=body)
 
 
 def test_create_claim_assigns_ids_and_defaults(client):
@@ -47,7 +58,7 @@ def test_create_claim_assigns_ids_and_defaults(client):
     assert claim["payer"]["payer_name"] == "Medicare FFS"
 
 
-def test_new_claim_is_validated_and_listed(client):
+def test_new_claim_is_validated_and_listed(client, today):
     body = create(client, pa_required=True).json()
     validation = body["validation"]
     # Missing prior auth (error); a new claim isn't flagged non-clean
@@ -85,7 +96,7 @@ def test_new_claim_counts_on_dashboard(client):
     assert sum(b["claims"] for b in after["ar_aging"]) == 4
 
 
-def test_ai_fix_works_on_new_claim(client):
+def test_ai_fix_works_on_new_claim(client, today):
     claim_id = create(client, pa_required=True).json()["claim"]["claim_id"]
     res = client.post(
         f"/api/aifix/{claim_id}/apply",
@@ -225,7 +236,9 @@ def test_submit_refused_while_rule_errors_remain(client, today):
     claim_id = create(client, pa_required=True).json()["claim"]["claim_id"]
     res = submit(client, claim_id)
     assert res.status_code == 422
-    assert res.json()["detail"] == "Resolve the rule errors before submitting this claim"
+    assert res.json()["detail"] == (
+        "Resolve every rule error and warning before submitting: RULE-002 Missing Prior Authorization"
+    )
     # Fixing the error unblocks it
     client.post(
         f"/api/aifix/{claim_id}/apply",
@@ -296,6 +309,10 @@ def test_startup_drops_corrections_for_claims_that_no_longer_exist(tmp_path, mon
     store.add("CLM0000002", "CLM0000002:RULE-008", {"is_clean_claim": ("false", "true")})
     monkeypatch.setenv("RCM_DATA_DIR", str(FIXTURES_DIR))
     monkeypatch.setenv("RCM_CORRECTIONS_FILE", str(path))
+    monkeypatch.setenv("RCM_NEW_CLAIMS_FILE", str(tmp_path / "new_claims.json"))
+    from app.data.new_claims import get_new_claim_store
+
+    get_new_claim_store.cache_clear()
     for cache in (repository.get_repository, get_correction_store):
         cache.cache_clear()
     try:
@@ -303,5 +320,101 @@ def test_startup_drops_corrections_for_claims_that_no_longer_exist(tmp_path, mon
         assert CorrectionStore(path).overrides() == {"CLM0000002": {"is_clean_claim": "true"}}
         assert repo.get_claim("CLM0000002").has_corrections is True
     finally:
-        for cache in (repository.get_repository, get_correction_store):
+        for cache in (repository.get_repository, get_correction_store, get_new_claim_store):
             cache.cache_clear()
+
+
+def test_submit_refused_while_any_warning_remains(client, today):
+    # Over $30,000 trips the High Billed Amount Threshold warning (RULE-004)
+    line = {**NEW_CLAIM["lines"][0], "charge_amount": 35000}
+    claim_id = create(client, lines=[line]).json()["claim"]["claim_id"]
+    res = submit(client, claim_id)
+    assert res.status_code == 422
+    assert res.json()["detail"] == (
+        "Resolve every rule error and warning before submitting: RULE-004 High Billed Amount Threshold"
+    )
+    assert client.get(f"/api/claims/{claim_id}").json()["status"] == "Draft"
+
+    # The rules run again at submission: once the warning's rule is off, it goes through
+    client.patch("/api/rules/RULE-004", json={"enabled": False})
+    assert submit(client, claim_id).status_code == 200
+
+
+def test_claims_entered_through_the_api_start_as_drafts(client, today):
+    # Submission is the only way out of Draft, so the rules always get the final say
+    res = create(client, status="Pending", pa_required=True)
+    assert res.status_code == 201
+    claim_id = res.json()["claim"]["claim_id"]
+    assert res.json()["claim"]["status"] == "Draft"
+    assert submit(client, claim_id).status_code == 422
+
+
+def test_drafts_can_be_left_out_of_the_claim_list(client, today):
+    claim_id = create(client).json()["claim"]["claim_id"]
+    everything = client.get("/api/claims").json()
+    submitted_only = client.get("/api/claims", params={"include_drafts": False}).json()
+    assert claim_id in [c["claim_id"] for c in everything["items"]]
+    assert submitted_only["total"] == everything["total"] - 1
+    assert claim_id not in [c["claim_id"] for c in submitted_only["items"]]
+
+
+# --- The final check judges the date the claim actually goes out ------------------
+
+
+def rule_ids(client, claim_id):
+    validation = client.get(f"/api/aifix/{claim_id}").json()["validation"]
+    return [f["rule_id"] for f in validation["findings"]]
+
+
+def test_a_draft_left_past_its_planned_date_is_checked_as_of_today(client, today):
+    # Service 5 Jan, planned for 6 Jan: on time, so nothing is flagged
+    claim_id = create(client).json()["claim"]["claim_id"]
+    assert rule_ids(client, claim_id) == []
+
+    # Left as a draft until 20 Feb: 46 days after service, past Timely Filing's 30
+    today(date(2026, 2, 20))
+    assert rule_ids(client, claim_id) == ["RULE-006"]  # shown before anyone tries to submit
+    res = submit(client, claim_id)
+    assert res.status_code == 422
+    assert "RULE-006 Timely Filing Risk" in res.json()["detail"]
+
+
+def test_a_late_planned_date_doesnt_block_a_claim_sent_on_time(client, today):
+    # Planned 55 days after service, so it's flagged for now...
+    claim_id = create(client, submission_date="2026-03-01").json()["claim"]["claim_id"]
+    assert rule_ids(client, claim_id) == ["RULE-006"]
+    # ...but it goes out today, 5 days after service, which is on time
+    res = submit(client, claim_id)
+    assert res.status_code == 200, res.text
+    assert res.json()["claim"]["submission_date"] == "2026-01-10"
+
+
+# --- New claims survive restarts ---------------------------------------------------
+
+
+def restart(client):
+    """Drop the in-memory repository and stores, as a server restart would."""
+    from app.data.new_claims import get_new_claim_store
+
+    for cache in (repository.get_repository, get_new_claim_store, get_correction_store):
+        cache.cache_clear()
+
+
+def test_new_claims_survive_a_restart(client, today):
+    draft_id = create(client, pa_required=True).json()["claim"]["claim_id"]
+    client.post(
+        f"/api/aifix/{draft_id}/apply",
+        json={"suggestion_id": f"{draft_id}:RULE-002", "values": {"pa_number": "AUTH-9"}},
+    )
+    sent_id = create(client).json()["claim"]["claim_id"]
+    today(date(2026, 1, 12))
+    assert submit(client, sent_id).status_code == 200
+
+    restart(client)
+    today(date(2026, 1, 20))
+    draft = client.get(f"/api/claims/{draft_id}").json()
+    sent = client.get(f"/api/claims/{sent_id}").json()
+    assert (draft["status"], draft["pa_number"], draft["has_corrections"]) == ("Draft", "AUTH-9", True)
+    assert (sent["status"], sent["submission_date"], sent["days_in_ar"]) == ("Pending", "2026-01-12", 8)
+    # IDs carry on from the saved claims
+    assert create(client).json()["claim"]["claim_id"] == "CLM0000007"

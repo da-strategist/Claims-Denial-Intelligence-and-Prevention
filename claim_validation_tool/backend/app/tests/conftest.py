@@ -7,6 +7,9 @@ from fastapi.testclient import TestClient
 
 from app.data.audit import get_audit_log
 from app.data.corrections import get_correction_store
+from app.data.drafts import get_draft_store
+from app.data.new_claims import get_new_claim_store
+from app.data.registrations import get_registration_store
 from app.data.knowledge import get_knowledge_base
 from app.data.reference import get_reference_data
 from app.data import repository
@@ -64,10 +67,14 @@ def repo() -> ClaimsRepository:
 def anon_client(monkeypatch, tmp_path) -> TestClient:
     """A client that isn't signed in. See `client` for one signed in as an admin."""
     # Point both the startup preload and the request dependency at the fixtures,
-    # and give each test fresh rule, correction, account, and audit stores in temp files
+    # and give each test fresh rule, correction, draft, new-claim, account, and audit stores in temp files
     monkeypatch.setenv("RCM_DATA_DIR", str(FIXTURES_DIR))
     monkeypatch.setenv("RCM_RULES_FILE", str(tmp_path / "rules.json"))
     monkeypatch.setenv("RCM_CORRECTIONS_FILE", str(tmp_path / "corrections.json"))
+    monkeypatch.setenv("RCM_DRAFTS_FILE", str(tmp_path / "drafts.json"))
+    monkeypatch.setenv("RCM_NEW_CLAIMS_FILE", str(tmp_path / "new_claims.json"))
+    monkeypatch.setenv("RCM_REGISTRATIONS_FILE", str(tmp_path / "registrations.json"))
+    monkeypatch.setenv("RCM_EDI_SETTINGS_FILE", str(tmp_path / "edi_settings.json"))
     users_file = tmp_path / "users.json"
     _write_users(users_file)
     monkeypatch.setenv("RCM_USERS_FILE", str(users_file))
@@ -78,6 +85,9 @@ def anon_client(monkeypatch, tmp_path) -> TestClient:
         get_repository,
         get_rule_repository,
         get_correction_store,
+        get_draft_store,
+        get_new_claim_store,
+        get_registration_store,
         get_reference_data,
         get_status_snapshot,
         get_knowledge_base,

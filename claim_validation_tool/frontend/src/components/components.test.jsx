@@ -7,6 +7,8 @@ import Pagination from './Pagination'
 import RiskScore from './RiskScore'
 import { ClaimStatusBadge, ValidationBadge } from './StatusBadge'
 import SubmitClaim from './SubmitClaim'
+import { AuthContext } from '../hooks/useAuth'
+import EdiFileCard from './EdiFileCard'
 
 describe('badges and scores', () => {
   it('shows the overdue flag next to the claim status', () => {
@@ -68,19 +70,17 @@ describe('SubmitClaim', () => {
     expect(container).toBeEmptyDOMElement()
   })
 
-  it('is blocked while rule errors remain', () => {
-    render(<SubmitClaim claim={draft} validation={{ status: 'error' }} />)
+  it.each(['error', 'aifix', 'warning'])('is blocked while a rule %s remains', (status) => {
+    render(<SubmitClaim claim={draft} validation={{ status }} />)
     expect(screen.getByRole('button', { name: 'Mark as submitted' })).toBeDisabled()
-    expect(screen.getByText('Resolve the rule errors before submitting.')).toBeInTheDocument()
+    expect(screen.getByText('Resolve every error and warning before submitting.')).toBeInTheDocument()
   })
 
-  it('submits and hands back the pending claim', async () => {
-    const pending = { claim: { ...draft, status: 'Pending' }, validation: { status: 'warning' } }
+  it('submits a claim that passes and hands back the pending claim', async () => {
+    const pending = { claim: { ...draft, status: 'Pending' }, validation: { status: 'pass' } }
     mockApi({ 'POST /claims/CLM0120001/submit': () => pending })
     const onSubmitted = vi.fn()
-    render(
-      <SubmitClaim claim={draft} validation={{ status: 'warning' }} onSubmitted={onSubmitted} />,
-    )
+    render(<SubmitClaim claim={draft} validation={{ status: 'pass' }} onSubmitted={onSubmitted} />)
     await userEvent.click(screen.getByRole('button', { name: 'Mark as submitted' }))
     expect(onSubmitted).toHaveBeenCalledWith(pending)
   })
@@ -172,5 +172,35 @@ describe('FixSuggestion', () => {
     render(<FixSuggestion suggestion={{ ...suggestion, action: 'manual' }} onApply={vi.fn()} />)
     expect(screen.queryByRole('button', { name: /Apply fix/ })).not.toBeInTheDocument()
     expect(screen.getByText('Find the auth number')).toBeInTheDocument()
+  })
+})
+
+describe('EdiFileCard', () => {
+  const edi = {
+    transaction: '837P',
+    control_number: '000000007',
+    generated_at: '2026-10-17T10:00:00',
+    test: true,
+    notes: ['Not set: billing provider NPI, submitter ID', 'Settings mode is test'],
+  }
+  const renderAs = (permissions) =>
+    render(
+      <AuthContext.Provider value={{ user: { permissions } }}>
+        <EdiFileCard claimId="CLM0120001" edi={edi} />
+      </AuthContext.Provider>,
+    )
+
+  it('marks a test file, says what’s missing, and offers the download to billers', () => {
+    renderAs(['claims:read', 'claims:write'])
+    expect(screen.getByText('Test file')).toBeInTheDocument()
+    expect(screen.getByText(/billing provider NPI, submitter ID/)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Download 837' })).toHaveAttribute('href', '/api/claims/CLM0120001/837')
+    expect(screen.getByRole('link', { name: 'CMS-1500 PDF' })).toHaveAttribute('href', '/api/claims/CLM0120001/claim-form.pdf')
+    expect(screen.getByRole('link', { name: 'Readable 837 PDF' })).toHaveAttribute('href', '/api/claims/CLM0120001/837-readable.pdf')
+  })
+
+  it('has no download for roles that can’t change claims', () => {
+    renderAs(['claims:read'])
+    expect(screen.queryAllByRole('link')).toHaveLength(0)
   })
 })

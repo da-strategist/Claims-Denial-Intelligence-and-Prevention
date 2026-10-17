@@ -16,6 +16,9 @@ def test_claim_from_entry_to_overdue(client, today):
     patient = client.get("/api/patients", params={"search": "donald davis"}).json()["items"][0]
     assert (patient["patient_id"], patient["primary_payer_id"]) == ("PAT000003", "PAY001")
 
+    registration = client.get(f"/api/patients/{patient['patient_id']}/registration").json()
+    assert registration["source"] == "sample"  # generated: no claim has been entered for them yet
+
     # 2. The form's pick lists
     provider = client.get("/api/providers").json()[0]
     procedures = {p["cpt_code"]: p for p in client.get("/api/codes/procedures").json()}
@@ -34,6 +37,12 @@ def test_claim_from_entry_to_overdue(client, today):
             "service_date": "2026-01-05",
             "submission_date": "2026-01-06",
             "pa_required": True,
+            # Filled from the patient's registration, as the New Claim form does
+            "billing": {
+                "patient_birth_date": registration["birth_date"],
+                "patient_address": registration["address"],
+                "policy": registration["policies"][patient["primary_payer_id"]],
+            },
         },
     )
     assert res.status_code == 201, res.text
@@ -42,7 +51,8 @@ def test_claim_from_entry_to_overdue(client, today):
     assert claim["status"] == "Draft"
     assert claim["total_charge"] == 2 * procedures["99213"]["standard_charge"]
     assert validation["status"] == "error"
-    assert "Missing prior authorization" in [f["label"] for f in validation["risk_factors"]]
+    # The missing prior auth is scored once, through its rule's error
+    assert [f["label"] for f in validation["risk_factors"]] == ["1 rule error"]
     assert kpis(client)["claims"]["detail"].endswith("1 draft")
 
     # 4. The workbench lists it with the other drafts; submitting is blocked
