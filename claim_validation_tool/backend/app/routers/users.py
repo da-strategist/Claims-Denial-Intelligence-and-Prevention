@@ -13,6 +13,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
+from app.data.orgs import get_org_registry
 from app.data.scoped import ScopedClaims
 from app.data.users import UserStore, get_user_store
 from app.models import (
@@ -105,6 +106,7 @@ def update_user(
         )
 
     new_role = body.role or target.role
+    _check_sso(users, target, body, new_role, org_id)
     if body.scope is not None and body.scope.restricted:
         if new_role == Role.ADMIN:
             raise HTTPException(
@@ -117,6 +119,8 @@ def update_user(
         changes["scope"] = body.scope
     elif new_role == Role.ADMIN and target.scope.restricted:
         changes["scope"] = AccessScope()  # promoted: the old limits no longer apply
+    if new_role != Role.ADMIN and target.break_glass:
+        changes["break_glass"] = False  # only administrators keep a password for emergencies
     audit_note(request, **body.model_dump(exclude_none=True, mode="json"))
     user = users.update(target.username, **changes)
     if body.active is False:
@@ -161,6 +165,39 @@ def _check_scope_ids(scope: AccessScope, claims: ScopedClaims) -> None:
         unknown = [i for i in getattr(scope, kind) if i not in ids]
         if unknown:
             raise HTTPException(status_code=422, detail=f"Unknown {kind}: {', '.join(unknown)}")
+
+
+def _check_sso(users: UserStore, target: User, body: UserUpdate, new_role: Role, org_id: str) -> None:
+    """SSO IDs are unique in the organisation; only administrators can be break-glass; and
+    an organisation using SSO only keeps at least one active break-glass administrator."""
+    if body.sso_id:
+        other = users.by_sso_id(org_id, body.sso_id)
+        if other is not None and other.username != target.username:
+            raise HTTPException(status_code=409, detail=f"{body.sso_id} is already linked to {other.username}")
+    if body.break_glass and new_role != Role.ADMIN:
+        raise HTTPException(status_code=422, detail="Only administrators can keep a password for emergencies")
+    org = get_org_registry().get(org_id)
+    if not (org and org.sso and org.sso.enforced):
+        return
+    stays = (
+        new_role == Role.ADMIN
+        and (body.active if body.active is not None else target.active)
+        and (body.break_glass if body.break_glass is not None else target.break_glass)
+    )
+    if not stays and target.break_glass and _break_glass_admins(users, org_id) == 1:
+        raise HTTPException(
+            status_code=409,
+            detail=f"{target.username} is the only administrator who can sign in if single sign-on is down; "
+            "mark another administrator break-glass first",
+        )
+
+
+def _break_glass_admins(users: UserStore, org_id: str) -> int:
+    return sum(
+        1
+        for u in users.list()
+        if u.organisation_id == org_id and u.role == Role.ADMIN and u.active and u.break_glass
+    )
 
 
 def _active_admins(users: UserStore, org_id: str) -> int:

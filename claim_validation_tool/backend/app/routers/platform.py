@@ -15,13 +15,14 @@ from pydantic import BaseModel, Field
 from app.data.audit import get_audit_log, get_platform_audit_log
 from app.data.emergency import MAX_MINUTES, MIN_MINUTES, EmergencyAccess, get_emergency_access
 from app.data.org_lifecycle import delete_organisation
-from app.data.orgs import BusinessAssociateAgreement, OrgId, OrgStatus, get_org_registry
+from app.data.orgs import BusinessAssociateAgreement, OrgId, OrgStatus, SsoSettings, get_org_registry
 from app.data.repository import get_repository
 from app.data.users import UserStore, get_user_store
 from app.models import AuditEvent, Permission, Role, UserSummary
 from app.models.auth import Username
 from app.sample_org import empty
 from app.services.auth import SessionStore, SignedIn, audit_note, get_session_store, require
+from app.services.identity_providers import IdentityProviderError, get_provider
 from app.services.org_context import forget_organisation
 
 router = APIRouter(
@@ -40,6 +41,7 @@ class OrganisationInfo(BaseModel):
     accounts: int
     active_admins: int
     baa: BusinessAssociateAgreement | None
+    sso: SsoSettings | None
     deleted_at: datetime | None
 
 
@@ -84,6 +86,7 @@ def _info(org, users: UserStore) -> OrganisationInfo:
         accounts=len(members),
         active_admins=sum(1 for u in members if u.role == Role.ADMIN and u.active),
         baa=org.baa,
+        sso=org.sso,
         deleted_at=org.deleted_at,
     )
 
@@ -147,6 +150,36 @@ def record_baa(
         **body.model_dump(), recorded_by=me.username, recorded_at=datetime.now(UTC)
     )
     return _info(get_org_registry().set_baa(org_id, baa), users)
+
+
+@router.put("/organisations/{org_id}/sso", response_model=OrganisationInfo)
+def set_sso(org_id: OrgId, body: SsoSettings, users: Users, request: Request) -> OrganisationInfo:
+    """Connect the organisation to its identity provider. `enforced` makes it SSO only:
+    password sign-in is then refused except for break-glass administrators, so at least
+    one active administrator must be marked break-glass first."""
+    _org(org_id)
+    try:
+        get_provider(body.provider)
+    except IdentityProviderError as err:
+        raise HTTPException(status_code=422, detail=str(err)) from err
+    if body.enforced and not any(
+        u.organisation_id == org_id and u.role == Role.ADMIN and u.active and u.break_glass
+        for u in users.list()
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail="Mark at least one active administrator break-glass before making sign-in SSO only",
+        )
+    audit_note(request, organisation=org_id, provider=body.provider, enforced=body.enforced)
+    return _info(get_org_registry().set_sso(org_id, body), users)
+
+
+@router.delete("/organisations/{org_id}/sso", response_model=OrganisationInfo)
+def remove_sso(org_id: OrgId, users: Users, request: Request) -> OrganisationInfo:
+    """Disconnect single sign-on; everyone signs in with passwords again."""
+    _org(org_id)
+    audit_note(request, organisation=org_id)
+    return _info(get_org_registry().set_sso(org_id, None), users)
 
 
 @router.post("/organisations/{org_id}/delete", response_model=DeleteResult)

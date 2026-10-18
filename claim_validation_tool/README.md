@@ -243,6 +243,7 @@ secure, so the HTTPS-only cookie is still sent).
 | `RCM_MASTER_KEY` | unset | Turns on encryption at rest: wraps each organisation's data key (`orgs/<id>/data_key.enc`). To replace it: put the new key first, comma, then the old; run `python -m app.orgs rotate-key`; then remove the old |
 | `RCM_KEY_PROVIDER` | `local` | Where the master key lives: `local` uses `RCM_MASTER_KEY`. Cloud key services (`aws-kms`, `azure-keyvault`, `gcp-kms`) are planned; see `DATA_SEGREGATION_PLAN.md` §9.6 |
 | `RCM_ENVIRONMENT` | unset | `production` refuses to start without `RCM_MASTER_KEY` or `RCM_COOKIE_SECURE=1`, and blocks sign-in for organisations without a BAA on record |
+| `RCM_PUBLIC_URL` | unset | The app's public address (e.g. `https://rcm.example.com`), for the single sign-on callback behind a proxy |
 | `RCM_ALLOWED_ORIGINS` | `http://localhost:5173` | Web addresses the app is served from (comma-separated), for the browser's cross-origin check |
 | `VITE_API_BASE` | `/api` | API base URL for the frontend |
 
@@ -278,10 +279,10 @@ All routes are under `/api`; full schemas at `/docs`.
 
 | Area | Endpoints |
 |---|---|
-| Sign-in | `POST /auth/login` · `POST /auth/logout` · `GET /auth/me` |
+| Sign-in | `POST /auth/login` · `POST /auth/logout` · `GET /auth/me` · `GET /auth/sso/{org}/start` · `GET /auth/sso/{org}/callback` (single sign-on) |
 | Audit | `GET /audit` (username, record_id, outcome, limit) · `GET /audit/verify` |
 | Users | `GET /users` · `POST /users` · `PATCH /users/{username}` · `POST /users/{username}/password` (administrators) |
-| Platform | `GET/POST /platform/organisations` · `POST /platform/organisations/{id}/suspend` · `…/reactivate` · `…/admins` · `…/baa` · `…/delete` · `…/emergency-access` · `GET /platform/emergency-access` · `POST /platform/emergency-access/{id}/end` · `GET /platform/audit` (platform accounts) |
+| Platform | `GET/POST /platform/organisations` · `POST /platform/organisations/{id}/suspend` · `…/reactivate` · `…/admins` · `…/baa` · `PUT/DELETE …/sso` · `…/delete` · `…/emergency-access` · `GET /platform/emergency-access` · `POST /platform/emergency-access/{id}/end` · `GET /platform/audit` (platform accounts) |
 | Organisation | `GET /organisation/export` (administrators: zip of all its data) |
 | Emergency access (organisation side) | `GET /audit/emergency-access` · `POST /audit/emergency-access/{id}/end` (administrators) |
 | Claims | `GET /claims` (search, filter, sort, page) · `POST /claims` · `GET /claims/{id}` · `PUT /claims/{id}` (edit a Draft) · `POST /claims/{id}/submit` · `GET /claims/{id}/837` · `GET /claims/{id}/claim-form.pdf` · `GET /claims/{id}/837-readable.pdf` |

@@ -45,6 +45,19 @@ class BusinessAssociateAgreement(BaseModel):
     recorded_at: datetime
 
 
+class SsoSettings(BaseModel):
+    """The organisation's single sign-on (services/identity_providers.py)."""
+
+    provider: str = Field(description="e.g. oidc")
+    settings: dict[str, str] = Field(
+        default_factory=dict, description="Non-secret settings (issuer, client ID); secrets come from the environment"
+    )
+    enforced: bool = Field(
+        default=False,
+        description="Only single sign-on: password sign-in is refused except for break-glass accounts",
+    )
+
+
 class Organisation(BaseModel):
     id: OrgId
     name: str
@@ -52,6 +65,7 @@ class Organisation(BaseModel):
     status: OrgStatus = OrgStatus.ACTIVE
     created_at: datetime
     baa: BusinessAssociateAgreement | None = None
+    sso: SsoSettings | None = None
     deleted_at: datetime | None = None
 
 
@@ -100,6 +114,13 @@ class OrgRegistry:
     def set_baa(self, org_id: str, baa: BusinessAssociateAgreement) -> Organisation:
         with self._lock:
             org = self._require(org_id).model_copy(update={"baa": baa})
+            self._orgs[org_id] = org
+            self._save()
+            return org
+
+    def set_sso(self, org_id: str, sso: SsoSettings | None) -> Organisation:
+        with self._lock:
+            org = self._require(org_id).model_copy(update={"sso": sso})
             self._orgs[org_id] = org
             self._save()
             return org

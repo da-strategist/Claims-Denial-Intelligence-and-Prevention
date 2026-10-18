@@ -93,6 +93,11 @@ class User(BaseModel):
     # organisations) can't sign in until `python -m app.orgs migrate` assigns one.
     organisation_id: str | None = None
     scope: AccessScope = Field(default_factory=AccessScope)
+    # Single sign-on: the identity provider's ID for this person (e.g. their work email)
+    sso_id: str | None = None
+    # May still sign in with a password when the organisation uses SSO only, so an
+    # administrator can get in if the identity provider is down
+    break_glass: bool = False
     # Set per request (never stored) while a platform account uses emergency access
     emergency_access_id: str | None = Field(default=None, exclude=True)
 
@@ -122,6 +127,8 @@ class UserSummary(BaseModel):
     created_at: datetime
     password_changed_at: datetime
     scope: AccessScope
+    sso_id: str | None = None
+    break_glass: bool = False
 
 
 class UserCreate(BaseModel):
@@ -141,6 +148,12 @@ class UserUpdate(BaseModel):
     active: bool | None = None
     scope: AccessScope | None = Field(
         default=None, description="Limit what the account sees; empty lists = whole organisation"
+    )
+    sso_id: Annotated[str, StringConstraints(max_length=254, strip_whitespace=True)] | None = Field(
+        default=None, description="The identity provider's ID for this person; empty to clear"
+    )
+    break_glass: bool | None = Field(
+        default=None, description="May sign in with a password when the organisation uses SSO only"
     )
 
 

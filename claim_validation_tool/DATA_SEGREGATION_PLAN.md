@@ -288,3 +288,29 @@ passing the same tests.
 4. Remove `RCM_MASTER_KEY` from `.env` (keep the password-manager copy until backups made
    before the move have expired, since those hold data keys it locked).
 
+### 9.7 Single sign-on (pluggable; no provider connected yet)
+
+`backend/app/services/identity_providers.py`. Each organisation may connect its own
+identity provider (`Organisation.sso`: provider, non-secret settings, `enforced`), set by
+the platform (`PUT/DELETE /api/platform/organisations/{id}/sso`).
+
+- **Flow:** `/api/auth/sso/{org}/start` redirects to the provider with a random `state`
+  (single-use, tied to the organisation, 10 minutes) and `nonce`; `/callback` has the
+  provider check the response and name who signed in, finds the organisation's active
+  account whose **SSO ID** matches (set by its administrators; unique in the
+  organisation), and starts the usual session. Failures are in the organisation's audit
+  log. `RCM_PUBLIC_URL` gives the callback address behind a proxy.
+- **SSO only** (`enforced`): password sign-in is refused except for administrators marked
+  **break-glass**, so someone can get in if the identity provider is down. It can't be
+  turned on without an active break-glass administrator, and the last one can't be
+  removed, demoted, or disabled while it's on.
+- **Providers:** OpenID Connect (`oidc`: Microsoft Entra ID, Okta, Google Workspace, …) and
+  SAML (`saml`) are planned. Connecting an organisation to one before it's built is
+  refused. Adding one is a class with `authorization_url` and `complete` (which must check
+  the token's signature, issuer, audience, expiry, and nonce) and a `register` call; its
+  client secret comes from the environment, not `organisations.json`. `test_sso.py` runs
+  the whole flow against a stand-in provider.
+- **Screens:** the sign-in button, the Platform page settings, and the SSO ID and
+  break-glass controls on the Users page come with the first real provider, since nothing
+  can use them before then.
+

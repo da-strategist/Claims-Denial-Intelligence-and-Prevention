@@ -85,6 +85,11 @@ exports, and deletes an organisation; `routers/organisation.py` serves the expor
 blocks sign-in without a BAA when `RCM_ENVIRONMENT=production`. The test client runs with
 a master key, so every API test runs encrypted; `test_encryption.py` checks what's on disk.
 
+**Single sign-on (pluggable):** `services/identity_providers.py` holds the provider
+registry and the single-use sign-in state; `routers/auth.py` has `/sso/{org}/start` and
+`/callback`, and refuses passwords for organisations whose `sso.enforced` is on unless the
+account is `break_glass`. No real provider is registered yet; `test_sso.py` uses a stand-in.
+
 **Conventions:**
 - All API routes prefixed with `/api/`
 - Never reach data through a global: take the organisation's stores from `services/org_context.py`

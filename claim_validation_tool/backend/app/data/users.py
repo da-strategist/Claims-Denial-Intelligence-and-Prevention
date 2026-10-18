@@ -126,8 +126,14 @@ class UserStore:
         display_name: str | None = None,
         organisation_id: str | None = None,
         scope: AccessScope | None = None,
+        sso_id: str | None = None,
+        break_glass: bool | None = None,
     ) -> User:
         changes: dict = {}
+        if sso_id is not None:
+            changes["sso_id"] = sso_id.lower() or None  # "" clears it
+        if break_glass is not None:
+            changes["break_glass"] = break_glass
         if scope is not None:
             changes["scope"] = scope
         if organisation_id is not None:
@@ -152,6 +158,14 @@ class UserStore:
             self._users[user.username] = user
             self._save()
         return user
+
+    def by_sso_id(self, organisation_id: str, sso_id: str) -> User | None:
+        """The organisation's account linked to this identity-provider ID."""
+        wanted = sso_id.strip().lower()
+        return next(
+            (u for u in self.list() if u.organisation_id == organisation_id and u.sso_id == wanted),
+            None,
+        )
 
     def remove(self, usernames: Iterable[str]) -> None:
         """Delete these accounts (their organisation was deleted)."""

@@ -132,7 +132,10 @@ continuous claims:
 - **Key service.** Pick a cloud key service, add its provider (`key_providers.py`, about one
   small class; see DATA_SEGREGATION_PLAN.md §9.6), and move the key to it with `rotate-key`.
   Production logs a warning while the key is still in `.env`.
-- **Compliance items still open**: single sign-on, a BAA/DPA with Anthropic and the clearinghouse, and
+- **Single sign-on.** Add the identity provider the clients use (OpenID Connect covers
+  Entra ID, Okta, and Google; DATA_SEGREGATION_PLAN.md §9.7) and its screens, link each
+  person's SSO ID, mark a break-glass administrator, then make sign-in SSO only.
+- **Compliance items still open**: a BAA/DPA with Anthropic and the clearinghouse, and
   audit-log retention.
 
 ## Planned feature updates: claim submission

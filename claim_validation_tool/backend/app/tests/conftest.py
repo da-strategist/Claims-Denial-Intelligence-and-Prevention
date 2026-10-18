@@ -27,6 +27,7 @@ from app.services.auth import (
     get_login_throttle,
     get_session_store,
 )
+from app.services.identity_providers import get_sso_states
 from app.services.status_snapshot import get_status_snapshot
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
@@ -180,6 +181,7 @@ def anon_client(monkeypatch, tmp_path) -> TestClient:
         get_login_throttle,
         get_audit_log,
         org_cipher,
+        get_sso_states,
     )
     for cache in caches:
         cache.cache_clear()
