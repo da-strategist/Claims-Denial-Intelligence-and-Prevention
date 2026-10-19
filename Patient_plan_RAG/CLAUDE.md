@@ -27,7 +27,7 @@ Patient_plan_RAG/
 │       ├── pages/       # Dashboard, PolicyViewer, ChatAssistant,
 │       │                  CoverageAssessment, PriorAuth
 │       └── services/api.js  # Fetch wrapper for all API calls
-├── synthetic_data/      # Policy PDF generator
+├── synthetic_data/      # Policy PDF generator: render.py + policies/*.py specs
 ├── data/                # Runtime data (gitignored except policies/)
 │   ├── policies/        # PDF files + _registry.json
 │   ├── uploads/         # User-uploaded PDFs
@@ -47,8 +47,9 @@ uv pip install -e ".[dev]"
 # Optional config (APP_MODE, API key, CORS, data dirs) — see .env.example
 cp .env.example .env
 
-# Generate the synthetic policy PDF (already committed in data/policies/;
-# regenerating changes its bytes, so it gets a new document ID on next ingest)
+# Generate the synthetic policy PDFs (committed in data/policies/; existing
+# files are skipped, --force regenerates). Specs live in
+# synthetic_data/policies/*.py; output is deterministic (invariant mode).
 python -m synthetic_data.generate_policy
 
 # Run the backend. At startup it syncs the registry (services/ingest.py):
@@ -148,30 +149,42 @@ Status as of 2026-10-18. Work top to bottom.
 - [x] Startup registry sync (`services/ingest.py`): re-ingests documents
       with an older CHUNKER_VERSION or missing chunks (same ID, metadata
       kept), ingests new PDFs dropped in data/policies/ (139 backend tests)
+- [x] Three more synthetic policies with deliberately different layouts:
+      Summit Care Silver HMO (title-case numbered headings, copay table,
+      referrals), Northwind Bronze HDHP (different caps vocabulary,
+      precertification, numeric dates), Riverbend Medicaid handbook
+      (question headings, near-zero cost sharing)
 
 ### Next — Phase A: Hardening (safe to run and demo)
 1. [ ] **Visual UI check** — needs the user (browser automation cannot reach
        localhost here).
 
 ### Phase B: Data & evaluation (something to measure against)
-2. [ ] **More synthetic policies** — 3–4 plans (HMO, HDHP, Medicaid-style)
-       with different headings/layouts; `synthetic_data/{policies,scenarios,
-       fixtures}` are empty today.
-3. [ ] **Scenarios + multi-policy eval** — right policy, right passage, right
-       classification; summary/metadata tested on unfamiliar layouts.
+2. [ ] **Scenarios + multi-policy eval, then fix what it exposes** — right
+       policy, right passage, right classification, summary and metadata per
+       policy. Baseline probe of the current code on the new layouts:
+       - Headings: question-style (Riverbend) not detected at all; long or
+         keyword-less title-case headings (Summit "Section 4 – Referrals and
+         Your Primary Care Provider", "Services We Do Not Cover") missed.
+       - Metadata: insurer/plan missing for Northwind (title line lacks
+         "Plan") and Riverbend ("Issued by:", "Program:").
+       - Summary: copay tables not parsed; fields fall back to unrelated
+         sections when no heading names them (Summit/Riverbend near-empty).
+       - Retrieval (4 spot questions each): Summit 1/4, Northwind 3/4,
+         Riverbend 0/4 correct sections.
 
 ### Phase C: Chat & live mode
-4. [ ] **Multi-turn chat** — `ChatRequest.conversation_id` is accepted but
+3. [ ] **Multi-turn chat** — `ChatRequest.conversation_id` is accepted but
        unused; backend mints a new ID per reply and frontend sends only the
        latest question.
-5. [ ] **Live mode update** — `rag.py` hardcodes an outdated model ID and does
+4. [ ] **Live mode update** — `rag.py` hardcodes an outdated model ID and does
        not fence policy text/questions as untrusted evidence; validate that
        cited pages exist in the retrieved passages; mock the API in tests.
 
 ### Phase D: Retrieval upgrade
-6. [ ] **Embedding / hybrid retrieval** — adopt only if it beats BM25 on the
+5. [ ] **Embedding / hybrid retrieval** — adopt only if it beats BM25 on the
        Phase B eval; otherwise record the decision to stay on BM25.
-7. [ ] **Known gaps** — see below.
+6. [ ] **Known gaps** — see below.
 
 ### Known retrieval gaps
 - "What does coinsurance mean?" ranks the definition 3rd, behind rate tables.
