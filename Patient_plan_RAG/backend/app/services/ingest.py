@@ -23,7 +23,7 @@ log = logging.getLogger(__name__)
 # Entry fields carried into a re-ingest; extraction only fills empty ones.
 _KEPT_FIELDS = (
     "insurer_name", "plan_name", "plan_id", "effective_date", "expiration_date",
-    "document_type", "is_synthetic", "metadata",
+    "document_type", "is_synthetic", "metadata", "owner",
 )
 
 

@@ -1,14 +1,16 @@
 """Policy document upload, listing, and summary endpoints."""
 
-import json
 import os
 import re
 import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile
 from fastapi import Path as PathParam
 
+from ..auth.access import accessible_ids, entry_or_404
+from ..auth.sessions import Permission, require
+from ..auth.users import Role, User
 from ..models.common import DISCLAIMER, DOCUMENT_ID_PATTERN
 from ..models.policy import (
     DocumentStatus,
@@ -16,6 +18,7 @@ from ..models.policy import (
     PolicyDocument,
     PolicySummary,
 )
+from ..services import registry
 from ..services.document_processor import process_document
 from ..services.policy_summarizer import summarize_policy
 from ..services.retrieval import load_chunks
@@ -24,7 +27,6 @@ router = APIRouter(prefix="/api/policies", tags=["policies"])
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent.parent
 UPLOAD_DIR = Path(os.getenv("UPLOAD_DIR", str(BASE_DIR / "data" / "uploads")))
-POLICY_DIR = Path(os.getenv("POLICY_DIR", str(BASE_DIR / "data" / "policies")))
 CHUNK_DIR = Path(os.getenv("CHUNK_DIR", str(BASE_DIR / "data" / "chunks")))
 MAX_UPLOAD_BYTES = int(float(os.getenv("MAX_UPLOAD_MB", "20")) * 1024 * 1024)
 
@@ -38,37 +40,33 @@ def _safe_filename(name: str) -> str:
     return base[-100:] or "upload.pdf"
 
 
-def _load_registry() -> list[dict]:
-    path = POLICY_DIR / "_registry.json"
-    if path.exists():
-        return json.loads(path.read_text())
-    return []
-
-
-def _save_registry(registry: list[dict]) -> None:
-    path = POLICY_DIR / "_registry.json"
-    path.write_text(json.dumps(registry, indent=2, default=str))
+_read = require(Permission.READ_POLICIES)
 
 
 @router.get("")
-async def list_policies() -> list[PolicyDocument]:
-    """List all ingested policy documents."""
-    registry = _load_registry()
-    return [PolicyDocument(**r) for r in registry]
+async def list_policies(user: User = Depends(_read)) -> list[PolicyDocument]:
+    """The policy documents this user may see."""
+    entries = registry.load()
+    allowed = accessible_ids(user, entries)
+    return [PolicyDocument(**r) for r in entries if r["document_id"] in allowed]
 
 
 @router.get("/{document_id}")
-async def get_policy(document_id: str = DocumentIdParam) -> PolicyDocument:
-    """Get a single policy document's metadata."""
-    for r in _load_registry():
-        if r["document_id"] == document_id:
-            return PolicyDocument(**r)
-    raise HTTPException(404, f"Document {document_id} not found")
+async def get_policy(document_id: str = DocumentIdParam,
+                     user: User = Depends(_read)) -> PolicyDocument:
+    """A single policy document's metadata."""
+    return PolicyDocument(**entry_or_404(user, registry.load(), document_id))
 
 
 @router.post("/upload")
-async def upload_policy(file: UploadFile) -> DocumentUploadResponse:
-    """Upload and process a PDF policy document."""
+async def upload_policy(
+    file: UploadFile, user: User = Depends(require(Permission.UPLOAD_POLICY)),
+) -> DocumentUploadResponse:
+    """Upload and process a PDF policy document.
+
+    A member's upload is private to them; an admin's upload is a staff plan
+    that can be assigned to members.
+    """
     if not file.filename or not file.filename.lower().endswith(".pdf"):
         raise HTTPException(400, "Only PDF files are accepted")
 
@@ -91,12 +89,12 @@ async def upload_policy(file: UploadFile) -> DocumentUploadResponse:
         dest.unlink(missing_ok=True)
         raise
 
-    doc, chunks = process_document(dest, CHUNK_DIR)
+    owner = None if user.role is Role.ADMIN else user.username
+    doc, chunks = process_document(dest, CHUNK_DIR, metadata={"owner": owner})
 
-    # Update registry
-    registry = _load_registry()
-    registry.append(doc.model_dump(mode="json"))
-    _save_registry(registry)
+    entries = registry.load()
+    entries.append(doc.model_dump(mode="json"))
+    registry.save(entries)
 
     return DocumentUploadResponse(
         document_id=doc.document_id,
@@ -108,16 +106,10 @@ async def upload_policy(file: UploadFile) -> DocumentUploadResponse:
 
 
 @router.get("/{document_id}/summary")
-async def get_policy_summary(document_id: str = DocumentIdParam) -> PolicySummary:
+async def get_policy_summary(document_id: str = DocumentIdParam,
+                             user: User = Depends(_read)) -> PolicySummary:
     """Generate or retrieve a structured summary of the policy."""
-    # Verify document exists
-    found = False
-    for r in _load_registry():
-        if r["document_id"] == document_id:
-            found = True
-            break
-    if not found:
-        raise HTTPException(404, f"Document {document_id} not found")
+    entry_or_404(user, registry.load(), document_id)
 
     chunks = load_chunks(CHUNK_DIR, document_id)
     if not chunks:
@@ -131,8 +123,10 @@ async def get_policy_chunks(
     document_id: str = DocumentIdParam,
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
+    user: User = Depends(_read),
 ):
     """List chunks for a document (paginated)."""
+    entry_or_404(user, registry.load(), document_id)
     chunks = load_chunks(CHUNK_DIR, document_id)
     total = len(chunks)
     start = (page - 1) * page_size

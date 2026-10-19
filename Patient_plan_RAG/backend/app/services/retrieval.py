@@ -102,11 +102,13 @@ def load_chunks(
     chunk_dir: Path,
     document_id: str | None = None,
     policy_dir: Path | None = None,
+    allowed_ids: set[str] | None = None,
 ) -> list[DocumentChunk]:
     """Load chunk JSON files from disk.
 
     Without a document_id, only documents listed in the registry are loaded,
-    so orphaned chunk files (e.g. from a re-ingest) never surface in answers.
+    so orphaned chunk files (e.g. from a re-ingest) never surface in answers,
+    and only those in `allowed_ids` when given (the documents a user may see).
     """
     chunks: list[DocumentChunk] = []
     if not chunk_dir.exists():
@@ -126,6 +128,8 @@ def load_chunks(
         else:
             files = [chunk_dir / f"{d}.json" for d in registered]
             files = [f for f in files if f.exists()]
+        if allowed_ids is not None:
+            files = [f for f in files if f.stem in allowed_ids]
 
     for f in files:
         try:
@@ -187,7 +191,8 @@ def retrieve_for_policy(
     chunk_dir: Path,
     document_id: str | None = None,
     top_k: int = 5,
+    allowed_ids: set[str] | None = None,
 ) -> list[tuple[DocumentChunk, float]]:
     """Convenience: load chunks and retrieve in one call."""
-    chunks = load_chunks(chunk_dir, document_id)
+    chunks = load_chunks(chunk_dir, document_id, allowed_ids=allowed_ids)
     return retrieve(query, chunks, top_k)

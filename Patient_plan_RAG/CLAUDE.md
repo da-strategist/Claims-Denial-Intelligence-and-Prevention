@@ -58,6 +58,9 @@ python -m synthetic_data.generate_policy
 # and chunks live in data/policies/_registry.json + data/chunks/ (gitignored).
 uvicorn backend.app.main:app --reload --port 8001 --env-file .env
 
+# Create the first admin (prints a temporary password once; change it at sign-in)
+python -m backend.app.users add you@example.com --role admin
+
 # Run the tests (includes the multi-policy eval as a regression gate)
 python -m pytest
 
@@ -110,6 +113,13 @@ The Vite dev server proxies `/api` to the backend on port 8001.
    itself. Never remove these.
 
 ## API Endpoints
+Every route except health, login and logout requires a signed-in session
+(`require(Permission.X)` in `backend/app/auth/sessions.py`). Members see only
+their assigned plans and their own uploads; others' documents return 404.
+- `POST /api/auth/login` · `POST /api/auth/logout` · `GET /api/auth/me` ·
+  `POST /api/auth/password` — session cookie sign-in
+- `GET/POST /api/admin/users` · `PATCH /api/admin/users/{username}` ·
+  `POST /api/admin/users/{username}/reset-password` — admins only
 - `GET  /api/health` — Health check + mode
 - `GET  /api/dashboard` — Stats and policy list
 - `GET  /api/policies` — List ingested policies
@@ -215,6 +225,38 @@ Status as of 2026-10-18. Work top to bottom.
   torch/transformers (29 packages) plus a model download. Revisit when there
   are more or real policies and a larger eval; adopt only if it beats BM25
   there (hybrid behind a flag).
+
+### Phase E: Policyholder accounts and access control (current)
+End users are health insurance policyholders. Until this phase the app had
+no sign-in: every policy, upload, summary and chat was open to anyone.
+Decisions (user, 2026-10-19): local accounts now behind a pluggable provider
+interface (insurer member-portal SSO/OIDC later); plans are assigned to
+members by staff, and members may also upload private policy documents.
+
+1. [x] **E1 Accounts and sessions** — users store (data/users.json,
+       gitignored) with salted scrypt hashes; roles `member` and `admin`;
+       HttpOnly SameSite=Strict session cookie (server keeps only a token
+       digest, idle + absolute expiry); login throttle/lockout;
+       /api/auth/login, /logout, /me; forced password change on first login;
+       `python -m backend.app.users` CLI to bootstrap the first admin.
+       Provider interface so OIDC can replace local passwords later.
+2. [x] **E2 Authorization on every route** — `require(permission)` on every
+       API route (health excepted); members see only assigned plans + their
+       own uploads (policies list, summary, chunks, chat, coverage, chat
+       with no policy selected); member uploads are private to the uploader,
+       admin uploads are staff plans; conversations belong to the user who
+       started them; admin endpoints to create users and assign plans.
+   E1+E2 done: `backend/app/auth/` (users, sessions, access), routers
+   `auth.py` + `admin.py`, `services/registry.py`; a structural test fails
+   if any /api route lacks a sign-in dependency. 231 backend tests.
+   **The web UI cannot load data until E4** (no sign-in page yet).
+3. [ ] **E3 Audit and PHI handling** — append-only audit log of who
+       accessed which document/endpoint (never question text); no PHI in
+       logs; clear notice in the UI when live mode sends questions to
+       Anthropic; retention note for the in-memory conversation store.
+4. [ ] **E4 Frontend** — sign-in page, session-aware app shell (user menu,
+       sign out, 401 → sign-in), password change, admin page (members,
+       plan assignment, uploads), "private" label on member uploads.
 
 ### Known retrieval gaps
 - Multi-policy eval misses (1/38 each): Summit "How much is a specialist

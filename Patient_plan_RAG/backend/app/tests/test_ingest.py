@@ -119,3 +119,12 @@ def test_failed_document_is_not_retried_until_version_bump(dirs, monkeypatch):
     assert _sync(dirs).reingested == []
     monkeypatch.setattr(ingest, "CHUNKER_VERSION", CHUNKER_VERSION + 1)
     assert broken["document_id"] in _sync(dirs).reingested
+
+
+def test_reingest_keeps_document_owner(dirs):
+    shutil.copy(POLICY_PDF, dirs["uploads"] / "abcd1234_mine.pdf")
+    _write_registry(dirs, [{"document_id": "upload002", "filename": "abcd1234_mine.pdf",
+                            "status": "completed", "owner": "member@example.com"}])
+    _sync(dirs)
+    entry = next(e for e in _registry(dirs) if e["document_id"] == "upload002")
+    assert entry["owner"] == "member@example.com"

@@ -12,8 +12,10 @@ import pytest
 from fastapi.testclient import TestClient
 
 from backend.app import main, rate_limit
-from backend.app.routers import chat, coverage, dashboard, policies
-from backend.app.services import retrieval
+from backend.app.auth import sessions as auth_sessions
+from backend.app.auth.users import Role, user_store
+from backend.app.routers import chat, coverage, policies
+from backend.app.services import registry, retrieval
 from backend.app.services.conversations import store as conversation_store
 from backend.app.services.document_processor import chunk_text, extract_text_from_pdf
 
@@ -39,13 +41,16 @@ def data_dirs(tmp_path, monkeypatch):
     if not POLICY_PDF.exists():
         pytest.skip("synthetic policy PDF missing")
     dirs = {name: tmp_path / name for name in ("policies", "chunks", "uploads")}
+    monkeypatch.setattr(user_store, "path", tmp_path / "users.json")
+    auth_sessions.sessions.reset()
+    auth_sessions.login_throttle.reset()
     for d in dirs.values():
         d.mkdir()
     shutil.copy(POLICY_PDF, dirs["policies"])
 
-    for module in (main, policies, dashboard):
+    for module in (main, registry):
         monkeypatch.setattr(module, "POLICY_DIR", dirs["policies"])
-    for module in (main, policies, chat, coverage, dashboard):
+    for module in (main, policies, chat, coverage):
         monkeypatch.setattr(module, "CHUNK_DIR", dirs["chunks"])
     for module in (main, policies):
         monkeypatch.setattr(module, "UPLOAD_DIR", dirs["uploads"])
@@ -61,10 +66,31 @@ def data_dirs(tmp_path, monkeypatch):
     return dirs
 
 
+TEST_PASSWORD = "test password 123"
+
+
+def sign_in(client: TestClient, username: str, role: Role = Role.MEMBER,
+            plan_ids: list[str] | None = None) -> TestClient:
+    """Create an account (password already changed) and sign `client` in."""
+    if user_store.get(username) is None:
+        user_store.create(username, TEST_PASSWORD, role, plan_ids, must_change_password=False)
+    resp = client.post("/api/auth/login", json={"username": username, "password": TEST_PASSWORD})
+    assert resp.status_code == 200, resp.text
+    return client
+
+
 @pytest.fixture
-def client(data_dirs):
+def anon_client(data_dirs):
+    """Not signed in."""
     with TestClient(main.app) as c:
         yield c
+
+
+@pytest.fixture
+def client(data_dirs):
+    """Signed in as an admin (sees every document)."""
+    with TestClient(main.app) as c:
+        yield sign_in(c, "admin@example.com", Role.ADMIN)
 
 
 @pytest.fixture

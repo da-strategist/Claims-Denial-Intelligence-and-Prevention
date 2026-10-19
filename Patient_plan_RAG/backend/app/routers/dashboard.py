@@ -1,28 +1,23 @@
 """Dashboard stats endpoint."""
 
-import json
 import os
-from pathlib import Path
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
+from ..auth.access import can_access
+from ..auth.sessions import Permission, require
+from ..auth.users import User
 from ..models.common import DISCLAIMER
-from ..services.retrieval import load_chunks
+from ..services import registry
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
-BASE_DIR = Path(__file__).resolve().parent.parent.parent.parent
-POLICY_DIR = Path(os.getenv("POLICY_DIR", str(BASE_DIR / "data" / "policies")))
-CHUNK_DIR = Path(os.getenv("CHUNK_DIR", str(BASE_DIR / "data" / "chunks")))
 
 
 @router.get("")
-async def dashboard_stats():
-    """Return summary stats for the dashboard."""
-    registry_path = POLICY_DIR / "_registry.json"
-    policies = []
-    if registry_path.exists():
-        policies = json.loads(registry_path.read_text())
+async def dashboard_stats(user: User = Depends(require(Permission.VIEW_DASHBOARD))):
+    """Summary stats over the policies this user may see."""
+    policies = [p for p in registry.load() if can_access(user, p)]
 
     total_chunks = 0
     total_pages = 0

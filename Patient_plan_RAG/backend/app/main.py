@@ -11,7 +11,7 @@ from fastapi.staticfiles import StaticFiles
 
 from .models.common import DISCLAIMER
 from .rate_limit import api_limiter, upload_limiter
-from .routers import chat, coverage, dashboard, policies
+from .routers import admin, auth, chat, coverage, dashboard, policies
 
 # ── Directories ──────────────────────────────────────────────────────
 
@@ -66,6 +66,24 @@ async def rate_limit(request: Request, call_next):
     return await call_next(request)
 
 
+_ALLOWED_ORIGINS = {
+    o.strip() for o in os.getenv("CORS_ORIGINS", "http://localhost:5174").split(",")
+}
+
+
+@app.middleware("http")
+async def check_origin(request: Request, call_next):
+    """Reject state-changing requests sent from other sites (CSRF defence in
+    depth on top of SameSite=Strict cookies; uploads are form posts, which
+    any site can submit). Requests without an Origin header are allowed."""
+    origin = request.headers.get("origin")
+    if (request.method in ("POST", "PUT", "PATCH", "DELETE")
+            and request.url.path.startswith("/api") and origin
+            and origin not in _ALLOWED_ORIGINS):
+        return JSONResponse({"detail": "Cross-site request refused"}, status_code=403)
+    return await call_next(request)
+
+
 # Registered after rate_limit, so it wraps it and 429s carry the header too.
 @app.middleware("http")
 async def add_disclaimer_header(request: Request, call_next):
@@ -77,10 +95,9 @@ async def add_disclaimer_header(request: Request, call_next):
 
 
 # CORS — added last so it is outermost and error responses get CORS headers
-origins = os.getenv("CORS_ORIGINS", "http://localhost:5174").split(",")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[o.strip() for o in origins],
+    allow_origins=sorted(_ALLOWED_ORIGINS),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -89,6 +106,8 @@ app.add_middleware(
 
 
 # Routers
+app.include_router(auth.router)
+app.include_router(admin.router)
 app.include_router(policies.router)
 app.include_router(chat.router)
 app.include_router(coverage.router)

@@ -133,6 +133,6 @@ def test_unknown_conversation_id_gets_a_fresh_one(client):
 def test_history_is_stored_server_side(client, doc_id):
     cid = _ask(client, "Is an MRI covered?", policy_id=doc_id)["conversation_id"]
     _ask(client, "Does it need prior authorization?", conversation_id=cid)
-    conv = conversations.store.get_or_create(cid, None)
+    conv = conversations.store.get_or_create(cid, None, owner="admin@example.com")
     assert [t.question for t in conv.turns] == [
         "Is an MRI covered?", "Does it need prior authorization?"]

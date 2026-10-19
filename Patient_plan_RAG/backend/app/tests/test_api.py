@@ -11,7 +11,8 @@ from fastapi.testclient import TestClient
 
 from backend.app import main
 from backend.app.models.common import DISCLAIMER
-from backend.app.tests.conftest import POLICY_PDF
+from backend.app.auth.users import Role
+from backend.app.tests.conftest import POLICY_PDF, sign_in
 
 
 # ── Health / startup ─────────────────────────────────────────────────
@@ -38,7 +39,8 @@ def test_startup_rebuild_reuses_document_id(data_dirs):
     for _ in range(2):
         (data_dirs["policies"] / "_registry.json").unlink(missing_ok=True)
         with TestClient(main.app) as c:
-            ids.append(c.get("/api/policies").json()[0]["document_id"])
+            ids.append(sign_in(c, "admin@example.com", Role.ADMIN)
+                       .get("/api/policies").json()[0]["document_id"])
     assert ids[0] == ids[1]
     assert len(list(data_dirs["chunks"].iterdir())) == 1
 
@@ -156,10 +158,10 @@ def test_chat_off_topic_returns_insufficient_evidence(client):
     assert "could not find sufficient evidence" in body["answer"]
 
 
-def test_chat_scoped_to_unknown_policy_finds_nothing(client):
-    body = client.post("/api/chat", json={"question": "Is acupuncture covered?",
-                                          "policy_id": "nope"}).json()
-    assert body["confidence"] == "insufficient_evidence"
+def test_chat_scoped_to_unknown_policy_is_not_found(client):
+    resp = client.post("/api/chat", json={"question": "Is acupuncture covered?",
+                                          "policy_id": "nope"})
+    assert resp.status_code == 404
 
 
 def test_chat_requires_question(client):

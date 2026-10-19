@@ -106,6 +106,7 @@ def test_safe_filename(name, expected):
 
 def test_api_rate_limit_returns_429_with_headers(client, monkeypatch):
     monkeypatch.setattr(rate_limit.api_limiter, "limit", 3)
+    rate_limit.api_limiter.reset()  # don't count the fixture's sign-in
     codes = [client.get("/api/dashboard").status_code for _ in range(4)]
     assert codes == [200, 200, 200, 429]
     resp = client.get("/api/dashboard")

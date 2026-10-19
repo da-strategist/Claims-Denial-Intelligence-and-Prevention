@@ -330,15 +330,17 @@ async def answer_question(
     top_k: int = 5,
     mode: str | None = None,
     history: list[Turn] | None = None,
+    allowed_ids: set[str] | None = None,
 ) -> ChatResponse:
     """Retrieve context and generate a grounded answer.
 
     `history` holds earlier turns of the same conversation (oldest first).
     The caller owns conversation state and fills in `conversation_id`.
+    `allowed_ids` limits a search with no document_id to the user's documents.
     """
     effective_mode = mode or os.getenv("APP_MODE", "demo")
     query = retrieval_query(question, history)
-    retrieved = retrieve_for_policy(query, chunk_dir, document_id, top_k)
+    retrieved = retrieve_for_policy(query, chunk_dir, document_id, top_k, allowed_ids)
 
     confidence = "supported" if retrieved else "insufficient_evidence"
     if effective_mode == "live" and retrieved:

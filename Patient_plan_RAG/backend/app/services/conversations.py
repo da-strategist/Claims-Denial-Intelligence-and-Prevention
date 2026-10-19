@@ -29,6 +29,7 @@ class Turn:
 class Conversation:
     id: str
     policy_id: str | None
+    owner: str | None = None
     turns: list[Turn] = field(default_factory=list)
     updated: float = field(default_factory=lambda: time.monotonic())
 
@@ -46,18 +47,20 @@ class ConversationStore:
         for cid in [c.id for c in self._items.values() if now - c.updated > self.ttl]:
             del self._items[cid]
 
-    def get_or_create(self, conversation_id: str | None, policy_id: str | None) -> Conversation:
+    def get_or_create(self, conversation_id: str | None, policy_id: str | None,
+                      owner: str | None = None) -> Conversation:
         """The live conversation for this ID, else a new one with a fresh ID.
 
-        A conversation stays scoped to one policy: switching policy starts a
-        new conversation rather than mixing passages from two plans.
+        A conversation belongs to the user who started it (someone else's ID
+        starts a new conversation) and stays scoped to one policy: switching
+        policy starts a new conversation rather than mixing two plans.
         """
         self._expire()
         conv = self._items.get(conversation_id or "")
-        if conv and (policy_id is None or policy_id == conv.policy_id):
+        if conv and conv.owner == owner and (policy_id is None or policy_id == conv.policy_id):
             self._items.move_to_end(conv.id)
             return conv
-        conv = Conversation(id=uuid.uuid4().hex[:12], policy_id=policy_id)
+        conv = Conversation(id=uuid.uuid4().hex[:12], policy_id=policy_id, owner=owner)
         self._items[conv.id] = conv
         while len(self._items) > self.max_conversations:
             self._items.popitem(last=False)

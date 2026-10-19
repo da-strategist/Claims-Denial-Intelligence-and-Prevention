@@ -25,6 +25,9 @@ frontend/dist/
 data/chunks/
 data/uploads/
 data/policies/_registry.json
+# Accounts: password hashes, never committed
+data/users.json
+data/users.tmp
 
 # The root .gitignore drops *.json; the npm manifests are needed to install
 !frontend/package.json
