@@ -7,12 +7,6 @@ __pycache__/
 # Environment
 .env
 
-# Uploads and generated data
-backend/app/data/uploads/*
-backend/app/data/chunks/*
-!backend/app/data/uploads/.gitkeep
-!backend/app/data/chunks/.gitkeep
-
 # Node / Frontend
 node_modules/
 frontend/dist/

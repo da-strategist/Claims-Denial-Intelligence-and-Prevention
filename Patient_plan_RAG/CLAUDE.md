@@ -43,11 +43,17 @@ cd Patient_plan_RAG
 uv venv && source .venv/bin/activate
 uv pip install -e ".[dev]"
 
-# Generate the synthetic policy PDF (already exists in data/policies/)
+# Optional config (APP_MODE, API key, CORS, data dirs) — see .env.example
+cp .env.example .env
+
+# Generate the synthetic policy PDF (already committed in data/policies/;
+# regenerating changes its bytes, so it gets a new document ID on next ingest)
 python -m synthetic_data.generate_policy
 
-# Run the backend
-uvicorn backend.app.main:app --reload --port 8001
+# Run the backend. On first start it ingests data/policies/*.pdf and builds
+# data/policies/_registry.json + data/chunks/ (both gitignored).
+# Delete _registry.json to force a re-ingest after changing the chunker.
+uvicorn backend.app.main:app --reload --port 8001 --env-file .env
 
 # Run the tests
 python -m pytest
@@ -121,28 +127,27 @@ Status as of 2026-10-18. Work top to bottom.
 - [x] Policy metadata (insurer, plan name, plan ID, effective/expiration
       dates) extracted verbatim from the first two pages at ingest
       (103 tests passing)
+- [x] Setup: `uv pip install -e ".[dev]"` works from a clean venv; `.env`
+      is loaded via `uvicorn --env-file .env`; `.env.example` lists only
+      variables the code reads; CORS default is 5174; unused
+      `backend/app/data/` removed
 
 ### Next (in order)
-1. [ ] **Setup fixes** — `pyproject.toml` references a missing README.md and
-       dev deps live in `[dependency-groups]`, so `uv pip install -e ".[dev]"`
-       fails. CORS default lists 5173/3000, not 5174. `.env.example` sets
-       UPLOAD/POLICY/CHUNK_DIR to `app/data/...` while the code defaults to
-       `<project>/data/...`, and the `backend/app/data/` folders are unused.
-2. [ ] **Input limits** — no rate limiting, no upload size cap, no length
+1. [ ] **Input limits** — no rate limiting, no upload size cap, no length
        limits on question/service fields; upload only checks the `.pdf` suffix.
-3. [ ] **Frontend error boundary** — pages have try/catch + loading flags, but
+2. [ ] **Frontend error boundary** — pages have try/catch + loading flags, but
        there is no React error boundary, so one render error blanks the app.
-4. [ ] **Expand synthetic data** — `synthetic_data/{policies,scenarios,fixtures}`
+3. [ ] **Expand synthetic data** — `synthetic_data/{policies,scenarios,fixtures}`
        are empty; one policy only. Needed before embeddings can be evaluated.
-5. [ ] **Multi-turn chat** — `ChatRequest.conversation_id` is accepted but
+4. [ ] **Multi-turn chat** — `ChatRequest.conversation_id` is accepted but
        unused; backend mints a new ID per reply and frontend sends only the
        latest question.
-6. [ ] **Live mode update** — `rag.py` hardcodes an outdated model ID and does
+5. [ ] **Live mode update** — `rag.py` hardcodes an outdated model ID and does
        not fence policy text/questions as untrusted evidence in the prompt.
-7. [ ] **Re-chunk on chunker change** — existing chunk files are never
+6. [ ] **Re-chunk on chunker change** — existing chunk files are never
        regenerated when chunking logic changes (current policy was re-chunked
        by hand).
-8. [ ] **Embedding retrieval** (sentence-transformers / hybrid with BM25) —
+7. [ ] **Embedding retrieval** (sentence-transformers / hybrid with BM25) —
        only once the expanded eval can show it beats BM25.
 
 ### Known retrieval gaps
