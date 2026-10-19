@@ -14,6 +14,7 @@ from fastapi.testclient import TestClient
 from backend.app import main, rate_limit
 from backend.app.routers import chat, coverage, dashboard, policies
 from backend.app.services import retrieval
+from backend.app.services.conversations import store as conversation_store
 from backend.app.services.document_processor import chunk_text, extract_text_from_pdf
 
 POLICY_PDF = (
@@ -52,6 +53,7 @@ def data_dirs(tmp_path, monkeypatch):
 
     rate_limit.api_limiter.reset()
     rate_limit.upload_limiter.reset()
+    conversation_store.reset()
 
     # Never call the live LLM from tests
     monkeypatch.setenv("APP_MODE", "demo")

@@ -168,6 +168,14 @@ Status as of 2026-10-18. Work top to bottom.
       paragraph fallback + cost-table rows, metadata "Issued by"/"Program"/
       org title lines, coverage classifier based on the paragraphs naming the
       service (CHUNKER_VERSION 3). 153 backend tests.
+- [x] Multi-turn chat: server-side conversation store
+      (`services/conversations.py`, in-memory, last 10 turns, 1h idle TTL,
+      max 500) so history only holds what the app said; a conversation keeps
+      its policy (switching policy starts a new one); follow-ups that refer
+      back ("does it…") add the previous question to the retrieval query;
+      live mode receives prior turns as messages. Frontend sends
+      conversation_id, resets on policy change, "New conversation" button.
+      169 backend + 14 frontend tests.
 
 ### Next — Phase A: Hardening (safe to run and demo)
 1. [ ] **Visual UI check** — needs the user (browser automation cannot reach
@@ -176,17 +184,14 @@ Status as of 2026-10-18. Work top to bottom.
 ### Phase B: Data & evaluation — done (see Done above)
 
 ### Phase C: Chat & live mode
-2. [ ] **Multi-turn chat** — `ChatRequest.conversation_id` is accepted but
-       unused; backend mints a new ID per reply and frontend sends only the
-       latest question.
-3. [ ] **Live mode update** — `rag.py` hardcodes an outdated model ID and does
+2. [ ] **Live mode update** — `rag.py` hardcodes an outdated model ID and does
        not fence policy text/questions as untrusted evidence; validate that
        cited pages exist in the retrieved passages; mock the API in tests.
 
 ### Phase D: Retrieval upgrade
-4. [ ] **Embedding / hybrid retrieval** — adopt only if it beats BM25 on the
+3. [ ] **Embedding / hybrid retrieval** — adopt only if it beats BM25 on the
        Phase B eval; otherwise record the decision to stay on BM25.
-5. [ ] **Known gaps** — see below.
+4. [ ] **Known gaps** — see below.
 
 ### Known retrieval gaps
 - Multi-policy eval misses (3/38): Summit "How much is a specialist visit?"
@@ -196,7 +201,13 @@ Status as of 2026-10-18. Work top to bottom.
   stemming). The eval is small and written by the same author as the fixes —
   treat scores as regression guards, not accuracy claims.
 - "What does coinsurance mean?" ranks the definition 3rd, behind rate tables.
-- Demo answers truncate combined passages at 500 chars (mid-sentence).
+- Demo answers paste the first 500 chars of the retrieved passages, so the
+  sentence that answers the question is often cut off even when retrieval is
+  right (e.g. Summit "How many visits does it include?" follow-up: correct
+  section, answer text misses "up to 20 combined visits"). Highest-impact
+  demo-mode fix: quote the best-matching paragraph(s) instead.
+- Follow-up "How often can I get them?" after "Are glasses covered?"
+  (Riverbend) misses with or without context.
 
 ## Constraints (from master prompt)
 - Preserve all existing RCM project files

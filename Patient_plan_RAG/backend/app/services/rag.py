@@ -6,11 +6,12 @@ is called with the retrieved passages as context.
 """
 
 import os
-import uuid
+import re
 from pathlib import Path
 
 from ..models.coverage import ChatResponse, SourceCitation
 from ..models.policy import DocumentChunk
+from .conversations import Turn
 from .retrieval import retrieve_for_policy
 
 
@@ -113,6 +114,7 @@ Follow these rules strictly:
 async def _build_live_answer(
     question: str,
     retrieved: list[tuple[DocumentChunk, float]],
+    history: list[Turn] | None = None,
 ) -> tuple[str, list[SourceCitation]]:
     """Call Anthropic API with retrieved context."""
     import anthropic
@@ -142,7 +144,13 @@ async def _build_live_answer(
         model="claude-sonnet-4-20250514",
         max_tokens=1024,
         system=_SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": user_msg}],
+        messages=[
+            *(m for t in history or [] for m in (
+                {"role": "user", "content": t.question},
+                {"role": "assistant", "content": t.answer},
+            )),
+            {"role": "user", "content": user_msg},
+        ],
     )
     answer_text = resp.content[0].text
     return answer_text, citations
@@ -150,19 +158,40 @@ async def _build_live_answer(
 
 # ── Public interface ─────────────────────────────────────────────────
 
+# Words that point back to an earlier subject ("Does it need approval?")
+_REFERRING = re.compile(r"\b(it|its|that|this|these|those|they|them|the same)\b", re.I)
+
+
+def retrieval_query(question: str, history: list[Turn] | None) -> str:
+    """Add the previous question to follow-ups that refer back to it.
+
+    Questions that name their own subject ("What about acupuncture?") are
+    searched as-is, so the earlier topic cannot crowd them out.
+    """
+    if history and _REFERRING.search(question):
+        return f"{history[-1].question} {question}"
+    return question
+
+
 async def answer_question(
     question: str,
     chunk_dir: Path,
     document_id: str | None = None,
     top_k: int = 5,
     mode: str | None = None,
+    history: list[Turn] | None = None,
 ) -> ChatResponse:
-    """Retrieve context and generate a grounded answer."""
+    """Retrieve context and generate a grounded answer.
+
+    `history` holds earlier turns of the same conversation (oldest first).
+    The caller owns conversation state and fills in `conversation_id`.
+    """
     effective_mode = mode or os.getenv("APP_MODE", "demo")
-    retrieved = retrieve_for_policy(question, chunk_dir, document_id, top_k)
+    query = retrieval_query(question, history)
+    retrieved = retrieve_for_policy(query, chunk_dir, document_id, top_k)
 
     if effective_mode == "live" and os.getenv("ANTHROPIC_API_KEY"):
-        answer_text, citations = await _build_live_answer(question, retrieved)
+        answer_text, citations = await _build_live_answer(question, retrieved, history)
     else:
         answer_text, citations = _build_demo_answer(question, retrieved)
 
@@ -187,5 +216,4 @@ async def answer_question(
         citations=citations,
         follow_up_suggestions=follow_ups[:3],
         confidence="supported" if retrieved else "insufficient_evidence",
-        conversation_id=uuid.uuid4().hex[:12],
     )

@@ -53,12 +53,13 @@ export const api = {
   },
 
   // Chat
-  chat: (question, policyId) =>
+  chat: (question, policyId, conversationId) =>
     request("/chat", {
       method: "POST",
       body: JSON.stringify({
         question,
         policy_id: policyId || null,
+        conversation_id: conversationId || null,
       }),
     }),
 

@@ -28,6 +28,8 @@ export default function ChatAssistant() {
   const [policyError, setPolicyError] = useState("");
   const [question, setQuestion] = useState("");
   const [messages, setMessages] = useState([]);
+  // Server-side conversation; follow-up questions send it back for context
+  const [conversationId, setConversationId] = useState(null);
   const [loading, setLoading] = useState(false);
   const messagesEnd = useRef(null);
 
@@ -42,6 +44,11 @@ export default function ChatAssistant() {
     messagesEnd.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  const startNewConversation = () => {
+    setConversationId(null);
+    setMessages([]);
+  };
+
   const handleAsk = async () => {
     if (!question.trim()) return;
     const q = question.trim();
@@ -50,7 +57,8 @@ export default function ChatAssistant() {
     setLoading(true);
 
     try {
-      const resp = await api.chat(q, selectedPolicy || undefined);
+      const resp = await api.chat(q, selectedPolicy || undefined, conversationId);
+      setConversationId(resp.conversation_id || null);
       setMessages((prev) => [
         ...prev,
         {
@@ -76,7 +84,11 @@ export default function ChatAssistant() {
         <h2 className="text-2xl font-bold">Ask a Question</h2>
         <select
           value={selectedPolicy}
-          onChange={(e) => setSelectedPolicy(e.target.value)}
+          onChange={(e) => {
+            // a conversation is scoped to one policy
+            setSelectedPolicy(e.target.value);
+            startNewConversation();
+          }}
           className="border rounded px-3 py-1.5 text-sm"
         >
           <option value="">All policies</option>
@@ -89,6 +101,13 @@ export default function ChatAssistant() {
         {policyError && (
           <p className="text-xs text-red-600 mt-1">Couldn't load policies: {policyError}</p>
         )}
+        <button
+          onClick={startNewConversation}
+          disabled={loading || messages.length === 0}
+          className="ml-auto border px-3 py-1.5 rounded text-sm hover:bg-gray-50 disabled:opacity-50"
+        >
+          New conversation
+        </button>
       </div>
 
       <div className="flex-1 overflow-y-auto bg-white rounded-lg shadow p-4 space-y-4">
