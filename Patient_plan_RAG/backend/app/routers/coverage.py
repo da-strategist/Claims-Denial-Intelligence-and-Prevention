@@ -18,10 +18,10 @@ from ..models.coverage import (
     AuthReadiness,
     ChecklistItem,
     CoverageAssessment,
-    CoverageClassification,
     SourceCitation,
 )
-from ..services.retrieval import retrieve_for_policy
+from ..services.coverage_assessor import assess_coverage as assess_service
+from ..services.retrieval import load_chunks, retrieve_for_policy
 
 router = APIRouter(prefix="/api/coverage", tags=["coverage"])
 
@@ -45,76 +45,8 @@ class AuthChecklistRequest(DomainModel):
 @router.post("/assess")
 async def assess_coverage(req: AssessmentRequest) -> CoverageAssessment:
     """Assess whether a service is covered under a policy."""
-    # Generic words like "coverage"/"benefit" would outrank the service itself
-    # (they match the plan title), so search on the service alone.
-    query = f"{req.service_name} {req.service_code}"
-    results = retrieve_for_policy(query, CHUNK_DIR, req.document_id, top_k=6)
-
-    if not results:
-        return CoverageAssessment(
-            service_name=req.service_name,
-            service_code=req.service_code,
-            classification=CoverageClassification.INSUFFICIENT,
-            explanation=(
-                "Insufficient policy evidence was found to assess coverage for "
-                f"'{req.service_name}'. The policy may not specifically address "
-                "this service, or it may be listed under different terminology."
-            ),
-            missing_information=["Policy may not address this service explicitly"],
-            recommended_steps=[
-                "Contact plan administrator for coverage verification",
-                "Request a predetermination of benefits",
-            ],
-        )
-
-    citations = []
-    conditions = []
-    exclusions = []
-    for chunk, score in results:
-        citations.append(SourceCitation(
-            document_id=chunk.document_id,
-            page_number=chunk.page_number,
-            section=chunk.section_heading,
-            excerpt=chunk.content[:250],
-            confidence="supported" if score > 0.3 else "interpreted",
-        ))
-        content_lower = chunk.content.lower()
-        if any(kw in content_lower for kw in ["not covered", "excluded", "does not"]):
-            exclusions.append(chunk.content[:150])
-        if any(kw in content_lower for kw in ["requires", "condition", "must", "prior"]):
-            conditions.append(chunk.content[:150])
-
-    # Simple classification heuristic
-    if exclusions and not conditions:
-        classification = CoverageClassification.EXCLUDED
-    elif conditions:
-        classification = CoverageClassification.CONDITIONAL
-    else:
-        classification = CoverageClassification.COVERED
-
-    top_chunk = results[0][0]
-    return CoverageAssessment(
-        service_name=req.service_name,
-        service_code=req.service_code,
-        classification=classification,
-        explanation=(
-            f"Based on policy evidence from section '{top_chunk.section_heading or 'General'}' "
-            f"(page {top_chunk.page_number or '?'}), {req.service_name} appears to be "
-            f"{classification.value.replace('_', ' ')}. "
-            "Review the cited passages for full context."
-        ),
-        conditions=conditions[:3],
-        exclusions=exclusions[:3],
-        prior_auth_required=bool(
-            any("prior auth" in c.content.lower() or "preauthorization" in c.content.lower()
-                for c, _ in results)
-        ),
-        citations=citations,
-        recommended_steps=[
-            "Verify with plan administrator",
-            "Check for applicable medical necessity criteria",
-        ],
-    )
+    chunks = load_chunks(CHUNK_DIR, req.document_id)
+    return assess_service(req.service_name, req.service_code, chunks)
 
 
 @router.post("/auth-checklist")

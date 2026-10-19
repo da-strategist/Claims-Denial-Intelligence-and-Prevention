@@ -58,8 +58,11 @@ python -m synthetic_data.generate_policy
 # and chunks live in data/policies/_registry.json + data/chunks/ (gitignored).
 uvicorn backend.app.main:app --reload --port 8001 --env-file .env
 
-# Run the tests
+# Run the tests (includes the multi-policy eval as a regression gate)
 python -m pytest
+
+# Multi-policy eval scorecard (ground truth in synthetic_data/scenarios/)
+python -m backend.app.tests.policy_eval
 ```
 
 ### Frontend
@@ -79,8 +82,10 @@ The Vite dev server proxies `/api` to the backend on port 8001.
    Set APP_MODE=live + ANTHROPIC_API_KEY for LLM-powered answers.
 
 2. **BM25 keyword retrieval**: Chunks follow section boundaries (a new chunk
-   at each heading, long sections split on whole lines). Ranking is BM25 over
-   stopword-free, plural-folded tokens plus a section-heading boost. The score
+   at each heading, long sections split on whole lines). Headings come from
+   the PDF's fonts (larger or all-bold lines) plus text heuristics. Ranking is
+   BM25 over stopword-free, plural-folded tokens plus section-heading and
+   line-label ("Deductible: ...", table rows) boosts. The score
    returned to callers is the IDF-weighted share of query terms matched (0..1;
    > 0.3 → "supported", < 0.1 → dropped). Without a document_id, only
    registry-listed documents are searched, so orphaned chunk files are ignored.
@@ -154,39 +159,42 @@ Status as of 2026-10-18. Work top to bottom.
       referrals), Northwind Bronze HDHP (different caps vocabulary,
       precertification, numeric dates), Riverbend Medicaid handbook
       (question headings, near-zero cost sharing)
+- [x] Multi-policy eval (`backend/app/tests/policy_eval.py`, ground truth in
+      `synthetic_data/scenarios/policy_scenarios.py`; ratchet thresholds in
+      `test_policy_eval.py`) and the fixes it drove. Baseline → now, all 4
+      policies: metadata 16→20/20, cited section correct 23→35/38, coverage
+      classification 8→15/15, summary fields 15→22/22. Fixes: font-based
+      headings, line-label retrieval boost, summarizer keyword priority +
+      paragraph fallback + cost-table rows, metadata "Issued by"/"Program"/
+      org title lines, coverage classifier based on the paragraphs naming the
+      service (CHUNKER_VERSION 3). 153 backend tests.
 
 ### Next — Phase A: Hardening (safe to run and demo)
 1. [ ] **Visual UI check** — needs the user (browser automation cannot reach
        localhost here).
 
-### Phase B: Data & evaluation (something to measure against)
-2. [ ] **Scenarios + multi-policy eval, then fix what it exposes** — right
-       policy, right passage, right classification, summary and metadata per
-       policy. Baseline probe of the current code on the new layouts:
-       - Headings: question-style (Riverbend) not detected at all; long or
-         keyword-less title-case headings (Summit "Section 4 – Referrals and
-         Your Primary Care Provider", "Services We Do Not Cover") missed.
-       - Metadata: insurer/plan missing for Northwind (title line lacks
-         "Plan") and Riverbend ("Issued by:", "Program:").
-       - Summary: copay tables not parsed; fields fall back to unrelated
-         sections when no heading names them (Summit/Riverbend near-empty).
-       - Retrieval (4 spot questions each): Summit 1/4, Northwind 3/4,
-         Riverbend 0/4 correct sections.
+### Phase B: Data & evaluation — done (see Done above)
 
 ### Phase C: Chat & live mode
-3. [ ] **Multi-turn chat** — `ChatRequest.conversation_id` is accepted but
+2. [ ] **Multi-turn chat** — `ChatRequest.conversation_id` is accepted but
        unused; backend mints a new ID per reply and frontend sends only the
        latest question.
-4. [ ] **Live mode update** — `rag.py` hardcodes an outdated model ID and does
+3. [ ] **Live mode update** — `rag.py` hardcodes an outdated model ID and does
        not fence policy text/questions as untrusted evidence; validate that
        cited pages exist in the retrieved passages; mock the API in tests.
 
 ### Phase D: Retrieval upgrade
-5. [ ] **Embedding / hybrid retrieval** — adopt only if it beats BM25 on the
+4. [ ] **Embedding / hybrid retrieval** — adopt only if it beats BM25 on the
        Phase B eval; otherwise record the decision to stay on BM25.
-6. [ ] **Known gaps** — see below.
+5. [ ] **Known gaps** — see below.
 
 ### Known retrieval gaps
+- Multi-policy eval misses (3/38): Summit "How much is a specialist visit?"
+  ranks the referral section first; Riverbend "How long does an approval
+  decision take?" ranks the appeals section ("decision"), and "Are glasses
+  covered for my child?" ranks "What is not covered?" (no child/children
+  stemming). The eval is small and written by the same author as the fixes —
+  treat scores as regression guards, not accuracy claims.
 - "What does coinsurance mean?" ranks the definition 3rd, behind rate tables.
 - Demo answers truncate combined passages at 500 chars (mid-sentence).
 

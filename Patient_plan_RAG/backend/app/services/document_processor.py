@@ -4,6 +4,7 @@ import hashlib
 import json
 import re
 import uuid
+from collections import Counter
 from datetime import date, datetime
 from pathlib import Path
 
@@ -12,7 +13,7 @@ from ..models.policy import DocumentChunk, DocumentStatus, PolicyDocument
 
 # Bump whenever chunking or metadata extraction changes: documents ingested
 # with an older version are re-ingested at startup (services/ingest.py).
-CHUNKER_VERSION = 1
+CHUNKER_VERSION = 3  # 2: font-based headings; 3: "Issued by"/"Program"/org title-line metadata
 
 
 def _generate_chunk_id(document_id: str, index: int) -> str:
@@ -20,22 +21,54 @@ def _generate_chunk_id(document_id: str, index: int) -> str:
     return hashlib.sha256(raw.encode()).hexdigest()[:16]
 
 
+# A line is a heading if its font is this much larger than the page's body
+# text, or if it is entirely bold and short.
+_HEADING_SIZE_RATIO = 1.15
+_BOLD_HEADING_MAX_WORDS = 12
+
+
+def _font_headings(page) -> list[str]:
+    """Lines set in a heading font (larger than body text, or all bold)."""
+    sizes = Counter(round(c["size"], 1) for c in page.chars if c["text"].strip())
+    if not sizes:
+        return []
+    body_size = sizes.most_common(1)[0][0]
+    headings = []
+    for line in page.extract_text_lines():
+        chars = [c for c in line["chars"] if c["text"].strip()]
+        if not chars:
+            continue
+        avg_size = sum(c["size"] for c in chars) / len(chars)
+        all_bold = all("bold" in c["fontname"].lower() for c in chars)
+        text = line["text"].strip()
+        if avg_size >= body_size * _HEADING_SIZE_RATIO or (
+            all_bold and len(text.split()) <= _BOLD_HEADING_MAX_WORDS
+        ):
+            headings.append(text)
+    return headings
+
+
 def extract_text_from_pdf(pdf_path: Path) -> list[dict]:
-    """Extract text page-by-page using pdfplumber, fallback to pypdf."""
+    """Extract text page-by-page using pdfplumber, fallback to pypdf.
+
+    Each page is {"page_number", "text", "headings"}; headings are lines whose
+    font marks them as headings (pdfplumber only; empty with pypdf).
+    """
     pages: list[dict] = []
     try:
         import pdfplumber
         with pdfplumber.open(pdf_path) as pdf:
             for i, page in enumerate(pdf.pages, start=1):
                 text = page.extract_text() or ""
-                pages.append({"page_number": i, "text": text.strip()})
+                pages.append({"page_number": i, "text": text.strip(),
+                              "headings": _font_headings(page)})
     except Exception:
         try:
             from pypdf import PdfReader
             reader = PdfReader(str(pdf_path))
             for i, page in enumerate(reader.pages, start=1):
                 text = page.extract_text() or ""
-                pages.append({"page_number": i, "text": text.strip()})
+                pages.append({"page_number": i, "text": text.strip(), "headings": []})
         except Exception as exc:
             raise RuntimeError(f"Cannot extract text from {pdf_path.name}: {exc}") from exc
     return pages
@@ -118,6 +151,9 @@ def _labelled_value(text: str, *labels: str) -> str:
     return ""
 
 
+_ORG_WORD_RE = re.compile(r"\b(Insurance|Health|Mutual|Assurance|Company|Inc)\b")
+
+
 def extract_policy_metadata(pages: list[dict]) -> dict:
     """Pull insurer, plan name/ID and dates from the first pages.
 
@@ -131,14 +167,16 @@ def extract_policy_metadata(pages: list[dict]) -> dict:
     if plan_id:
         meta["plan_id"] = plan_id.split()[0]
 
-    insurer = _labelled_value(text, "Insurer", "Carrier", r"Insurance\s+Company")
-    plan_name = _labelled_value(text, r"Plan\s+Name")
+    insurer = _labelled_value(text, "Insurer", "Carrier", r"Insurance\s+Company", r"Issued\s+by")
+    plan_name = _labelled_value(text, r"Plan\s+Name", "Program")
     if not (insurer and plan_name):
-        # "Apex Health Insurance — Gold PPO Plan"
-        m = re.search(r"(?m)^\s*([^\n:|]{3,80}?)\s+[—–-]\s+([^\n:|]*\bPlan\b[^\n:|]*?)\s*$", text)
-        if m:
-            insurer = insurer or m.group(1)
-            plan_name = plan_name or m.group(2)
+        # "Apex Health Insurance — Gold PPO Plan": the left side must look like
+        # an organisation, so "Gold PPO Plan — Summary of Benefits" is skipped
+        for m in re.finditer(r"(?m)^\s*([^\n:|]{3,80}?)\s+[—–-]\s+([^\n:|]{3,80}?)\s*$", text):
+            if _ORG_WORD_RE.search(m.group(1)):
+                insurer = insurer or m.group(1)
+                plan_name = plan_name or m.group(2)
+                break
     if insurer:
         meta["insurer_name"] = insurer
     if plan_name:
@@ -186,12 +224,13 @@ def chunk_text(
 
     for page_data in pages:
         page_num = page_data["page_number"]
+        font_headings = {_clean_line(h) for h in page_data.get("headings", [])}
         for raw_line in page_data["text"].split("\n"):
             line = _clean_line(raw_line)
             if not line:
                 continue
 
-            heading = _detect_section(line)
+            heading = line if line in font_headings else _detect_section(line)
             if heading:
                 if has_body:
                     flush()

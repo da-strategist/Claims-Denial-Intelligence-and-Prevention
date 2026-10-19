@@ -24,6 +24,12 @@ were what when where which who why will with would you your
 _K1 = 1.5
 _B = 0.75
 _HEADING_WEIGHT = 0.5
+# Weight of a query term matching a line label ("Deductible: ...", or a table
+# row "Specialist visit $65 copay"): "what is X" questions are usually
+# answered by the line labelled X.
+_LABEL_WEIGHT = 0.3  # flat 0.15–0.3 on the evals; 0.5 hurts Apex (glossary labels)
+_LABEL_MAX_WORDS = 6
+_LABEL_RE = re.compile(r"^\s*(?:•\s*)?([^:$]{2,60}?)\s*(?::\s|\$\d)")
 # Chunks matching less than this share of the query's weight are dropped, so
 # off-topic questions yield "insufficient evidence" rather than noise.
 _MIN_COVERAGE = 0.1
@@ -42,6 +48,16 @@ def _tokenize(text: str) -> list[str]:
         _stem(t) for t in re.findall(r"[a-z0-9]+", text.lower())
         if t not in _STOPWORDS
     ]
+
+
+def _labels(text: str) -> set[str]:
+    """Tokens of short line labels: text before ':' or before a $ amount."""
+    tokens: set[str] = set()
+    for line in text.split("\n"):
+        m = _LABEL_RE.match(line)
+        if m and len(m.group(1).split()) <= _LABEL_MAX_WORDS:
+            tokens.update(_tokenize(m.group(1)))
+    return tokens
 
 
 def _idf(chunks_tokens: list[set[str]]) -> dict[str, float]:
@@ -107,7 +123,7 @@ def retrieve(
     chunks: list[DocumentChunk],
     top_k: int = 5,
 ) -> list[tuple[DocumentChunk, float]]:
-    """Retrieve top-k chunks ranked by BM25 (plus a section-heading boost).
+    """Retrieve top-k chunks ranked by BM25 plus section-heading and line-label boosts.
 
     The returned score is not the BM25 value: it is the IDF-weighted share of
     query terms found in the chunk (0..1), which callers use as a confidence
@@ -119,6 +135,7 @@ def retrieve(
 
     content_tokens = [_tokenize(c.content) for c in chunks]
     heading_tokens = [set(_tokenize(c.section_heading)) for c in chunks]
+    label_tokens = [_labels(c.content) for c in chunks]
     idf = _idf([set(t) | h for t, h in zip(content_tokens, heading_tokens)])
     avg_len = sum(len(t) for t in content_tokens) / len(chunks) or 1.0
     # Terms absent from every chunk count at maximum IDF, so a question about
@@ -128,7 +145,7 @@ def retrieve(
     query_weight = sum(idf.get(t, unseen_idf) for t in query_tokens)
 
     ranked = []
-    for chunk, tokens, heading in zip(chunks, content_tokens, heading_tokens):
+    for chunk, tokens, heading, labels in zip(chunks, content_tokens, heading_tokens, label_tokens):
         tf: dict[str, int] = {}
         for t in tokens:
             if t in query_tokens:
@@ -136,6 +153,7 @@ def retrieve(
         norm = _K1 * (1 - _B + _B * len(tokens) / avg_len)
         bm25 = sum(idf[t] * f * (_K1 + 1) / (f + norm) for t, f in tf.items())
         bm25 += _HEADING_WEIGHT * sum(idf[t] for t in query_tokens & heading)
+        bm25 += _LABEL_WEIGHT * sum(idf[t] for t in query_tokens & labels)
         if bm25 <= 0:
             continue
         coverage = sum(idf[t] for t in query_tokens & (set(tf) | heading)) / query_weight
