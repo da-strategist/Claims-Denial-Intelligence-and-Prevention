@@ -23,6 +23,7 @@ Patient_plan_RAG/
 ├── frontend/            # React + Vite + Tailwind (port 5174)
 │   └── src/
 │       ├── App.jsx      # Hash-based routing, nav, disclaimer
+│       ├── components/  # ErrorBoundary (per-page + app-level)
 │       ├── pages/       # Dashboard, PolicyViewer, ChatAssistant,
 │       │                  CoverageAssessment, PriorAuth
 │       └── services/api.js  # Fetch wrapper for all API calls
@@ -64,6 +65,7 @@ python -m pytest
 cd frontend
 npm install
 npm run dev    # → http://localhost:5174
+npm test       # vitest (jsdom)
 ```
 
 The Vite dev server proxies `/api` to the backend on port 8001.
@@ -136,35 +138,37 @@ Status as of 2026-10-18. Work top to bottom.
       get sanitised filenames; field length limits; per-client in-memory
       rate limiting (60/min API, 10/min uploads, health exempt); frontend
       inputs carry matching maxLength (130 tests passing)
+- [x] Frontend resilience: per-page ErrorBoundary keyed on route (disclaimer
+      + nav stay up, navigating away recovers) plus an app-level boundary;
+      failed loads show errors instead of endless "Loading..."; API errors
+      show FastAPI `detail` + Retry-After. Vitest set up (12 tests)
 
 ### Next — Phase A: Hardening (safe to run and demo)
-1. [ ] **Frontend error boundary** — pages have try/catch + loading flags, but
-       no React error boundary, so one render error blanks the app.
-2. [ ] **Re-chunk on chunker change** — store a chunker version per document
+1. [ ] **Re-chunk on chunker change** — store a chunker version per document
        and re-ingest stale ones at startup (current policy was re-chunked by
        hand).
-3. [ ] **Visual UI check** — needs the user (browser automation cannot reach
+2. [ ] **Visual UI check** — needs the user (browser automation cannot reach
        localhost here).
 
 ### Phase B: Data & evaluation (something to measure against)
-4. [ ] **More synthetic policies** — 3–4 plans (HMO, HDHP, Medicaid-style)
+3. [ ] **More synthetic policies** — 3–4 plans (HMO, HDHP, Medicaid-style)
        with different headings/layouts; `synthetic_data/{policies,scenarios,
        fixtures}` are empty today.
-5. [ ] **Scenarios + multi-policy eval** — right policy, right passage, right
+4. [ ] **Scenarios + multi-policy eval** — right policy, right passage, right
        classification; summary/metadata tested on unfamiliar layouts.
 
 ### Phase C: Chat & live mode
-6. [ ] **Multi-turn chat** — `ChatRequest.conversation_id` is accepted but
+5. [ ] **Multi-turn chat** — `ChatRequest.conversation_id` is accepted but
        unused; backend mints a new ID per reply and frontend sends only the
        latest question.
-7. [ ] **Live mode update** — `rag.py` hardcodes an outdated model ID and does
+6. [ ] **Live mode update** — `rag.py` hardcodes an outdated model ID and does
        not fence policy text/questions as untrusted evidence; validate that
        cited pages exist in the retrieved passages; mock the API in tests.
 
 ### Phase D: Retrieval upgrade
-8. [ ] **Embedding / hybrid retrieval** — adopt only if it beats BM25 on the
+7. [ ] **Embedding / hybrid retrieval** — adopt only if it beats BM25 on the
        Phase B eval; otherwise record the decision to stay on BM25.
-9. [ ] **Known gaps** — see below.
+8. [ ] **Known gaps** — see below.
 
 ### Known retrieval gaps
 - "What does coinsurance mean?" ranks the definition 3rd, behind rate tables.

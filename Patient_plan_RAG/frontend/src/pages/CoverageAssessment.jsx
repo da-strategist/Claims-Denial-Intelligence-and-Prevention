@@ -12,6 +12,7 @@ const CLASSIFICATION_STYLES = {
 export default function CoverageAssessment() {
   const [policies, setPolicies] = useState([]);
   const [selectedPolicy, setSelectedPolicy] = useState("");
+  const [policyError, setPolicyError] = useState("");
   const [serviceName, setServiceName] = useState("");
   const [serviceCode, setServiceCode] = useState("");
   const [result, setResult] = useState(null);
@@ -21,7 +22,7 @@ export default function CoverageAssessment() {
     api.listPolicies().then((p) => {
       setPolicies(p);
       if (p.length > 0) setSelectedPolicy(p[0].document_id);
-    });
+    }).catch((e) => setPolicyError(e.message));
   }, []);
 
   const handleCheck = async () => {
@@ -63,6 +64,9 @@ export default function CoverageAssessment() {
                 </option>
               ))}
             </select>
+            {policyError && (
+              <p className="text-xs text-red-600 mt-1">Couldn't load policies: {policyError}</p>
+            )}
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">

@@ -4,6 +4,7 @@ import { api } from "../services/api";
 export default function PriorAuth() {
   const [policies, setPolicies] = useState([]);
   const [selectedPolicy, setSelectedPolicy] = useState("");
+  const [policyError, setPolicyError] = useState("");
   const [serviceName, setServiceName] = useState("");
   const [serviceCode, setServiceCode] = useState("");
   const [diagnosisCode, setDiagnosisCode] = useState("");
@@ -15,7 +16,7 @@ export default function PriorAuth() {
     api.listPolicies().then((p) => {
       setPolicies(p);
       if (p.length > 0) setSelectedPolicy(p[0].document_id);
-    });
+    }).catch((e) => setPolicyError(e.message));
   }, []);
 
   const handleGenerate = async () => {
@@ -71,6 +72,9 @@ export default function PriorAuth() {
                 </option>
               ))}
             </select>
+            {policyError && (
+              <p className="text-xs text-red-600 mt-1">Couldn't load policies: {policyError}</p>
+            )}
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">

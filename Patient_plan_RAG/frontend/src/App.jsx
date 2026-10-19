@@ -1,5 +1,6 @@
 import React from "react";
 import { useHashPath, navigate } from "./utils/route";
+import ErrorBoundary from "./components/ErrorBoundary";
 import Dashboard from "./pages/Dashboard";
 import PolicyViewer from "./pages/PolicyViewer";
 import ChatAssistant from "./pages/ChatAssistant";
@@ -14,7 +15,7 @@ const NAV = [
   { path: "/auth", label: "Prior Auth", icon: "📝" },
 ];
 
-function Disclaimer() {
+export function Disclaimer() {
   return (
     <div className="bg-amber-50 border-l-4 border-amber-400 p-3 text-sm text-amber-800">
       <strong>Demonstration Only:</strong> This tool provides AI-generated
@@ -65,7 +66,10 @@ export default function App() {
         </div>
       </header>
       <main className="flex-1 max-w-7xl mx-auto w-full px-4 py-6">
-        {page}
+        {/* keyed on path: navigating away from a crashed page resets it */}
+        <ErrorBoundary key={path} onHome={() => navigate("/")}>
+          {page}
+        </ErrorBoundary>
       </main>
       <footer className="text-center text-xs text-gray-400 py-4">
         Patient Plan RAG v0.1.0 — Synthetic data only — Not for clinical use

@@ -124,12 +124,23 @@ function PolicySummaryView({ documentId }) {
 
 function PolicyDetail({ documentId }) {
   const [policy, setPolicy] = useState(null);
+  const [error, setError] = useState("");
   const [tab, setTab] = useState("summary");
 
   useEffect(() => {
-    api.getPolicy(documentId).then(setPolicy).catch(() => {});
+    setError("");
+    api.getPolicy(documentId).then(setPolicy).catch((e) => setError(e.message));
   }, [documentId]);
 
+  if (error)
+    return (
+      <div>
+        <p className="text-red-600 text-sm mb-2">Couldn't load this policy: {error}</p>
+        <button onClick={() => navigate("/policies")} className="text-blue-600 text-sm hover:underline">
+          ← Back to policies
+        </button>
+      </div>
+    );
   if (!policy) return <p className="text-gray-500">Loading...</p>;
 
   return (
@@ -173,12 +184,15 @@ function PolicyDetail({ documentId }) {
 
 function ChunkList({ documentId }) {
   const [data, setData] = useState(null);
+  const [error, setError] = useState("");
   const [page, setPage] = useState(1);
 
   useEffect(() => {
-    api.getPolicyChunks(documentId, page).then(setData).catch(() => {});
+    setError("");
+    api.getPolicyChunks(documentId, page).then(setData).catch((e) => setError(e.message));
   }, [documentId, page]);
 
+  if (error) return <p className="text-red-600 text-sm">Couldn't load chunks: {error}</p>;
   if (!data) return <p className="text-gray-500">Loading chunks...</p>;
 
   return (

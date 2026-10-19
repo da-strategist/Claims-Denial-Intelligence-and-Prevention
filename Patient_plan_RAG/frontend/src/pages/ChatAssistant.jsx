@@ -25,6 +25,7 @@ function Citation({ citation, index }) {
 export default function ChatAssistant() {
   const [policies, setPolicies] = useState([]);
   const [selectedPolicy, setSelectedPolicy] = useState("");
+  const [policyError, setPolicyError] = useState("");
   const [question, setQuestion] = useState("");
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -34,7 +35,7 @@ export default function ChatAssistant() {
     api.listPolicies().then((p) => {
       setPolicies(p);
       if (p.length > 0) setSelectedPolicy(p[0].document_id);
-    });
+    }).catch((e) => setPolicyError(e.message));
   }, []);
 
   useEffect(() => {
@@ -85,6 +86,9 @@ export default function ChatAssistant() {
             </option>
           ))}
         </select>
+        {policyError && (
+          <p className="text-xs text-red-600 mt-1">Couldn't load policies: {policyError}</p>
+        )}
       </div>
 
       <div className="flex-1 overflow-y-auto bg-white rounded-lg shadow p-4 space-y-4">
