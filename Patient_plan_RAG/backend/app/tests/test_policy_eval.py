@@ -9,17 +9,18 @@ import pytest
 
 from backend.app.tests import policy_eval
 
-METRICS = ("metadata", "retrieval_top1", "retrieval_top3", "section_top1", "coverage", "summary")
+METRICS = ("metadata", "retrieval_top1", "retrieval_top3", "section_top1", "answer_text",
+           "coverage", "summary")
 
 THRESHOLDS = {
-    "apex_health_gold_ppo_2025.pdf":              (5, 8, 8, 8, 3, 6),
-    "summit_care_silver_hmo_2026.pdf":            (5, 9, 10, 9, 4, 6),
-    "northwind_bronze_hdhp_2026.pdf":             (5, 10, 10, 10, 4, 5),
+    "apex_health_gold_ppo_2025.pdf":              (5, 8, 8, 8, 7, 3, 6),
+    "summit_care_silver_hmo_2026.pdf":            (5, 9, 10, 9, 9, 4, 6),
+    "northwind_bronze_hdhp_2026.pdf":             (5, 10, 10, 10, 10, 4, 5),
     # retrieval_top1 was 10 at baseline only because the handbook's question
     # headings were undetected and it was a few giant unlabelled chunks (the
     # top hit "contained" every answer while section_top1 was 0/10). With real
     # sections it is 8 and section_top1 8/10; the misses are noted in CLAUDE.md.
-    "riverbend_community_care_medicaid_2025.pdf": (5, 8, 10, 8, 4, 5),
+    "riverbend_community_care_medicaid_2025.pdf": (5, 8, 10, 8, 9, 4, 5),
 }
 
 

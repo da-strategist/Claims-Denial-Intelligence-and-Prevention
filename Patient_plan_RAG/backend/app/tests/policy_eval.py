@@ -18,6 +18,7 @@ from backend.app.services.document_processor import (
     extract_text_from_pdf,
 )
 from backend.app.services.policy_summarizer import summarize_policy
+from backend.app.services.rag import _build_demo_answer
 from backend.app.services.retrieval import retrieve
 from synthetic_data.scenarios.policy_scenarios import SCENARIOS
 
@@ -35,6 +36,7 @@ class PolicyScore:
     retrieval_top1: tuple[int, int] = (0, 0)
     retrieval_top3: tuple[int, int] = (0, 0)
     section_top1: tuple[int, int] = (0, 0)
+    answer_text: tuple[int, int] = (0, 0)
     coverage: tuple[int, int] = (0, 0)
     summary: tuple[int, int] = (0, 0)
     failures: list[str] = field(default_factory=list)
@@ -83,8 +85,14 @@ def score_policy(filename: str) -> PolicyScore:
             score.failures.append(f"metadata {key}: got {meta.get(key)!r}, want {expected!r}")
     score.metadata = (ok, len(spec["metadata"]))
 
-    top1 = top3 = section = 0
+    top1 = top3 = section = answered = 0
     for question, phrases, sections in spec["retrieval"]:
+        # demo-mode answer text (chat retrieves top 5) must quote the answer
+        answer, _ = _build_demo_answer(question, retrieve(question, chunks, top_k=5))
+        if any(_norm(p) in _norm(answer) for p in phrases):
+            answered += 1
+        else:
+            score.failures.append(f"answer text lacks the answer: {question!r}")
         hits = retrieve(question, chunks, top_k=3)
         ranks = [i for i, (c, _) in enumerate(hits, 1)
                  if any(_norm(p) in _norm(c.content) for p in phrases)]
@@ -100,6 +108,7 @@ def score_policy(filename: str) -> PolicyScore:
     n = len(spec["retrieval"])
     score.retrieval_top1, score.retrieval_top3 = (top1, n), (top3, n)
     score.section_top1 = (section, n)
+    score.answer_text = (answered, n)
 
     ok = 0
     for service, classification, prior_auth in spec["coverage"]:
@@ -135,7 +144,8 @@ if __name__ == "__main__":
     for p in problems:
         print("SCENARIO ERROR:", p)
     scores = score_all()
-    cols = ("metadata", "retrieval_top1", "retrieval_top3", "section_top1", "coverage", "summary")
+    cols = ("metadata", "retrieval_top1", "retrieval_top3", "section_top1", "answer_text",
+            "coverage", "summary")
     print(f"{'policy':<45}" + "".join(f"{c:>15}" for c in cols))
     totals = {c: [0, 0] for c in cols}
     for s in scores:

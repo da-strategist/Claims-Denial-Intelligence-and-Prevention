@@ -188,6 +188,11 @@ Status as of 2026-10-18. Work top to bottom.
       no model call without evidence, degrade to demo on any error. Not yet
       exercised against the real API (needs credentials; costs money).
       181 backend tests.
+- [x] Demo answers quote the best-matching paragraphs (ranked across all
+      retrieved chunks, headings/lead-ins skipped, long ones trimmed to the
+      matching sentences) with page + section; citation excerpts are each
+      chunk's best paragraph. New eval metric `answer_text` (answer quoted in
+      the demo answer): 27→35/38. 188 backend tests.
 
 ### Next — Phase A: Hardening (safe to run and demo)
 1. [ ] **Visual UI check** — needs the user (browser automation cannot reach
@@ -210,11 +215,9 @@ Status as of 2026-10-18. Work top to bottom.
   stemming). The eval is small and written by the same author as the fixes —
   treat scores as regression guards, not accuracy claims.
 - "What does coinsurance mean?" ranks the definition 3rd, behind rate tables.
-- Demo answers paste the first 500 chars of the retrieved passages, so the
-  sentence that answers the question is often cut off even when retrieval is
-  right (e.g. Summit "How many visits does it include?" follow-up: correct
-  section, answer text misses "up to 20 combined visits"). Highest-impact
-  demo-mode fix: quote the best-matching paragraph(s) instead.
+- Demo answer text misses the answer in 3/38 eval questions (Apex "How do
+  I appeal a denied claim?" — denied vs denial; Summit/Riverbend "How long
+  does an approval … take?"), all vocabulary mismatches.
 - Follow-up "How often can I get them?" after "Are glasses covered?"
   (Riverbend) misses with or without context.
 
