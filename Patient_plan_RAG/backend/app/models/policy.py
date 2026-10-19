@@ -30,6 +30,7 @@ class PolicyDocument(DomainModel):
     status: DocumentStatus = DocumentStatus.PENDING
     page_count: int = 0
     chunk_count: int = 0
+    chunker_version: int = 0  # 0 = ingested before versioning
     is_synthetic: bool = True
     error_message: str | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)

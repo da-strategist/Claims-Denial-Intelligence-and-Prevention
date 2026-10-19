@@ -51,9 +51,10 @@ cp .env.example .env
 # regenerating changes its bytes, so it gets a new document ID on next ingest)
 python -m synthetic_data.generate_policy
 
-# Run the backend. On first start it ingests data/policies/*.pdf and builds
-# data/policies/_registry.json + data/chunks/ (both gitignored).
-# Delete _registry.json to force a re-ingest after changing the chunker.
+# Run the backend. At startup it syncs the registry (services/ingest.py):
+# ingests new PDFs in data/policies/, and re-ingests documents built with an
+# older CHUNKER_VERSION (document_processor.py) under the same ID. Registry
+# and chunks live in data/policies/_registry.json + data/chunks/ (gitignored).
 uvicorn backend.app.main:app --reload --port 8001 --env-file .env
 
 # Run the tests
@@ -85,7 +86,9 @@ The Vite dev server proxies `/api` to the backend on port 8001.
    No embedding model required; a future version may add one (see priorities).
 
 3. **No database**: Documents and chunks stored as JSON files on disk.
-   The _registry.json in data/policies/ tracks all ingested documents.
+   The _registry.json in data/policies/ tracks all ingested documents and the
+   CHUNKER_VERSION each was built with. **Bump CHUNKER_VERSION whenever
+   chunking or metadata extraction changes** so stored chunks are rebuilt.
 
 4. **Citations are mandatory**: Every answer must include source passages
    with page numbers, sections, and confidence levels.
@@ -142,33 +145,33 @@ Status as of 2026-10-18. Work top to bottom.
       + nav stay up, navigating away recovers) plus an app-level boundary;
       failed loads show errors instead of endless "Loading..."; API errors
       show FastAPI `detail` + Retry-After. Vitest set up (12 tests)
+- [x] Startup registry sync (`services/ingest.py`): re-ingests documents
+      with an older CHUNKER_VERSION or missing chunks (same ID, metadata
+      kept), ingests new PDFs dropped in data/policies/ (139 backend tests)
 
 ### Next — Phase A: Hardening (safe to run and demo)
-1. [ ] **Re-chunk on chunker change** — store a chunker version per document
-       and re-ingest stale ones at startup (current policy was re-chunked by
-       hand).
-2. [ ] **Visual UI check** — needs the user (browser automation cannot reach
+1. [ ] **Visual UI check** — needs the user (browser automation cannot reach
        localhost here).
 
 ### Phase B: Data & evaluation (something to measure against)
-3. [ ] **More synthetic policies** — 3–4 plans (HMO, HDHP, Medicaid-style)
+2. [ ] **More synthetic policies** — 3–4 plans (HMO, HDHP, Medicaid-style)
        with different headings/layouts; `synthetic_data/{policies,scenarios,
        fixtures}` are empty today.
-4. [ ] **Scenarios + multi-policy eval** — right policy, right passage, right
+3. [ ] **Scenarios + multi-policy eval** — right policy, right passage, right
        classification; summary/metadata tested on unfamiliar layouts.
 
 ### Phase C: Chat & live mode
-5. [ ] **Multi-turn chat** — `ChatRequest.conversation_id` is accepted but
+4. [ ] **Multi-turn chat** — `ChatRequest.conversation_id` is accepted but
        unused; backend mints a new ID per reply and frontend sends only the
        latest question.
-6. [ ] **Live mode update** — `rag.py` hardcodes an outdated model ID and does
+5. [ ] **Live mode update** — `rag.py` hardcodes an outdated model ID and does
        not fence policy text/questions as untrusted evidence; validate that
        cited pages exist in the retrieved passages; mock the API in tests.
 
 ### Phase D: Retrieval upgrade
-7. [ ] **Embedding / hybrid retrieval** — adopt only if it beats BM25 on the
+6. [ ] **Embedding / hybrid retrieval** — adopt only if it beats BM25 on the
        Phase B eval; otherwise record the decision to stay on BM25.
-8. [ ] **Known gaps** — see below.
+7. [ ] **Known gaps** — see below.
 
 ### Known retrieval gaps
 - "What does coinsurance mean?" ranks the definition 3rd, behind rate tables.

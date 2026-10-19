@@ -10,6 +10,11 @@ from pathlib import Path
 from ..models.policy import DocumentChunk, DocumentStatus, PolicyDocument
 
 
+# Bump whenever chunking or metadata extraction changes: documents ingested
+# with an older version are re-ingested at startup (services/ingest.py).
+CHUNKER_VERSION = 1
+
+
 def _generate_chunk_id(document_id: str, index: int) -> str:
     raw = f"{document_id}:{index}"
     return hashlib.sha256(raw.encode()).hexdigest()[:16]
@@ -229,6 +234,8 @@ def process_document(
         status=DocumentStatus.PROCESSING,
         **(metadata or {}),
     )
+    # Recorded even on failure, so a broken file is retried only after a bump
+    doc.chunker_version = CHUNKER_VERSION
 
     try:
         pages = extract_text_from_pdf(pdf_path)

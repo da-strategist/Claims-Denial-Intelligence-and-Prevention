@@ -28,22 +28,10 @@ for d in (UPLOAD_DIR, POLICY_DIR, CHUNK_DIR):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Pre-load synthetic policies on startup."""
-    from .services.document_processor import process_document
-    import hashlib
-    import json
+    """Ingest new PDFs and re-ingest stale documents before serving."""
+    from .services.ingest import sync_registry
 
-    # Process any pre-loaded synthetic policy PDFs. IDs are derived from file
-    # content so rebuilding the registry overwrites chunk files, not orphans them.
-    registry_path = POLICY_DIR / "_registry.json"
-    if not registry_path.exists():
-        registry: list[dict] = []
-        for pdf in sorted(POLICY_DIR.glob("*.pdf")):
-            content_id = hashlib.sha256(pdf.read_bytes()).hexdigest()[:12]
-            doc, chunks = process_document(pdf, CHUNK_DIR, document_id=content_id)
-            registry.append(doc.model_dump(mode="json"))
-        registry_path.write_text(json.dumps(registry, indent=2, default=str))
-
+    sync_registry(POLICY_DIR, UPLOAD_DIR, CHUNK_DIR)
     yield
 
 
