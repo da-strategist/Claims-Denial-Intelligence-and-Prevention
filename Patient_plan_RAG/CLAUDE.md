@@ -131,24 +131,40 @@ Status as of 2026-10-18. Work top to bottom.
       is loaded via `uvicorn --env-file .env`; `.env.example` lists only
       variables the code reads; CORS default is 5174; unused
       `backend/app/data/` removed
+- [x] Input limits: document IDs validated as `[A-Za-z0-9_-]{1,64}` (they
+      become file names); uploads need `%PDF-` magic, ≤ MAX_UPLOAD_MB, and
+      get sanitised filenames; field length limits; per-client in-memory
+      rate limiting (60/min API, 10/min uploads, health exempt); frontend
+      inputs carry matching maxLength (130 tests passing)
 
-### Next (in order)
-1. [ ] **Input limits** — no rate limiting, no upload size cap, no length
-       limits on question/service fields; upload only checks the `.pdf` suffix.
-2. [ ] **Frontend error boundary** — pages have try/catch + loading flags, but
-       there is no React error boundary, so one render error blanks the app.
-3. [ ] **Expand synthetic data** — `synthetic_data/{policies,scenarios,fixtures}`
-       are empty; one policy only. Needed before embeddings can be evaluated.
-4. [ ] **Multi-turn chat** — `ChatRequest.conversation_id` is accepted but
+### Next — Phase A: Hardening (safe to run and demo)
+1. [ ] **Frontend error boundary** — pages have try/catch + loading flags, but
+       no React error boundary, so one render error blanks the app.
+2. [ ] **Re-chunk on chunker change** — store a chunker version per document
+       and re-ingest stale ones at startup (current policy was re-chunked by
+       hand).
+3. [ ] **Visual UI check** — needs the user (browser automation cannot reach
+       localhost here).
+
+### Phase B: Data & evaluation (something to measure against)
+4. [ ] **More synthetic policies** — 3–4 plans (HMO, HDHP, Medicaid-style)
+       with different headings/layouts; `synthetic_data/{policies,scenarios,
+       fixtures}` are empty today.
+5. [ ] **Scenarios + multi-policy eval** — right policy, right passage, right
+       classification; summary/metadata tested on unfamiliar layouts.
+
+### Phase C: Chat & live mode
+6. [ ] **Multi-turn chat** — `ChatRequest.conversation_id` is accepted but
        unused; backend mints a new ID per reply and frontend sends only the
        latest question.
-5. [ ] **Live mode update** — `rag.py` hardcodes an outdated model ID and does
-       not fence policy text/questions as untrusted evidence in the prompt.
-6. [ ] **Re-chunk on chunker change** — existing chunk files are never
-       regenerated when chunking logic changes (current policy was re-chunked
-       by hand).
-7. [ ] **Embedding retrieval** (sentence-transformers / hybrid with BM25) —
-       only once the expanded eval can show it beats BM25.
+7. [ ] **Live mode update** — `rag.py` hardcodes an outdated model ID and does
+       not fence policy text/questions as untrusted evidence; validate that
+       cited pages exist in the retrieved passages; mock the API in tests.
+
+### Phase D: Retrieval upgrade
+8. [ ] **Embedding / hybrid retrieval** — adopt only if it beats BM25 on the
+       Phase B eval; otherwise record the decision to stay on BM25.
+9. [ ] **Known gaps** — see below.
 
 ### Known retrieval gaps
 - "What does coinsurance mean?" ranks the definition 3rd, behind rate tables.

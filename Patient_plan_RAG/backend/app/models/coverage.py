@@ -4,7 +4,12 @@ from ._compat import StrEnum
 
 from pydantic import BaseModel, Field
 
-from .common import DISCLAIMER
+from .common import (
+    DISCLAIMER,
+    MAX_QUESTION_CHARS,
+    DocumentId,
+    DomainModel,
+)
 
 
 class CoverageClassification(StrEnum):
@@ -84,10 +89,10 @@ class ChatMessage(BaseModel):
     metadata: dict = Field(default_factory=dict)
 
 
-class ChatRequest(BaseModel):
-    question: str
-    policy_id: str | None = None
-    conversation_id: str | None = None
+class ChatRequest(DomainModel):
+    question: str = Field(min_length=1, max_length=MAX_QUESTION_CHARS)
+    policy_id: DocumentId | None = None
+    conversation_id: DocumentId | None = None
 
 
 class ChatResponse(BaseModel):

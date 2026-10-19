@@ -5,10 +5,12 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from .models.common import DISCLAIMER
+from .rate_limit import api_limiter, upload_limiter
 from .routers import chat, coverage, dashboard, policies
 
 # ── Directories ──────────────────────────────────────────────────────
@@ -58,7 +60,35 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS
+
+@app.middleware("http")
+async def rate_limit(request: Request, call_next):
+    """Per-client request limits on the API (health checks exempt)."""
+    path = request.url.path
+    if path.startswith("/api") and path != "/api/health":
+        client = request.client.host if request.client else "unknown"
+        limiter = upload_limiter if path == "/api/policies/upload" else api_limiter
+        wait = limiter.check(client)
+        if wait is not None:
+            return JSONResponse(
+                {"detail": "Too many requests, please slow down."},
+                status_code=429,
+                headers={"Retry-After": str(max(1, round(wait)))},
+            )
+    return await call_next(request)
+
+
+# Registered after rate_limit, so it wraps it and 429s carry the header too.
+@app.middleware("http")
+async def add_disclaimer_header(request: Request, call_next):
+    """Every API response carries the disclaimer, including list endpoints."""
+    response = await call_next(request)
+    if request.url.path.startswith("/api"):
+        response.headers["X-Disclaimer"] = DISCLAIMER
+    return response
+
+
+# CORS — added last so it is outermost and error responses get CORS headers
 origins = os.getenv("CORS_ORIGINS", "http://localhost:5174").split(",")
 app.add_middleware(
     CORSMiddleware,
@@ -68,15 +98,6 @@ app.add_middleware(
     allow_headers=["*"],
     expose_headers=["X-Disclaimer"],
 )
-
-
-@app.middleware("http")
-async def add_disclaimer_header(request: Request, call_next):
-    """Every API response carries the disclaimer, including list endpoints."""
-    response = await call_next(request)
-    if request.url.path.startswith("/api"):
-        response.headers["X-Disclaimer"] = DISCLAIMER
-    return response
 
 
 # Routers

@@ -150,6 +150,7 @@ export default function ChatAssistant() {
       <div className="mt-3 flex gap-2">
         <input
           value={question}
+          maxLength={2000}
           onChange={(e) => setQuestion(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleAsk()}
           placeholder="Ask about coverage, costs, prior authorization..."

@@ -5,8 +5,14 @@ import uuid
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from pydantic import Field
 
+from ..models.common import (
+    MAX_CODE_CHARS,
+    MAX_SERVICE_CHARS,
+    DocumentId,
+    DomainModel,
+)
 from ..models.coverage import (
     AuthorizationChecklist,
     AuthReadiness,
@@ -23,17 +29,17 @@ BASE_DIR = Path(__file__).resolve().parent.parent.parent.parent
 CHUNK_DIR = Path(os.getenv("CHUNK_DIR", str(BASE_DIR / "data" / "chunks")))
 
 
-class AssessmentRequest(BaseModel):
-    service_name: str
-    service_code: str = ""
-    document_id: str
+class AssessmentRequest(DomainModel):
+    service_name: str = Field(min_length=1, max_length=MAX_SERVICE_CHARS)
+    service_code: str = Field("", max_length=MAX_CODE_CHARS)
+    document_id: DocumentId
 
 
-class AuthChecklistRequest(BaseModel):
-    service_name: str
-    service_code: str = ""
-    document_id: str
-    diagnosis_code: str = ""
+class AuthChecklistRequest(DomainModel):
+    service_name: str = Field(min_length=1, max_length=MAX_SERVICE_CHARS)
+    service_code: str = Field("", max_length=MAX_CODE_CHARS)
+    document_id: DocumentId
+    diagnosis_code: str = Field("", max_length=MAX_CODE_CHARS)
 
 
 @router.post("/assess")

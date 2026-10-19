@@ -2,13 +2,14 @@
 
 import json
 import os
-import shutil
+import re
 import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException, UploadFile
+from fastapi import APIRouter, HTTPException, Query, UploadFile
+from fastapi import Path as PathParam
 
-from ..models.common import DISCLAIMER
+from ..models.common import DISCLAIMER, DOCUMENT_ID_PATTERN
 from ..models.policy import (
     DocumentStatus,
     DocumentUploadResponse,
@@ -25,6 +26,16 @@ BASE_DIR = Path(__file__).resolve().parent.parent.parent.parent
 UPLOAD_DIR = Path(os.getenv("UPLOAD_DIR", str(BASE_DIR / "data" / "uploads")))
 POLICY_DIR = Path(os.getenv("POLICY_DIR", str(BASE_DIR / "data" / "policies")))
 CHUNK_DIR = Path(os.getenv("CHUNK_DIR", str(BASE_DIR / "data" / "chunks")))
+MAX_UPLOAD_BYTES = int(float(os.getenv("MAX_UPLOAD_MB", "20")) * 1024 * 1024)
+
+DocumentIdParam = PathParam(pattern=DOCUMENT_ID_PATTERN)
+
+
+def _safe_filename(name: str) -> str:
+    """Basename only, restricted alphabet, bounded length."""
+    base = Path(name.replace("\\", "/")).name
+    base = re.sub(r"[^A-Za-z0-9._-]", "_", base).lstrip(".")
+    return base[-100:] or "upload.pdf"
 
 
 def _load_registry() -> list[dict]:
@@ -47,7 +58,7 @@ async def list_policies() -> list[PolicyDocument]:
 
 
 @router.get("/{document_id}")
-async def get_policy(document_id: str) -> PolicyDocument:
+async def get_policy(document_id: str = DocumentIdParam) -> PolicyDocument:
     """Get a single policy document's metadata."""
     for r in _load_registry():
         if r["document_id"] == document_id:
@@ -62,9 +73,23 @@ async def upload_policy(file: UploadFile) -> DocumentUploadResponse:
         raise HTTPException(400, "Only PDF files are accepted")
 
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-    dest = UPLOAD_DIR / f"{uuid.uuid4().hex[:8]}_{file.filename}"
-    with open(dest, "wb") as f:
-        shutil.copyfileobj(file.file, f)
+    dest = UPLOAD_DIR / f"{uuid.uuid4().hex[:8]}_{_safe_filename(file.filename)}"
+    size = 0
+    try:
+        with open(dest, "wb") as f:
+            while block := file.file.read(1024 * 1024):
+                if size == 0 and not block.startswith(b"%PDF-"):
+                    raise HTTPException(400, "File is not a PDF")
+                size += len(block)
+                if size > MAX_UPLOAD_BYTES:
+                    raise HTTPException(
+                        413, f"File exceeds the {MAX_UPLOAD_BYTES // (1024 * 1024)} MB limit")
+                f.write(block)
+        if size == 0:
+            raise HTTPException(400, "File is empty")
+    except HTTPException:
+        dest.unlink(missing_ok=True)
+        raise
 
     doc, chunks = process_document(dest, CHUNK_DIR)
 
@@ -83,7 +108,7 @@ async def upload_policy(file: UploadFile) -> DocumentUploadResponse:
 
 
 @router.get("/{document_id}/summary")
-async def get_policy_summary(document_id: str) -> PolicySummary:
+async def get_policy_summary(document_id: str = DocumentIdParam) -> PolicySummary:
     """Generate or retrieve a structured summary of the policy."""
     # Verify document exists
     found = False
@@ -102,7 +127,11 @@ async def get_policy_summary(document_id: str) -> PolicySummary:
 
 
 @router.get("/{document_id}/chunks")
-async def get_policy_chunks(document_id: str, page: int = 1, page_size: int = 20):
+async def get_policy_chunks(
+    document_id: str = DocumentIdParam,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+):
     """List chunks for a document (paginated)."""
     chunks = load_chunks(CHUNK_DIR, document_id)
     total = len(chunks)

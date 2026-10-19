@@ -6,6 +6,7 @@ import os
 import re
 from pathlib import Path
 
+from ..models.common import DOCUMENT_ID_PATTERN
 from ..models.policy import DocumentChunk
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent.parent
@@ -79,6 +80,8 @@ def load_chunks(
 
     files = []
     if document_id:
+        if not re.fullmatch(DOCUMENT_ID_PATTERN, document_id):
+            return chunks
         target = chunk_dir / f"{document_id}.json"
         if target.exists():
             files = [target]

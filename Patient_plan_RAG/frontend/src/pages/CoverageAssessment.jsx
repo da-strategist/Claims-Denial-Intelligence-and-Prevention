@@ -70,6 +70,7 @@ export default function CoverageAssessment() {
             </label>
             <input
               value={serviceName}
+              maxLength={200}
               onChange={(e) => setServiceName(e.target.value)}
               placeholder="e.g. MRI of knee"
               className="w-full border rounded px-3 py-2 text-sm"
@@ -81,6 +82,7 @@ export default function CoverageAssessment() {
             </label>
             <input
               value={serviceCode}
+              maxLength={20}
               onChange={(e) => setServiceCode(e.target.value)}
               placeholder="e.g. 73721"
               className="w-full border rounded px-3 py-2 text-sm"

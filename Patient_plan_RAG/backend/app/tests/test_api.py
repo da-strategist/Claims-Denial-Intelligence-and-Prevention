@@ -1,8 +1,6 @@
 """Endpoint tests against an isolated data directory.
 
-Each router reads its data directories at import time, so the `client`
-fixture repoints every module's directory constants at a temp dir, copies the
-synthetic policy in, and lets the app's startup lifespan ingest it.
+The `data_dirs`/`client`/`doc_id` fixtures live in conftest.py.
 """
 
 import json
@@ -13,43 +11,7 @@ from fastapi.testclient import TestClient
 
 from backend.app import main
 from backend.app.models.common import DISCLAIMER
-from backend.app.routers import chat, coverage, dashboard, policies
-from backend.app.services import retrieval
 from backend.app.tests.conftest import POLICY_PDF
-
-
-@pytest.fixture
-def data_dirs(tmp_path, monkeypatch):
-    if not POLICY_PDF.exists():
-        pytest.skip("synthetic policy PDF missing")
-    dirs = {name: tmp_path / name for name in ("policies", "chunks", "uploads")}
-    for d in dirs.values():
-        d.mkdir()
-    shutil.copy(POLICY_PDF, dirs["policies"])
-
-    for module in (main, policies, dashboard):
-        monkeypatch.setattr(module, "POLICY_DIR", dirs["policies"])
-    for module in (main, policies, chat, coverage, dashboard):
-        monkeypatch.setattr(module, "CHUNK_DIR", dirs["chunks"])
-    for module in (main, policies):
-        monkeypatch.setattr(module, "UPLOAD_DIR", dirs["uploads"])
-    monkeypatch.setattr(retrieval, "POLICY_DIR", dirs["policies"])
-
-    # Never call the live LLM from tests
-    monkeypatch.setenv("APP_MODE", "demo")
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    return dirs
-
-
-@pytest.fixture
-def client(data_dirs):
-    with TestClient(main.app) as c:
-        yield c
-
-
-@pytest.fixture
-def doc_id(client):
-    return client.get("/api/policies").json()[0]["document_id"]
 
 
 # ── Health / startup ─────────────────────────────────────────────────
@@ -161,7 +123,7 @@ def test_upload_rejects_non_pdf_filename(client, data_dirs):
 
 def test_upload_unreadable_pdf_is_registered_as_failed(client):
     resp = client.post("/api/policies/upload",
-                       files={"file": ("broken.pdf", b"not really a pdf", "application/pdf")})
+                       files={"file": ("broken.pdf", b"%PDF-1.4 truncated garbage", "application/pdf")})
     assert resp.status_code == 200
     assert resp.json()["status"] == "failed"
 
