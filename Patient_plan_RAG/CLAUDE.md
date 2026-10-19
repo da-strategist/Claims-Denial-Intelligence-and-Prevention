@@ -82,8 +82,9 @@ The Vite dev server proxies `/api` to the backend on port 8001.
 4. **Citations are mandatory**: Every answer must include source passages
    with page numbers, sections, and confidence levels.
 
-5. **Safety disclaimers**: Present on every page, in every API response,
-   and in the synthetic policy itself. Never remove these.
+5. **Safety disclaimers**: Present on every page, in every API response
+   (body field and/or `X-Disclaimer` header), and in the synthetic policy
+   itself. Never remove these.
 
 ## API Endpoints
 - `GET  /api/health` — Health check + mode
@@ -114,31 +115,34 @@ Status as of 2026-10-18. Work top to bottom.
 - [x] Policy summary rebuilt: fields come from the section whose heading
       names them, itemised per service/bullet/copay row, verbatim text with
       page+section references (94 tests passing)
+- [x] Disclaimer on every API response: `disclaimer` body field on object
+      responses plus an `X-Disclaimer` header on all `/api` routes (shared
+      text in `models/common.py`)
+- [x] Policy metadata (insurer, plan name, plan ID, effective/expiration
+      dates) extracted verbatim from the first two pages at ingest
+      (103 tests passing)
 
 ### Next (in order)
-1. [ ] **Disclaimers in API responses** — design decision 5 says every API
-       response carries one, but only `/api/health` does (chat has it inside
-       the answer text; coverage/checklist/policies/dashboard have none).
-2. [ ] **Policy metadata extraction** — insurer_name, plan_name, plan_id and
-       effective/expiration dates are never populated (page 1 states them).
-3. [ ] **Setup fixes** — `pyproject.toml` references a missing README.md and
+1. [ ] **Setup fixes** — `pyproject.toml` references a missing README.md and
        dev deps live in `[dependency-groups]`, so `uv pip install -e ".[dev]"`
-       fails. CORS default lists 5173/3000, not 5174.
-4. [ ] **Input limits** — no rate limiting, no upload size cap, no length
+       fails. CORS default lists 5173/3000, not 5174. `.env.example` sets
+       UPLOAD/POLICY/CHUNK_DIR to `app/data/...` while the code defaults to
+       `<project>/data/...`, and the `backend/app/data/` folders are unused.
+2. [ ] **Input limits** — no rate limiting, no upload size cap, no length
        limits on question/service fields; upload only checks the `.pdf` suffix.
-5. [ ] **Frontend error boundary** — pages have try/catch + loading flags, but
+3. [ ] **Frontend error boundary** — pages have try/catch + loading flags, but
        there is no React error boundary, so one render error blanks the app.
-6. [ ] **Expand synthetic data** — `synthetic_data/{policies,scenarios,fixtures}`
+4. [ ] **Expand synthetic data** — `synthetic_data/{policies,scenarios,fixtures}`
        are empty; one policy only. Needed before embeddings can be evaluated.
-7. [ ] **Multi-turn chat** — `ChatRequest.conversation_id` is accepted but
+5. [ ] **Multi-turn chat** — `ChatRequest.conversation_id` is accepted but
        unused; backend mints a new ID per reply and frontend sends only the
        latest question.
-8. [ ] **Live mode update** — `rag.py` hardcodes an outdated model ID and does
+6. [ ] **Live mode update** — `rag.py` hardcodes an outdated model ID and does
        not fence policy text/questions as untrusted evidence in the prompt.
-9. [ ] **Re-chunk on chunker change** — existing chunk files are never
+7. [ ] **Re-chunk on chunker change** — existing chunk files are never
        regenerated when chunking logic changes (current policy was re-chunked
        by hand).
-10. [ ] **Embedding retrieval** (sentence-transformers / hybrid with BM25) —
+8. [ ] **Embedding retrieval** (sentence-transformers / hybrid with BM25) —
        only once the expanded eval can show it beats BM25.
 
 ### Known retrieval gaps

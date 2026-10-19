@@ -4,6 +4,8 @@ from ._compat import StrEnum
 
 from pydantic import BaseModel, Field
 
+from .common import DISCLAIMER
+
 
 class CoverageClassification(StrEnum):
     COVERED = "coverage_indicated"
@@ -45,6 +47,7 @@ class CoverageAssessment(BaseModel):
     missing_information: list[str] = Field(default_factory=list)
     recommended_steps: list[str] = Field(default_factory=list)
     citations: list[SourceCitation] = Field(default_factory=list)
+    disclaimer: str = DISCLAIMER
 
 
 class ChecklistItem(BaseModel):
@@ -71,6 +74,7 @@ class AuthorizationChecklist(BaseModel):
     missing_count: int = 0
     completed_count: int = 0
     citations: list[SourceCitation] = Field(default_factory=list)
+    disclaimer: str = DISCLAIMER
 
 
 class ChatMessage(BaseModel):
@@ -92,3 +96,4 @@ class ChatResponse(BaseModel):
     follow_up_suggestions: list[str] = Field(default_factory=list)
     confidence: str = "supported"
     conversation_id: str = ""
+    disclaimer: str = DISCLAIMER

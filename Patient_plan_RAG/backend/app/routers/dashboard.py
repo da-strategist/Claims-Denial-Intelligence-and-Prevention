@@ -6,6 +6,7 @@ from pathlib import Path
 
 from fastapi import APIRouter
 
+from ..models.common import DISCLAIMER
 from ..services.retrieval import load_chunks
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
@@ -34,6 +35,7 @@ async def dashboard_stats():
         "total_pages": total_pages,
         "total_chunks": total_chunks,
         "mode": os.getenv("APP_MODE", "demo"),
+        "disclaimer": DISCLAIMER,
         "policies": [
             {
                 "document_id": p["document_id"],

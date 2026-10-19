@@ -12,6 +12,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from backend.app import main
+from backend.app.models.common import DISCLAIMER
 from backend.app.routers import chat, coverage, dashboard, policies
 from backend.app.services import retrieval
 from backend.app.tests.conftest import POLICY_PDF
@@ -88,6 +89,15 @@ def test_dashboard_totals_match_registry(client):
     assert body["total_pages"] == 6
     assert body["total_chunks"] == body["policies"][0]["chunk_count"] > 0
     assert body["mode"] == "demo"
+    assert body["policies"][0]["insurer_name"] == "Apex Health Insurance"
+    assert body["policies"][0]["plan_name"] == "Gold PPO Plan"
+
+
+def test_policy_metadata_is_extracted(client, doc_id):
+    body = client.get(f"/api/policies/{doc_id}").json()
+    assert body["plan_id"] == "AHI-GOLD-2025-PPO"
+    assert body["effective_date"] == "2025-01-01"
+    assert body["expiration_date"] == "2025-12-31"
 
 
 # ── Policies ─────────────────────────────────────────────────────────
@@ -231,3 +241,44 @@ def test_auth_checklist_includes_policy_requirements(client, doc_id):
 
 def test_coverage_requires_document_id(client):
     assert client.post("/api/coverage/assess", json={"service_name": "MRI"}).status_code == 422
+
+
+# ── Disclaimers ──────────────────────────────────────────────────────
+
+def _every_endpoint(client, doc_id):
+    with POLICY_PDF.open("rb") as f:
+        upload = client.post("/api/policies/upload",
+                             files={"file": ("p.pdf", f, "application/pdf")})
+    return {
+        "health": client.get("/api/health"),
+        "dashboard": client.get("/api/dashboard"),
+        "policies": client.get("/api/policies"),
+        "policy": client.get(f"/api/policies/{doc_id}"),
+        "summary": client.get(f"/api/policies/{doc_id}/summary"),
+        "chunks": client.get(f"/api/policies/{doc_id}/chunks"),
+        "upload": upload,
+        "chat": client.post("/api/chat", json={"question": "Is acupuncture covered?"}),
+        "assess": client.post("/api/coverage/assess",
+                              json={"service_name": "MRI", "document_id": doc_id}),
+        "checklist": client.post("/api/coverage/auth-checklist",
+                                 json={"service_name": "MRI", "document_id": doc_id}),
+        "not_found": client.get("/api/policies/nope"),
+    }
+
+
+def test_every_api_response_has_disclaimer_header(client, doc_id):
+    for name, resp in _every_endpoint(client, doc_id).items():
+        assert resp.headers.get("X-Disclaimer") == DISCLAIMER, name
+
+
+def test_object_responses_have_disclaimer_field(client, doc_id):
+    responses = _every_endpoint(client, doc_id)
+    # bare-list and single-record (registry) responses rely on the header
+    for name in ("health", "dashboard", "summary", "chunks", "upload",
+                 "chat", "assess", "checklist"):
+        assert responses[name].json()["disclaimer"] == DISCLAIMER, name
+
+
+def test_disclaimer_is_not_written_into_registry(client, data_dirs, doc_id):
+    _every_endpoint(client, doc_id)
+    assert "disclaimer" not in (data_dirs["policies"] / "_registry.json").read_text()

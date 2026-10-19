@@ -4,6 +4,7 @@ import hashlib
 import json
 import re
 import uuid
+from datetime import date, datetime
 from pathlib import Path
 
 from ..models.policy import DocumentChunk, DocumentStatus, PolicyDocument
@@ -91,6 +92,63 @@ def _overlap_lines(lines: list[str], chunk_overlap: int) -> list[str]:
     return kept if size <= chunk_overlap * 2 else []
 
 
+_DATE_FORMATS = ("%B %d, %Y", "%b %d, %Y", "%m/%d/%Y", "%Y-%m-%d")
+
+
+def _parse_date(text: str) -> date | None:
+    for fmt in _DATE_FORMATS:
+        try:
+            return datetime.strptime(text.strip(), fmt).date()
+        except ValueError:
+            continue
+    return None
+
+
+def _labelled_value(text: str, *labels: str) -> str:
+    """Value after the first 'Label: value' match on a line, else ''."""
+    for label in labels:
+        m = re.search(rf"(?im)^.*?\b{label}\s*[:#]\s*(.+?)\s*$", text)
+        if m:
+            return m.group(1)
+    return ""
+
+
+def extract_policy_metadata(pages: list[dict]) -> dict:
+    """Pull insurer, plan name/ID and dates from the first pages.
+
+    Only explicitly stated values are returned (verbatim); anything not found
+    is omitted rather than guessed.
+    """
+    text = "\n".join(p["text"] for p in pages[:2])
+    meta: dict = {}
+
+    plan_id = _labelled_value(text, r"Plan\s+ID", r"Plan\s+(?:Number|No\.?)")
+    if plan_id:
+        meta["plan_id"] = plan_id.split()[0]
+
+    insurer = _labelled_value(text, "Insurer", "Carrier", r"Insurance\s+Company")
+    plan_name = _labelled_value(text, r"Plan\s+Name")
+    if not (insurer and plan_name):
+        # "Apex Health Insurance — Gold PPO Plan"
+        m = re.search(r"(?m)^\s*([^\n:|]{3,80}?)\s+[—–-]\s+([^\n:|]*\bPlan\b[^\n:|]*?)\s*$", text)
+        if m:
+            insurer = insurer or m.group(1)
+            plan_name = plan_name or m.group(2)
+    if insurer:
+        meta["insurer_name"] = insurer
+    if plan_name:
+        meta["plan_name"] = plan_name
+
+    for key, labels in [
+        ("effective_date", (r"Effective\s+Date",)),
+        ("expiration_date", (r"Expiration\s+Date", r"Termination\s+Date", r"End\s+Date")),
+    ]:
+        parsed = _parse_date(_labelled_value(text, *labels))
+        if parsed:
+            meta[key] = parsed
+    return meta
+
+
 def chunk_text(
     pages: list[dict],
     document_id: str,
@@ -175,6 +233,11 @@ def process_document(
     try:
         pages = extract_text_from_pdf(pdf_path)
         doc.page_count = len(pages)
+
+        # Fill metadata stated in the document, without overriding caller values
+        for key, value in extract_policy_metadata(pages).items():
+            if not getattr(doc, key):
+                setattr(doc, key, value)
 
         chunks = chunk_text(pages, document_id, chunk_size, chunk_overlap)
         doc.chunk_count = len(chunks)

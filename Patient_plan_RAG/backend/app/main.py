@@ -4,10 +4,11 @@ import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
+from .models.common import DISCLAIMER
 from .routers import chat, coverage, dashboard, policies
 
 # ── Directories ──────────────────────────────────────────────────────
@@ -65,7 +66,18 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["X-Disclaimer"],
 )
+
+
+@app.middleware("http")
+async def add_disclaimer_header(request: Request, call_next):
+    """Every API response carries the disclaimer, including list endpoints."""
+    response = await call_next(request)
+    if request.url.path.startswith("/api"):
+        response.headers["X-Disclaimer"] = DISCLAIMER
+    return response
+
 
 # Routers
 app.include_router(policies.router)
@@ -79,9 +91,5 @@ async def health():
     return {
         "status": "ok",
         "mode": os.getenv("APP_MODE", "demo"),
-        "disclaimer": (
-            "This tool provides AI-generated interpretations of insurance "
-            "policy language. It does not constitute coverage determinations, "
-            "legal advice, or guarantees of benefits."
-        ),
+        "disclaimer": DISCLAIMER,
     }

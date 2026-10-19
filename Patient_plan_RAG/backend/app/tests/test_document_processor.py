@@ -2,6 +2,7 @@
 
 import json
 import re
+from datetime import date
 
 import pytest
 
@@ -9,6 +10,7 @@ from backend.app.models.policy import DocumentStatus
 from backend.app.services.document_processor import (
     _detect_section,
     chunk_text,
+    extract_policy_metadata,
     process_document,
 )
 from backend.app.tests.conftest import POLICY_PDF
@@ -153,3 +155,44 @@ def test_process_document_marks_unreadable_file_failed(tmp_path):
     assert doc.status == DocumentStatus.FAILED
     assert doc.error_message
     assert chunks == []
+
+
+# ── Metadata extraction ──────────────────────────────────────────────
+
+def test_metadata_from_synthetic_policy(policy_pages):
+    assert extract_policy_metadata(policy_pages) == {
+        "insurer_name": "Apex Health Insurance",
+        "plan_name": "Gold PPO Plan",
+        "plan_id": "AHI-GOLD-2025-PPO",
+        "effective_date": date(2025, 1, 1),
+        "expiration_date": date(2025, 12, 31),
+    }
+
+
+def test_metadata_explicit_labels_and_numeric_dates():
+    meta = extract_policy_metadata(_pages(
+        "Carrier: Acme Mutual\nPlan Name: Silver HMO\nPlan Number: SLV-9 (group)\n"
+        "Effective Date: 07/01/2026\nTermination Date: 2027-06-30"))
+    assert meta == {
+        "insurer_name": "Acme Mutual",
+        "plan_name": "Silver HMO",
+        "plan_id": "SLV-9",
+        "effective_date": date(2026, 7, 1),
+        "expiration_date": date(2027, 6, 30),
+    }
+
+
+def test_metadata_omits_what_is_not_stated():
+    assert extract_policy_metadata(_pages("Some policy text\nEffective Date: soon")) == {}
+
+
+def test_metadata_only_reads_first_two_pages():
+    assert extract_policy_metadata(_pages("intro", "more", "Plan ID: LATE-1")) == {}
+
+
+def test_process_document_does_not_override_caller_metadata(tmp_path):
+    if not POLICY_PDF.exists():
+        pytest.skip("synthetic policy PDF missing")
+    doc, _ = process_document(POLICY_PDF, tmp_path, metadata={"plan_name": "Given"})
+    assert doc.plan_name == "Given"
+    assert doc.insurer_name == "Apex Health Insurance"

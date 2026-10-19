@@ -8,6 +8,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, UploadFile
 
+from ..models.common import DISCLAIMER
 from ..models.policy import (
     DocumentStatus,
     DocumentUploadResponse,
@@ -112,4 +113,5 @@ async def get_policy_chunks(document_id: str, page: int = 1, page_size: int = 20
         "total": total,
         "page": page,
         "page_size": page_size,
+        "disclaimer": DISCLAIMER,
     }

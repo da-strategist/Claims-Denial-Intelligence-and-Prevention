@@ -10,6 +10,14 @@ class DomainModel(BaseModel):
     model_config = ConfigDict(extra="ignore", str_strip_whitespace=True)
 
 
+# Attached to every API response (body field and/or X-Disclaimer header).
+DISCLAIMER = (
+    "This tool provides AI-generated interpretations of insurance "
+    "policy language. It does not constitute coverage determinations, "
+    "legal advice, or guarantees of benefits."
+)
+
+
 T = TypeVar("T")
 
 

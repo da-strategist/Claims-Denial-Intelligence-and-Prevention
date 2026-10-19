@@ -6,7 +6,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from .common import DomainModel
+from .common import DISCLAIMER, DomainModel
 
 
 class DocumentStatus(StrEnum):
@@ -61,6 +61,7 @@ class PolicySummary(BaseModel):
     referral_requirements: str = ""
     important_limitations: list[str] = Field(default_factory=list)
     source_references: list[dict[str, Any]] = Field(default_factory=list)
+    disclaimer: str = DISCLAIMER
 
 
 class DocumentUploadResponse(BaseModel):
@@ -69,3 +70,4 @@ class DocumentUploadResponse(BaseModel):
     status: DocumentStatus
     page_count: int = 0
     message: str = ""
+    disclaimer: str = DISCLAIMER
