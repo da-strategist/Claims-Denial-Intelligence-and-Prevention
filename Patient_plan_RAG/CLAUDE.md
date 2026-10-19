@@ -79,7 +79,12 @@ The Vite dev server proxies `/api` to the backend on port 8001.
 
 1. **Demo mode by default**: APP_MODE=demo means no API key needed.
    RAG answers use template-based logic from retrieved chunks.
-   Set APP_MODE=live + ANTHROPIC_API_KEY for LLM-powered answers.
+   APP_MODE=live asks Claude (`claude-opus-5-5`, effort `medium`, override
+   with LLM_MODEL / LLM_EFFORT) with the passages fenced as untrusted data,
+   structured output, server-side refusal fallback (`fallbacks: "default"`),
+   and citations kept only if the quote is verbatim in a passage that was
+   sent. Credentials come from the SDK's usual sources; failures fall back to
+   the demo answer. Tests use a fake client — no network, no cost.
 
 2. **BM25 keyword retrieval**: Chunks follow section boundaries (a new chunk
    at each heading, long sections split on whole lines). Headings come from
@@ -176,6 +181,13 @@ Status as of 2026-10-18. Work top to bottom.
       live mode receives prior turns as messages. Frontend sends
       conversation_id, resets on policy change, "New conversation" button.
       169 backend + 14 frontend tests.
+- [x] Live mode: current model (`claude-opus-5-5`), passages and question
+      fenced and escaped as data, structured JSON answer, citations verified
+      against the passages sent (fabricated quotes dropped with a note,
+      page/section from the app), refusal fallback + safe refusal message,
+      no model call without evidence, degrade to demo on any error. Not yet
+      exercised against the real API (needs credentials; costs money).
+      181 backend tests.
 
 ### Next — Phase A: Hardening (safe to run and demo)
 1. [ ] **Visual UI check** — needs the user (browser automation cannot reach
@@ -183,15 +195,12 @@ Status as of 2026-10-18. Work top to bottom.
 
 ### Phase B: Data & evaluation — done (see Done above)
 
-### Phase C: Chat & live mode
-2. [ ] **Live mode update** — `rag.py` hardcodes an outdated model ID and does
-       not fence policy text/questions as untrusted evidence; validate that
-       cited pages exist in the retrieved passages; mock the API in tests.
+### Phase C: Chat & live mode — done (see Done above)
 
 ### Phase D: Retrieval upgrade
-3. [ ] **Embedding / hybrid retrieval** — adopt only if it beats BM25 on the
+2. [ ] **Embedding / hybrid retrieval** — adopt only if it beats BM25 on the
        Phase B eval; otherwise record the decision to stay on BM25.
-4. [ ] **Known gaps** — see below.
+3. [ ] **Known gaps** — see below.
 
 ### Known retrieval gaps
 - Multi-policy eval misses (3/38): Summit "How much is a specialist visit?"
