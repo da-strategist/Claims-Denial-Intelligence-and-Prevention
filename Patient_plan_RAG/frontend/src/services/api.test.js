@@ -22,3 +22,14 @@ test("adds Retry-After for rate limits", async () => {
 test("falls back to raw text for non-JSON bodies", async () => {
   expect(await errorMessage(res(502, "Bad gateway"))).toBe("502: Bad gateway");
 });
+
+test("any 401 fires the auth-required event", async () => {
+  const { api, AUTH_REQUIRED_EVENT } = await import("./api");
+  const heard = vi.fn();
+  window.addEventListener(AUTH_REQUIRED_EVENT, heard);
+  globalThis.fetch = vi.fn().mockResolvedValue(
+    new Response(JSON.stringify({ detail: "Sign in required" }), { status: 401 }));
+  await expect(api.listPolicies()).rejects.toThrow("401: Sign in required");
+  expect(heard).toHaveBeenCalledOnce();
+  window.removeEventListener(AUTH_REQUIRED_EVENT, heard);
+});

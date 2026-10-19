@@ -1,8 +1,20 @@
 import React, { useEffect, useState, useRef } from "react";
 import { api } from "../services/api";
 import { useHashPath, navigate } from "../utils/route";
+import { useAuth } from "../auth/AuthContext";
+
+function PrivateBadge() {
+  return (
+    <span className="ml-2 bg-gray-100 text-gray-600 px-2 py-0.5 rounded text-xs"
+          title="Uploaded by you; only you can see it">
+      Private
+    </span>
+  );
+}
 
 function UploadPanel({ onUploaded }) {
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin";
   const [uploading, setUploading] = useState(false);
   const [msg, setMsg] = useState("");
   const fileRef = useRef();
@@ -25,7 +37,14 @@ function UploadPanel({ onUploaded }) {
 
   return (
     <div className="bg-white rounded-lg shadow p-5 mb-6">
-      <h3 className="font-semibold mb-3">Upload Policy Document (PDF)</h3>
+      <h3 className="font-semibold mb-1">
+        {isAdmin ? "Upload a plan document (PDF)" : "Upload your policy document (PDF)"}
+      </h3>
+      <p className="text-xs text-gray-500 mb-3">
+        {isAdmin
+          ? "Staff uploads become plans you can assign to members."
+          : "Only you will be able to see documents you upload."}
+      </p>
       <div className="flex items-center gap-3">
         <input
           ref={fileRef}
@@ -152,7 +171,10 @@ function PolicyDetail({ documentId }) {
         ← Back to policies
       </button>
       <div className="bg-white rounded-lg shadow p-5">
-        <h3 className="text-xl font-bold mb-1">{policy.filename}</h3>
+        <h3 className="text-xl font-bold mb-1">
+          {policy.plan_name || policy.filename}
+          {policy.owner && <PrivateBadge />}
+        </h3>
         <p className="text-sm text-gray-500 mb-4">
           {policy.page_count} pages · {policy.chunk_count} chunks ·{" "}
           <span className="capitalize">{policy.status}</span>
@@ -233,6 +255,7 @@ function ChunkList({ documentId }) {
 
 export default function PolicyViewer() {
   const path = useHashPath();
+  const { user } = useAuth();
   const [policies, setPolicies] = useState([]);
 
   const load = () => api.listPolicies().then(setPolicies).catch(() => {});
@@ -247,7 +270,11 @@ export default function PolicyViewer() {
       <UploadPanel onUploaded={load} />
       <div className="bg-white rounded-lg shadow">
         {policies.length === 0 ? (
-          <p className="p-5 text-gray-500">No policies loaded yet.</p>
+          <p className="p-5 text-gray-500">
+            {user?.role === "admin"
+              ? "No plan documents uploaded yet."
+              : "No plans are linked to your account yet. Contact Member Services, or upload your own policy document above."}
+          </p>
         ) : (
           <table className="w-full text-sm">
             <thead>
@@ -265,7 +292,10 @@ export default function PolicyViewer() {
                   className="border-b hover:bg-gray-50 cursor-pointer"
                   onClick={() => navigate(`/policies/${p.document_id}`)}
                 >
-                  <td className="p-3 font-medium">{p.filename}</td>
+                  <td className="p-3 font-medium">
+                    {p.plan_name || p.filename}
+                    {p.owner && <PrivateBadge />}
+                  </td>
                   <td>{p.page_count}</td>
                   <td>{p.chunk_count}</td>
                   <td>

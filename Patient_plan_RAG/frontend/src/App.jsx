@@ -1,6 +1,10 @@
 import React from "react";
 import { useHashPath, navigate } from "./utils/route";
 import ErrorBoundary from "./components/ErrorBoundary";
+import { useAuth } from "./auth/AuthContext";
+import SignIn from "./pages/SignIn";
+import ChangePassword from "./pages/ChangePassword";
+import Admin from "./pages/Admin";
 import Dashboard from "./pages/Dashboard";
 import PolicyViewer from "./pages/PolicyViewer";
 import ChatAssistant from "./pages/ChatAssistant";
@@ -26,14 +30,52 @@ export function Disclaimer() {
   );
 }
 
+function UserMenu({ user, onSignOut }) {
+  return (
+    <div className="flex items-center gap-3 text-sm">
+      <span className="opacity-90" title={user.role === "admin" ? "Staff account" : "Member account"}>
+        {user.username}
+      </span>
+      <button onClick={() => navigate("/account/password")} className="hover:underline opacity-90">
+        Change password
+      </button>
+      <button onClick={onSignOut} className="bg-white/15 hover:bg-white/25 px-3 py-1 rounded">
+        Sign out
+      </button>
+    </div>
+  );
+}
+
+function Shell({ children }) {
+  return (
+    <div className="min-h-screen flex flex-col">
+      <Disclaimer />
+      {children}
+      <footer className="text-center text-xs text-gray-400 py-4">
+        Patient Plan RAG v0.1.0 — Synthetic data only — Not for clinical use
+      </footer>
+    </div>
+  );
+}
+
 export default function App() {
   const path = useHashPath();
+  const { user, loading, signOut } = useAuth();
+
+  if (loading) return <Shell><p className="text-center text-gray-500 mt-16">Loading...</p></Shell>;
+  if (!user) return <Shell><SignIn /></Shell>;
+  if (user.must_change_password) return <Shell><ChangePassword forced /></Shell>;
+
+  const isAdmin = user.role === "admin";
+  const nav = isAdmin ? [...NAV, { path: "/admin", label: "Admin", icon: "👥" }] : NAV;
 
   const page = (() => {
     if (path.startsWith("/policies")) return <PolicyViewer />;
     if (path === "/chat") return <ChatAssistant />;
     if (path === "/coverage") return <CoverageAssessment />;
     if (path === "/auth") return <PriorAuth />;
+    if (path === "/account/password") return <ChangePassword />;
+    if (path === "/admin") return isAdmin ? <Admin /> : <p role="alert">Not permitted.</p>;
     return <Dashboard />;
   })();
 
@@ -41,7 +83,7 @@ export default function App() {
     <div className="min-h-screen flex flex-col">
       <Disclaimer />
       <header className="bg-brand-800 text-white shadow-md">
-        <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
+        <div className="max-w-7xl mx-auto px-4 py-3 flex flex-wrap items-center justify-between gap-3">
           <h1
             className="text-lg font-bold cursor-pointer"
             onClick={() => navigate("/")}
@@ -49,7 +91,7 @@ export default function App() {
             Patient Plan RAG
           </h1>
           <nav className="flex gap-1">
-            {NAV.map((n) => (
+            {nav.map((n) => (
               <button
                 key={n.path}
                 onClick={() => navigate(n.path)}
@@ -63,6 +105,7 @@ export default function App() {
               </button>
             ))}
           </nav>
+          <UserMenu user={user} onSignOut={signOut} />
         </div>
       </header>
       <main className="flex-1 max-w-7xl mx-auto w-full px-4 py-6">

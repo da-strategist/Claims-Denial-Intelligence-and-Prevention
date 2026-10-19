@@ -67,7 +67,7 @@ async def rate_limit(request: Request, call_next):
 
 
 _ALLOWED_ORIGINS = {
-    o.strip() for o in os.getenv("CORS_ORIGINS", "http://localhost:5174").split(",")
+    o.strip() for o in os.getenv("CORS_ORIGINS", "http://localhost:5174,http://127.0.0.1:5174").split(",")
 }
 
 

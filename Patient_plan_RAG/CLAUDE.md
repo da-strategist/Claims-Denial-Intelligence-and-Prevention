@@ -12,9 +12,11 @@ coverage, reimbursement, or authorization approval.**
 ```
 Patient_plan_RAG/
 ├── backend/app/         # Python FastAPI (port 8001)
-│   ├── main.py          # Entry point, lifespan, CORS, router registration
+│   ├── main.py          # Entry point, lifespan, middleware, router registration
+│   ├── auth/            # users (scrypt), sessions + permissions, access rules
+│   ├── users.py         # account CLI (python -m backend.app.users)
 │   ├── models/          # Pydantic models (policy, coverage, chat)
-│   ├── routers/         # API routes (policies, chat, coverage, dashboard)
+│   ├── routers/         # API routes (auth, admin, policies, chat, coverage, dashboard)
 │   └── services/        # Business logic
 │       ├── document_processor.py  # PDF extraction → text chunking
 │       ├── retrieval.py           # Keyword/hybrid chunk retrieval
@@ -23,9 +25,11 @@ Patient_plan_RAG/
 ├── frontend/            # React + Vite + Tailwind (port 5174)
 │   └── src/
 │       ├── App.jsx      # Hash-based routing, nav, disclaimer
+│       ├── auth/        # AuthContext (session state, 401 → sign-in)
 │       ├── components/  # ErrorBoundary (per-page + app-level)
 │       ├── pages/       # Dashboard, PolicyViewer, ChatAssistant,
-│       │                  CoverageAssessment, PriorAuth
+│       │                  CoverageAssessment, PriorAuth, SignIn,
+│       │                  ChangePassword, Admin
 │       └── services/api.js  # Fetch wrapper for all API calls
 ├── synthetic_data/      # Policy PDF generator: render.py + policies/*.py specs
 ├── data/                # Runtime data (gitignored except policies/)
@@ -249,14 +253,18 @@ members by staff, and members may also upload private policy documents.
    E1+E2 done: `backend/app/auth/` (users, sessions, access), routers
    `auth.py` + `admin.py`, `services/registry.py`; a structural test fails
    if any /api route lacks a sign-in dependency. 231 backend tests.
-   **The web UI cannot load data until E4** (no sign-in page yet).
 3. [ ] **E3 Audit and PHI handling** — append-only audit log of who
        accessed which document/endpoint (never question text); no PHI in
        logs; clear notice in the UI when live mode sends questions to
        Anthropic; retention note for the in-memory conversation store.
-4. [ ] **E4 Frontend** — sign-in page, session-aware app shell (user menu,
+4. [x] **E4 Frontend** — sign-in page, session-aware app shell (user menu,
        sign out, 401 → sign-in), password change, admin page (members,
        plan assignment, uploads), "private" label on member uploads.
+   E4 done: `frontend/src/auth/AuthContext.jsx` (any 401 → sign-in),
+   pages `SignIn`, `ChangePassword` (forced after a temporary password),
+   `Admin`; role-aware upload text and empty states. 27 frontend tests;
+   end-to-end check against a scratch backend (sign-in, forced change,
+   member scoping, admin-only routes, cross-site refusal, sign-out).
 
 ### Known retrieval gaps
 - Multi-policy eval misses (1/38 each): Summit "How much is a specialist

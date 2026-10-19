@@ -19,18 +19,49 @@ export async function errorMessage(res) {
   return `${res.status}: ${detail || res.statusText}`;
 }
 
+/** Fired on any 401 so the app returns to the sign-in page. */
+export const AUTH_REQUIRED_EVENT = "auth-required";
+
+async function check(res) {
+  if (res.status === 401) window.dispatchEvent(new Event(AUTH_REQUIRED_EVENT));
+  if (!res.ok) throw new Error(await errorMessage(res));
+  return res.json();
+}
+
+// Session cookies are same-origin (the Vite dev server proxies /api).
 async function request(path, options = {}) {
   const res = await fetch(`${BASE}${path}`, {
     headers: { "Content-Type": "application/json", ...options.headers },
     ...options,
   });
-  if (!res.ok) throw new Error(await errorMessage(res));
-  return res.json();
+  return check(res);
 }
+
+const post = (path, body) =>
+  request(path, { method: "POST", body: body === undefined ? undefined : JSON.stringify(body) });
 
 export const api = {
   // Health
   health: () => request("/health"),
+
+  // Session
+  me: () => request("/auth/me"),
+  login: (username, password) => post("/auth/login", { username, password }),
+  logout: () => post("/auth/logout"),
+  changePassword: (currentPassword, newPassword) =>
+    post("/auth/password", { current_password: currentPassword, new_password: newPassword }),
+
+  // Admin (staff only)
+  listUsers: () => request("/admin/users"),
+  createUser: (username, role, planIds) =>
+    post("/admin/users", { username, role, plan_ids: planIds }),
+  updateUser: (username, changes) =>
+    request(`/admin/users/${encodeURIComponent(username)}`, {
+      method: "PATCH",
+      body: JSON.stringify(changes),
+    }),
+  resetPassword: (username) =>
+    post(`/admin/users/${encodeURIComponent(username)}/reset-password`),
 
   // Dashboard
   dashboard: () => request("/dashboard"),
@@ -48,8 +79,7 @@ export const api = {
       method: "POST",
       body: form,
     });
-    if (!res.ok) throw new Error(await errorMessage(res));
-    return res.json();
+    return check(res);
   },
 
   // Chat
