@@ -158,3 +158,21 @@ def test_load_chunks_unknown_id_or_missing_dir(dirs, tmp_path):
     chunk_dir, _ = dirs
     assert load_chunks(chunk_dir, "nope") == []
     assert load_chunks(tmp_path / "does-not-exist") == []
+
+
+@pytest.mark.parametrize("query,text", [
+    ("Was my claim denied?", "Appeals must follow a denial notice."),
+    ("Are glasses covered for my child?", "Eye exams for children are covered."),
+    ("How long does a decision take?", "We decide most requests within 14 days."),
+    ("Are therapies covered?", "Physical therapy is covered."),
+])
+def test_word_families_and_plurals_match(query, text):
+    chunk = DocumentChunk(chunk_id="c", document_id="d", content=text)
+    other = DocumentChunk(chunk_id="o", document_id="d", content="Unrelated words only.")
+    assert [c.chunk_id for c, _ in retrieve(query, [chunk, other])] == ["c"]
+
+
+def test_approval_and_authorization_stay_distinct():
+    # folding them together made glossary entries outrank answers (see retrieval.py)
+    from backend.app.services.retrieval import _tokenize
+    assert _tokenize("approval") != _tokenize("authorization")

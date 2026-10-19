@@ -89,8 +89,9 @@ The Vite dev server proxies `/api` to the backend on port 8001.
 2. **BM25 keyword retrieval**: Chunks follow section boundaries (a new chunk
    at each heading, long sections split on whole lines). Headings come from
    the PDF's fonts (larger or all-bold lines) plus text heuristics. Ranking is
-   BM25 over stopword-free, plural-folded tokens plus section-heading and
-   line-label ("Deductible: ...", table rows) boosts. The score
+   BM25 over stopword-free, plural-folded tokens (plus a small curated set of
+   insurance word families: deny/denial, child/children, decide/decision)
+   with section-heading and line-label ("Deductible: ...", table rows) boosts. The score
    returned to callers is the IDF-weighted share of query terms matched (0..1;
    > 0.3 → "supported", < 0.1 → dropped). Without a document_id, only
    registry-listed documents are searched, so orphaned chunk files are ignored.
@@ -193,6 +194,11 @@ Status as of 2026-10-18. Work top to bottom.
       matching sentences) with page + section; citation excerpts are each
       chunk's best paragraph. New eval metric `answer_text` (answer quoted in
       the demo answer): 27→35/38. 188 backend tests.
+- [x] Vocabulary fix (Phase D): curated word families + "-ies/-ied" plural
+      folding; each family kept only if it helps on the eval (an approval/
+      authorization family hurt Apex and was dropped). Cited section and
+      answer text 35→37/38; Riverbend retrieval top-1 back to 10/10. 193
+      backend tests.
 
 ### Next — Phase A: Hardening (safe to run and demo)
 1. [ ] **Visual UI check** — needs the user (browser automation cannot reach
@@ -202,24 +208,24 @@ Status as of 2026-10-18. Work top to bottom.
 
 ### Phase C: Chat & live mode — done (see Done above)
 
-### Phase D: Retrieval upgrade
-2. [ ] **Embedding / hybrid retrieval** — adopt only if it beats BM25 on the
-       Phase B eval; otherwise record the decision to stay on BM25.
-3. [ ] **Known gaps** — see below.
+### Phase D: Retrieval upgrade — decided (see Done above)
+- **Embeddings deferred.** With 4 synthetic policies and a 38-question eval,
+  BM25 + vocabulary folding scores 37/38 on cited section and answer text;
+  a 1-question gain can't be measured, and sentence-transformers would add
+  torch/transformers (29 packages) plus a model download. Revisit when there
+  are more or real policies and a larger eval; adopt only if it beats BM25
+  there (hybrid behind a flag).
 
 ### Known retrieval gaps
-- Multi-policy eval misses (3/38): Summit "How much is a specialist visit?"
-  ranks the referral section first; Riverbend "How long does an approval
-  decision take?" ranks the appeals section ("decision"), and "Are glasses
-  covered for my child?" ranks "What is not covered?" (no child/children
-  stemming). The eval is small and written by the same author as the fixes —
-  treat scores as regression guards, not accuracy claims.
-- "What does coinsurance mean?" ranks the definition 3rd, behind rate tables.
-- Demo answer text misses the answer in 3/38 eval questions (Apex "How do
-  I appeal a denied claim?" — denied vs denial; Summit/Riverbend "How long
-  does an approval … take?"), all vocabulary mismatches.
+- Multi-policy eval misses (1/38 each): Summit "How much is a specialist
+  visit?" ranks the referral section first; Summit "How long does an
+  approval request take?" — answer text quotes the wrong paragraph. The eval
+  is small and written by the same author as the fixes — treat scores as
+  regression guards, not accuracy claims.
+- "What does coinsurance mean?" (Apex) ranks the definition 2nd, behind
+  the coinsurance rates.
 - Follow-up "How often can I get them?" after "Are glasses covered?"
-  (Riverbend) misses with or without context.
+  (Riverbend) still ranks "What is not covered?" first.
 
 ## Constraints (from master prompt)
 - Preserve all existing RCM project files

@@ -35,15 +35,33 @@ _LABEL_RE = re.compile(r"^\s*(?:•\s*)?([^:$]{2,60}?)\s*(?::\s|\$\d)")
 _MIN_COVERAGE = 0.1
 
 
+# Curated insurance word families, folded to one token on both sides (query
+# and policy text). Kept small and explicit rather than a general stemmer;
+# each family earns its place on the eval. Folding approval / authorization /
+# precertification together was tried and dropped: those words are so common
+# in policies that merging them made glossary entries outrank the answer.
+_WORD_FAMILIES = {
+    "deny": ("denied", "denial", "denials", "denies", "denying"),
+    "child": ("children", "kids", "kid", "pediatric"),
+    "decide": ("decision", "decisions", "decided", "decides"),
+}
+_FAMILY_OF = {word: canon for canon, words in _WORD_FAMILIES.items() for word in words}
+
+
 def _stem(token: str) -> str:
-    """Minimal plural folding so 'visits' matches 'visit'."""
+    """Word families, then minimal plural folding ('visits' → 'visit',
+    'therapies' → 'therapy', 'applied' → 'apply')."""
+    if token in _FAMILY_OF:
+        return _FAMILY_OF[token]
+    if len(token) > 4 and token.endswith(("ies", "ied")):
+        return token[:-3] + "y"
     if len(token) > 3 and token.endswith("s") and not token.endswith(("ss", "us", "is")):
         return token[:-1]
     return token
 
 
 def _tokenize(text: str) -> list[str]:
-    """Lowercase, stopword-free, plural-folded tokens."""
+    """Lowercase, stopword-free, family- and plural-folded tokens."""
     return [
         _stem(t) for t in re.findall(r"[a-z0-9]+", text.lower())
         if t not in _STOPWORDS
