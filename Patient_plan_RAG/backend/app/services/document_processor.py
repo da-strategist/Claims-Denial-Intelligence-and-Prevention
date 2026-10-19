@@ -1,0 +1,195 @@
+"""PDF extraction and text chunking pipeline."""
+
+import hashlib
+import json
+import re
+import uuid
+from pathlib import Path
+
+from ..models.policy import DocumentChunk, DocumentStatus, PolicyDocument
+
+
+def _generate_chunk_id(document_id: str, index: int) -> str:
+    raw = f"{document_id}:{index}"
+    return hashlib.sha256(raw.encode()).hexdigest()[:16]
+
+
+def extract_text_from_pdf(pdf_path: Path) -> list[dict]:
+    """Extract text page-by-page using pdfplumber, fallback to pypdf."""
+    pages: list[dict] = []
+    try:
+        import pdfplumber
+        with pdfplumber.open(pdf_path) as pdf:
+            for i, page in enumerate(pdf.pages, start=1):
+                text = page.extract_text() or ""
+                pages.append({"page_number": i, "text": text.strip()})
+    except Exception:
+        try:
+            from pypdf import PdfReader
+            reader = PdfReader(str(pdf_path))
+            for i, page in enumerate(reader.pages, start=1):
+                text = page.extract_text() or ""
+                pages.append({"page_number": i, "text": text.strip()})
+        except Exception as exc:
+            raise RuntimeError(f"Cannot extract text from {pdf_path.name}: {exc}") from exc
+    return pages
+
+
+_HEADING_RE = re.compile(
+    r"^(SECTION|ARTICLE|PART|CHAPTER|COVERAGE|EXCLUSION|BENEFIT|LIMITATION|"
+    r"PRIOR\s+AUTH|PRE-?CERTIFICATION|APPEAL|GRIEVANCE|DEFINITIONS?|"
+    r"GENERAL\s+PROVISIONS?|ELIGIBILITY|COST[\s-]SHARING|"
+    r"OUT[\s-]OF[\s-]POCKET|DEDUCTIBLE|CO-?PAY|CO-?INSURANCE|"
+    r"NETWORK|IN[\s-]NETWORK|OUT[\s-]OF[\s-]NETWORK|EMERGENCY|"
+    r"PRESCRIPTION|MENTAL\s+HEALTH|PREVENTIVE|MATERNITY|PEDIATRIC|"
+    r"REHABILITATION|DURABLE\s+MEDICAL|HOME\s+HEALTH|HOSPICE|"
+    r"SKILLED\s+NURSING|SUMMARY\s+OF\s+BENEFITS|PLAN\s+OVERVIEW|"
+    r"TABLE\s+OF\s+CONTENTS|MEMBER\s+RIGHTS|CLAIMS?|COORDINATION)\w*\b",
+    re.IGNORECASE,
+)
+
+
+def _detect_section(line: str) -> str:
+    """Heuristic section heading detection.
+
+    Headings are short standalone lines. Body lines that merely start with a
+    label ("Deductible: The amount...", "PREVENTIVE CARE: Covered at...") and
+    long all-caps sentences (disclaimer banners) are not headings.
+    """
+    stripped = line.strip()
+    if len(stripped) > 80 or len(stripped) < 3:
+        return ""
+    if len(stripped.split()) > 8 or stripped.endswith((".", ",", ";")):
+        return ""
+    if stripped.isupper():
+        return stripped
+    if _HEADING_RE.match(stripped) and ":" not in stripped and _is_title_case(stripped):
+        return stripped
+    return ""
+
+
+def _is_title_case(text: str) -> bool:
+    """'Prior Authorization Requirements' yes; 'Coverage applies to dependents' no."""
+    words = [w for w in text.split() if w[0].isalpha() and len(w) > 3]
+    return all(w[0].isupper() for w in words)
+
+
+def _clean_line(line: str) -> str:
+    """Normalise PDF extraction artefacts (e.g. unmapped bullet glyphs)."""
+    return line.replace("(cid:127)", "•").strip()
+
+
+def _overlap_lines(lines: list[str], chunk_overlap: int) -> list[str]:
+    """Trailing whole lines of the previous chunk, up to ~chunk_overlap chars."""
+    kept: list[str] = []
+    size = 0
+    for line in reversed(lines):
+        if kept and size + len(line) > chunk_overlap:
+            break
+        kept.insert(0, line)
+        size += len(line) + 1
+    return kept if size <= chunk_overlap * 2 else []
+
+
+def chunk_text(
+    pages: list[dict],
+    document_id: str,
+    chunk_size: int = 800,
+    chunk_overlap: int = 100,
+) -> list[DocumentChunk]:
+    """Split extracted pages into chunks that follow section boundaries.
+
+    A new chunk starts at every section heading (consecutive headings stay
+    together, the last one labels the chunk). Sections longer than chunk_size
+    are split on line boundaries, carrying whole trailing lines as overlap.
+    """
+    chunks: list[DocumentChunk] = []
+    section = ""
+    buffer: list[str] = []
+    buffer_page = pages[0]["page_number"] if pages else 1
+    has_body = False  # buffer holds at least one non-heading, non-overlap line
+
+    def flush() -> None:
+        content = "\n".join(buffer).strip()
+        if content:
+            chunks.append(DocumentChunk(
+                chunk_id=_generate_chunk_id(document_id, len(chunks)),
+                document_id=document_id,
+                page_number=buffer_page,
+                section_heading=section,
+                content=content,
+                content_lower=content.lower(),
+            ))
+
+    for page_data in pages:
+        page_num = page_data["page_number"]
+        for raw_line in page_data["text"].split("\n"):
+            line = _clean_line(raw_line)
+            if not line:
+                continue
+
+            heading = _detect_section(line)
+            if heading:
+                if has_body:
+                    flush()
+                    buffer, has_body = [], False
+                if not buffer:
+                    buffer_page = page_num
+                section = heading
+                buffer.append(line)
+                continue
+
+            if has_body and len("\n".join(buffer)) + len(line) + 1 > chunk_size:
+                flush()
+                buffer = _overlap_lines(buffer, chunk_overlap) if chunk_overlap > 0 else []
+                buffer_page = page_num
+            elif not buffer:
+                buffer_page = page_num
+            buffer.append(line)
+            has_body = True
+
+    if has_body:
+        flush()
+
+    return chunks
+
+
+def process_document(
+    pdf_path: Path,
+    chunk_dir: Path,
+    chunk_size: int = 800,
+    chunk_overlap: int = 100,
+    metadata: dict | None = None,
+    document_id: str | None = None,
+) -> tuple[PolicyDocument, list[DocumentChunk]]:
+    """End-to-end: extract → chunk → persist chunks as JSON."""
+    document_id = document_id or uuid.uuid4().hex[:12]
+
+    doc = PolicyDocument(
+        document_id=document_id,
+        filename=pdf_path.name,
+        status=DocumentStatus.PROCESSING,
+        **(metadata or {}),
+    )
+
+    try:
+        pages = extract_text_from_pdf(pdf_path)
+        doc.page_count = len(pages)
+
+        chunks = chunk_text(pages, document_id, chunk_size, chunk_overlap)
+        doc.chunk_count = len(chunks)
+
+        # Persist chunks
+        chunk_dir.mkdir(parents=True, exist_ok=True)
+        chunk_file = chunk_dir / f"{document_id}.json"
+        chunk_file.write_text(
+            json.dumps([c.model_dump() for c in chunks], indent=2, default=str)
+        )
+
+        doc.status = DocumentStatus.COMPLETED
+    except Exception as exc:
+        doc.status = DocumentStatus.FAILED
+        doc.error_message = str(exc)
+        chunks = []
+
+    return doc, chunks

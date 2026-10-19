@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.py[oc]
+.venv/
+*.egg-info/
+
+# Environment
+.env
+
+# Uploads and generated data
+backend/app/data/uploads/*
+backend/app/data/chunks/*
+!backend/app/data/uploads/.gitkeep
+!backend/app/data/chunks/.gitkeep
+
+# Node / Frontend
+node_modules/
+frontend/dist/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+
+# Logs
+*.log
+
+# Runtime data: chunks, uploads and the registry are rebuilt at startup
+data/chunks/
+data/uploads/
+data/policies/_registry.json
+
+# The root .gitignore drops *.json; the npm manifests are needed to install
+!frontend/package.json
+!frontend/package-lock.json
