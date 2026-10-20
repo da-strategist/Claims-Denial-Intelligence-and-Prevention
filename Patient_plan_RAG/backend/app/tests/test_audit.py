@@ -24,7 +24,7 @@ def test_requests_are_recorded_with_identity_and_document(client, doc_id, isolat
     entries = _entries(isolated_audit_log)
     summary = next(e for e in entries if e["route"] == "/api/policies/{document_id}/summary")
     assert (summary["user"], summary["role"], summary["document_id"], summary["status"]) == \
-        ("admin@example.com", "admin", doc_id, 200)
+        ("admin@example.com", "platform_admin", doc_id, 200)
     chat = next(e for e in entries if e["route"] == "/api/chat")
     assert chat["document_id"] == doc_id and chat["method"] == "POST"
     assess = next(e for e in entries if e["route"] == "/api/coverage/assess")
@@ -39,7 +39,7 @@ def test_question_text_never_reaches_the_audit_log(client, doc_id, isolated_audi
 
 
 def test_sign_in_attempts_and_refusals_are_recorded(anon_client, isolated_audit_log):
-    user_store.create("m@example.com", TEST_PASSWORD, Role.MEMBER, must_change_password=False)
+    user_store.create("m@example.com", TEST_PASSWORD, Role.INDIVIDUAL, must_change_password=False)
     anon_client.post("/api/auth/login", json={"username": "M@example.com", "password": "wrong password!"})
     anon_client.get("/api/policies")
     anon_client.post("/api/auth/login", json={"username": "m@example.com", "password": TEST_PASSWORD})
@@ -52,7 +52,8 @@ def test_sign_in_attempts_and_refusals_are_recorded(anon_client, isolated_audit_
 
 
 def test_admin_actions_record_the_target_account(client, isolated_audit_log):
-    client.post("/api/admin/users", json={"username": "New@Example.com"})
+    client.post("/api/admin/orgs", json={"name": "General Hospital",
+                                         "admin_username": "New@Example.com"})
     client.post("/api/admin/users/new@example.com/reset-password")
     entries = _entries(isolated_audit_log)
     assert [e["target"] for e in entries[-2:]] == ["new@example.com", "new@example.com"]

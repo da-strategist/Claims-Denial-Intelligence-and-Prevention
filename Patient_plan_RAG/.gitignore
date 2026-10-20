@@ -28,6 +28,11 @@ data/policies/_registry.json
 # Accounts: password hashes, never committed
 data/users.json
 data/users.tmp
+# Hospitals, patient records (identifying details), shares
+data/orgs.json
+data/patients.json
+data/shares.json
+data/*.tmp
 # Audit log: who accessed what
 data/audit.log
 

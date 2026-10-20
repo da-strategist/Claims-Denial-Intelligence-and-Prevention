@@ -47,14 +47,17 @@ export const api = {
   // Session
   me: () => request("/auth/me"),
   login: (username, password) => post("/auth/login", { username, password }),
+  register: (username, password) => post("/auth/register", { username, password }),
   logout: () => post("/auth/logout"),
   changePassword: (currentPassword, newPassword) =>
     post("/auth/password", { current_password: currentPassword, new_password: newPassword }),
 
-  // Admin (staff only)
+  // Platform admin: hospitals and accounts
+  listOrgs: () => request("/admin/orgs"),
+  createOrg: (name, adminUsername) => post("/admin/orgs", { name, admin_username: adminUsername }),
+  updateOrg: (orgId, changes) =>
+    request(`/admin/orgs/${orgId}`, { method: "PATCH", body: JSON.stringify(changes) }),
   listUsers: () => request("/admin/users"),
-  createUser: (username, role, planIds) =>
-    post("/admin/users", { username, role, plan_ids: planIds }),
   updateUser: (username, changes) =>
     request(`/admin/users/${encodeURIComponent(username)}`, {
       method: "PATCH",
@@ -62,6 +65,32 @@ export const api = {
     }),
   resetPassword: (username) =>
     post(`/admin/users/${encodeURIComponent(username)}/reset-password`),
+
+  // Hospital: staff (hospital admins), patients, shared policies
+  listStaff: () => request("/hospital/staff"),
+  addStaff: (username, role) => post("/hospital/staff", { username, role }),
+  updateStaff: (username, changes) =>
+    request(`/hospital/staff/${encodeURIComponent(username)}`, {
+      method: "PATCH",
+      body: JSON.stringify(changes),
+    }),
+  resetStaffPassword: (username) =>
+    post(`/hospital/staff/${encodeURIComponent(username)}/reset-password`),
+  listPatients: () => request("/hospital/patients"),
+  createPatient: (patient) => post("/hospital/patients", patient),
+  getPatient: (id) => request(`/hospital/patients/${id}`),
+  listShared: () => request("/hospital/shared"),
+  fileShared: (shareId, patientId) =>
+    request(`/hospital/shared/${shareId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ patient_id: patientId || null }),
+    }),
+
+  // Individuals: share a policy with a hospital
+  hospitalDirectory: () => request("/shares/hospitals"),
+  myShares: () => request("/shares"),
+  share: (documentId, orgId) => post("/shares", { document_id: documentId, org_id: orgId }),
+  unshare: (shareId) => request(`/shares/${shareId}`, { method: "DELETE" }),
 
   // Dashboard
   dashboard: () => request("/dashboard"),
@@ -72,9 +101,10 @@ export const api = {
   getPolicySummary: (id) => request(`/policies/${id}/summary`),
   getPolicyChunks: (id, page = 1) =>
     request(`/policies/${id}/chunks?page=${page}`),
-  uploadPolicy: async (file) => {
+  uploadPolicy: async (file, patientId) => {
     const form = new FormData();
     form.append("file", file);
+    if (patientId) form.append("patient_id", patientId);
     const res = await fetch(`${BASE}/policies/upload`, {
       method: "POST",
       body: form,
@@ -83,13 +113,14 @@ export const api = {
   },
 
   // Chat
-  chat: (question, policyId, conversationId) =>
+  chat: (question, policyId, conversationId, patientId) =>
     request("/chat", {
       method: "POST",
       body: JSON.stringify({
         question,
         policy_id: policyId || null,
         conversation_id: conversationId || null,
+        patient_id: patientId || null,
       }),
     }),
 

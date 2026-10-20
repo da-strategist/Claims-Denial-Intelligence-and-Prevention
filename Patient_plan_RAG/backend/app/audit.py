@@ -84,6 +84,12 @@ def audit_document(request: Request, document_id: str | None) -> None:
         request.state.audit_document_id = document_id
 
 
+def audit_patient(request: Request, patient_id: str | None) -> None:
+    """Name the patient record a request concerned (hospital staff)."""
+    if patient_id:
+        request.state.audit_patient_id = patient_id
+
+
 def audit_target(request: Request, username: str) -> None:
     """Name the account an admin action touched (when it isn't in the path)."""
     request.state.audit_target = username
@@ -100,6 +106,8 @@ def entry_for(request: Request, status: int) -> dict:
         "route": route.path if route else request.url.path,
         "document_id": request.path_params.get("document_id")
                        or getattr(request.state, "audit_document_id", None),
+        "patient_id": request.path_params.get("patient_id")
+                      or getattr(request.state, "audit_patient_id", None),
         "target": request.path_params.get("username")
                   or getattr(request.state, "audit_target", None),
         "status": status,

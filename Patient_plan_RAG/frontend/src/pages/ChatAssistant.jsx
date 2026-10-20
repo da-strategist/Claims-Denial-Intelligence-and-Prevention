@@ -1,5 +1,13 @@
 import React, { useEffect, useState, useRef } from "react";
 import { api } from "../services/api";
+import { useAuth } from "../auth/AuthContext";
+import { isHospital, usePolicyOptions } from "../hooks/usePolicyOptions";
+
+/** Patient preselected by a link like #/chat?patient=<id> */
+function patientFromHash() {
+  const query = window.location.hash.split("?")[1] || "";
+  return new URLSearchParams(query).get("patient") || "";
+}
 
 function Citation({ citation, index }) {
   return (
@@ -36,9 +44,11 @@ function PrivacyNotice({ mode }) {
 }
 
 export default function ChatAssistant() {
-  const [policies, setPolicies] = useState([]);
+  const { user } = useAuth();
+  const hospital = isHospital(user);
+  const { options, patients, error: policyError } = usePolicyOptions();
   const [selectedPolicy, setSelectedPolicy] = useState("");
-  const [policyError, setPolicyError] = useState("");
+  const [selectedPatient, setSelectedPatient] = useState(patientFromHash);
   const [question, setQuestion] = useState("");
   const [messages, setMessages] = useState([]);
   // Server-side conversation; follow-up questions send it back for context
@@ -51,12 +61,24 @@ export default function ChatAssistant() {
     api.health().then((h) => setMode(h.mode)).catch(() => setMode(null));
   }, []);
 
+  // Individuals default to the first of their documents (or a sample); the
+  // platform admin to the first sample. Hospital staff pick a patient first.
+  // Applied once, when the list first loads, so choosing "All my documents"
+  // (an empty selection) sticks.
+  const defaulted = useRef(false);
   useEffect(() => {
-    api.listPolicies().then((p) => {
-      setPolicies(p);
-      if (p.length > 0) setSelectedPolicy(p[0].document_id);
-    }).catch((e) => setPolicyError(e.message));
-  }, []);
+    if (defaulted.current || hospital || options.length === 0) return;
+    defaulted.current = true;
+    setSelectedPolicy(options[0].id);
+  }, [hospital, options]);
+
+  const patientDocs = options.filter((o) => {
+    if (!selectedPatient) return false;
+    const patient = patients.find((p) => p.patient_id === selectedPatient);
+    return patient?.documents.some((d) => d.document_id === o.id);
+  });
+  const policyChoices = hospital ? patientDocs : options;
+  const canAsk = hospital ? Boolean(selectedPatient) : Boolean(selectedPolicy) || user?.role === "individual";
 
   useEffect(() => {
     messagesEnd.current?.scrollIntoView({ behavior: "smooth" });
@@ -68,14 +90,15 @@ export default function ChatAssistant() {
   };
 
   const handleAsk = async () => {
-    if (!question.trim()) return;
+    if (!question.trim() || !canAsk) return;
     const q = question.trim();
     setQuestion("");
     setMessages((prev) => [...prev, { role: "user", content: q }]);
     setLoading(true);
 
     try {
-      const resp = await api.chat(q, selectedPolicy || undefined, conversationId);
+      const resp = await api.chat(q, selectedPolicy || undefined, conversationId,
+                                  hospital ? selectedPatient : undefined);
       setConversationId(resp.conversation_id || null);
       setMessages((prev) => [
         ...prev,
@@ -100,8 +123,30 @@ export default function ChatAssistant() {
     <div className="flex flex-col h-[calc(100vh-200px)]">
       <div className="flex items-center gap-3 mb-4">
         <h2 className="text-2xl font-bold">Ask a Question</h2>
+        {hospital && (
+          <select
+            aria-label="Patient"
+            value={selectedPatient}
+            onChange={(e) => {
+              // a conversation is about one patient
+              setSelectedPatient(e.target.value);
+              setSelectedPolicy("");
+              startNewConversation();
+            }}
+            className="border rounded px-3 py-1.5 text-sm"
+          >
+            <option value="">Choose a patient…</option>
+            {patients.map((p) => (
+              <option key={p.patient_id} value={p.patient_id}>
+                {p.name}{p.reference ? ` (${p.reference})` : ""}
+              </option>
+            ))}
+          </select>
+        )}
         <select
+          aria-label="Policy"
           value={selectedPolicy}
+          disabled={hospital && !selectedPatient}
           onChange={(e) => {
             // a conversation is scoped to one policy
             setSelectedPolicy(e.target.value);
@@ -109,10 +154,11 @@ export default function ChatAssistant() {
           }}
           className="border rounded px-3 py-1.5 text-sm"
         >
-          <option value="">All policies</option>
-          {policies.map((p) => (
-            <option key={p.document_id} value={p.document_id}>
-              {p.filename}
+          {hospital && <option value="">All of this patient's documents</option>}
+          {user?.role === "individual" && <option value="">All my documents</option>}
+          {policyChoices.map((o) => (
+            <option key={o.id} value={o.id}>
+              {o.label}
             </option>
           ))}
         </select>
@@ -129,7 +175,13 @@ export default function ChatAssistant() {
       </div>
 
       <div className="flex-1 overflow-y-auto bg-white rounded-lg shadow p-4 space-y-4">
-        {messages.length === 0 && (
+        {hospital && !selectedPatient && (
+          <p className="text-sm text-gray-500">
+            Choose a patient to ask about their coverage. Questions only ever search one
+            patient's documents.
+          </p>
+        )}
+        {messages.length === 0 && (!hospital || selectedPatient) && (
           <div className="text-gray-400 text-center py-12">
             <p className="text-4xl mb-3">💬</p>
             <p>Ask a question about your insurance policy.</p>
@@ -203,7 +255,7 @@ export default function ChatAssistant() {
         />
         <button
           onClick={handleAsk}
-          disabled={loading || !question.trim()}
+          disabled={loading || !question.trim() || !canAsk}
           className="bg-blue-600 text-white px-5 py-2 rounded-lg text-sm hover:bg-blue-700 disabled:opacity-50"
         >
           Ask

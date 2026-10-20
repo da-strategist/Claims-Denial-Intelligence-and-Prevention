@@ -12,12 +12,17 @@ from ..auth.sessions import (
     sessions,
     signed_in,
 )
-from ..auth.users import User, user_store
+from ..auth.users import Role, User, user_store
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 
 class LoginRequest(BaseModel):
+    username: str = Field(min_length=3, max_length=254)
+    password: str = Field(min_length=1, max_length=256)
+
+
+class Registration(BaseModel):
     username: str = Field(min_length=3, max_length=254)
     password: str = Field(min_length=1, max_length=256)
 
@@ -47,6 +52,21 @@ async def login(body: LoginRequest, request: Request, response: Response) -> dic
         # same message for unknown user and wrong password
         raise HTTPException(401, "Incorrect email or password")
     login_throttle.succeeded(username)
+    _set_cookie(response, sessions.start(user.username))
+    return user.public()
+
+
+@router.post("/register")
+async def register(body: Registration, request: Request, response: Response) -> dict:
+    """Self sign-up for individuals (hospital accounts are created by their
+    hospital admin). Signs the new user in."""
+    username = body.username.strip().lower()
+    request.state.audit_username = username
+    try:
+        user = user_store.create(username, body.password, Role.INDIVIDUAL,
+                                 must_change_password=False)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
     _set_cookie(response, sessions.start(user.username))
     return user.public()
 

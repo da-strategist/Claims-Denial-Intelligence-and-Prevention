@@ -5,13 +5,13 @@ import re
 import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, UploadFile
+from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request, UploadFile
 from fastapi import Path as PathParam
 
-from ..audit import audit_document
-from ..auth.access import accessible_ids, entry_or_404
+from ..audit import audit_document, audit_patient
+from ..auth.access import Access, entry_or_404
 from ..auth.sessions import Permission, require
-from ..auth.users import Role, User
+from ..auth.users import HOSPITAL_ROLES, Role, User
 from ..models.common import DISCLAIMER, DOCUMENT_ID_PATTERN
 from ..models.policy import (
     DocumentStatus,
@@ -46,10 +46,8 @@ _read = require(Permission.READ_POLICIES)
 
 @router.get("")
 async def list_policies(user: User = Depends(_read)) -> list[PolicyDocument]:
-    """The policy documents this user may see."""
-    entries = registry.load()
-    allowed = accessible_ids(user, entries)
-    return [PolicyDocument(**r) for r in entries if r["document_id"] in allowed]
+    """The policy documents this user may see (see auth/access.py)."""
+    return [PolicyDocument(**r) for r in Access(user).visible(registry.load())]
 
 
 @router.get("/{document_id}")
@@ -62,15 +60,27 @@ async def get_policy(document_id: str = DocumentIdParam,
 @router.post("/upload")
 async def upload_policy(
     file: UploadFile, request: Request,
+    patient_id: str | None = Form(None, pattern=DOCUMENT_ID_PATTERN),
     user: User = Depends(require(Permission.UPLOAD_POLICY)),
 ) -> DocumentUploadResponse:
     """Upload and process a PDF policy document.
 
-    A member's upload is private to them; an admin's upload is a staff plan
-    that can be assigned to members.
+    Individuals: private to them. Hospital staff: filed under one of their
+    hospital's patients (`patient_id` required). Platform admin: a sample.
     """
     if not file.filename or not file.filename.lower().endswith(".pdf"):
         raise HTTPException(400, "Only PDF files are accepted")
+    if user.role in HOSPITAL_ROLES:
+        if not patient_id:
+            raise HTTPException(400, "Choose the patient this policy belongs to")
+        Access(user).patient_or_404(patient_id)
+        ownership = {"org_id": user.org_id, "patient_id": patient_id}
+    elif patient_id:
+        raise HTTPException(400, "Only hospital staff file documents under a patient")
+    elif user.role is Role.INDIVIDUAL:
+        ownership = {"owner": user.username}
+    else:  # platform admin
+        ownership = {}
 
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     dest = UPLOAD_DIR / f"{uuid.uuid4().hex[:8]}_{_safe_filename(file.filename)}"
@@ -91,13 +101,13 @@ async def upload_policy(
         dest.unlink(missing_ok=True)
         raise
 
-    owner = None if user.role is Role.ADMIN else user.username
-    doc, chunks = process_document(dest, CHUNK_DIR, metadata={"owner": owner})
+    doc, chunks = process_document(dest, CHUNK_DIR, metadata=ownership)
 
     entries = registry.load()
     entries.append(doc.model_dump(mode="json"))
     registry.save(entries)
     audit_document(request, doc.document_id)
+    audit_patient(request, patient_id)
 
     return DocumentUploadResponse(
         document_id=doc.document_id,

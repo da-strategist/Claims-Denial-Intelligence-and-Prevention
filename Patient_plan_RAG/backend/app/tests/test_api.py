@@ -39,7 +39,7 @@ def test_startup_rebuild_reuses_document_id(data_dirs):
     for _ in range(2):
         (data_dirs["policies"] / "_registry.json").unlink(missing_ok=True)
         with TestClient(main.app) as c:
-            ids.append(sign_in(c, "admin@example.com", Role.ADMIN)
+            ids.append(sign_in(c, "admin@example.com", Role.PLATFORM_ADMIN)
                        .get("/api/policies").json()[0]["document_id"])
     assert ids[0] == ids[1]
     assert len(list(data_dirs["chunks"].iterdir())) == 1
@@ -132,9 +132,10 @@ def test_upload_unreadable_pdf_is_registered_as_failed(client):
 
 # ── Chat ─────────────────────────────────────────────────────────────
 
-def test_chat_answers_with_citations_from_registered_doc(client, doc_id):
+def test_chat_answers_with_citations_from_selected_doc(client, doc_id):
     body = client.post("/api/chat", json={
         "question": "Does my plan cover an MRI and is prior authorization required?",
+        "policy_id": doc_id,
     }).json()
     assert body["confidence"] == "supported"
     assert body["citations"]
@@ -145,10 +146,16 @@ def test_chat_answers_with_citations_from_registered_doc(client, doc_id):
     assert body["follow_up_suggestions"]
 
 
-def test_chat_ignores_orphaned_chunk_files(client, data_dirs, doc_id):
+def test_chat_ignores_orphaned_chunk_files(data_dirs, doc_id):
+    # an individual's no-policy search covers their own registered documents
+    # only; a stray chunk file on disk is never searched
     shutil.copy(data_dirs["chunks"] / f"{doc_id}.json", data_dirs["chunks"] / "orphan000000.json")
-    body = client.post("/api/chat", json={"question": "Is acupuncture covered?"}).json()
-    assert {c["document_id"] for c in body["citations"]} == {doc_id}
+    person = sign_in(TestClient(main.app), "p@example.com")
+    with POLICY_PDF.open("rb") as f:
+        own = person.post("/api/policies/upload",
+                          files={"file": ("mine.pdf", f, "application/pdf")}).json()["document_id"]
+    body = person.post("/api/chat", json={"question": "Is acupuncture covered?"}).json()
+    assert {c["document_id"] for c in body["citations"]} == {own}
 
 
 def test_chat_off_topic_returns_insufficient_evidence(client):

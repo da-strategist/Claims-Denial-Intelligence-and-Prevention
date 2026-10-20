@@ -1,10 +1,10 @@
 import React, { useEffect, useState } from "react";
 import { api } from "../services/api";
+import { usePolicyOptions } from "../hooks/usePolicyOptions";
 
 export default function PriorAuth() {
-  const [policies, setPolicies] = useState([]);
+  const { options, error: policyError } = usePolicyOptions();
   const [selectedPolicy, setSelectedPolicy] = useState("");
-  const [policyError, setPolicyError] = useState("");
   const [serviceName, setServiceName] = useState("");
   const [serviceCode, setServiceCode] = useState("");
   const [diagnosisCode, setDiagnosisCode] = useState("");
@@ -13,11 +13,8 @@ export default function PriorAuth() {
   const [items, setItems] = useState([]);
 
   useEffect(() => {
-    api.listPolicies().then((p) => {
-      setPolicies(p);
-      if (p.length > 0) setSelectedPolicy(p[0].document_id);
-    }).catch((e) => setPolicyError(e.message));
-  }, []);
+    if (!selectedPolicy && options.length > 0) setSelectedPolicy(options[0].id);
+  }, [options, selectedPolicy]);
 
   const handleGenerate = async () => {
     if (!serviceName.trim() || !selectedPolicy) return;
@@ -66,9 +63,9 @@ export default function PriorAuth() {
               onChange={(e) => setSelectedPolicy(e.target.value)}
               className="w-full border rounded px-3 py-2 text-sm"
             >
-              {policies.map((p) => (
-                <option key={p.document_id} value={p.document_id}>
-                  {p.filename}
+              {options.map((o) => (
+                <option key={o.id} value={o.id}>
+                  {o.label}
                 </option>
               ))}
             </select>

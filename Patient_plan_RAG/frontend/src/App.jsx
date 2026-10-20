@@ -10,14 +10,48 @@ import PolicyViewer from "./pages/PolicyViewer";
 import ChatAssistant from "./pages/ChatAssistant";
 import CoverageAssessment from "./pages/CoverageAssessment";
 import PriorAuth from "./pages/PriorAuth";
+import Patients from "./pages/Patients";
+import SharedWithUs from "./pages/SharedWithUs";
+import Staff from "./pages/Staff";
 
-const NAV = [
-  { path: "/", label: "Dashboard", icon: "📊" },
-  { path: "/policies", label: "Policies", icon: "📋" },
+const ASK = [
   { path: "/chat", label: "Ask a Question", icon: "💬" },
   { path: "/coverage", label: "Coverage Check", icon: "🔍" },
   { path: "/auth", label: "Prior Auth", icon: "📝" },
 ];
+
+/** Navigation for each kind of account. */
+const NAV = {
+  individual: [
+    { path: "/", label: "Dashboard", icon: "📊" },
+    { path: "/policies", label: "My Policies", icon: "📋" },
+    ...ASK,
+  ],
+  hospital_staff: [
+    { path: "/patients", label: "Patients", icon: "🏥" },
+    { path: "/shared", label: "Shared with us", icon: "📨" },
+    ...ASK,
+  ],
+  hospital_admin: [
+    { path: "/patients", label: "Patients", icon: "🏥" },
+    { path: "/shared", label: "Shared with us", icon: "📨" },
+    ...ASK,
+    { path: "/staff", label: "Staff", icon: "👥" },
+  ],
+  platform_admin: [
+    { path: "/", label: "Dashboard", icon: "📊" },
+    { path: "/admin", label: "Hospitals & Accounts", icon: "🏛️" },
+    { path: "/policies", label: "Sample Policies", icon: "📋" },
+    { path: "/chat", label: "Ask a Question", icon: "💬" },
+  ],
+};
+
+const ACCOUNT_LABELS = {
+  individual: "Personal account",
+  hospital_staff: "Hospital staff",
+  hospital_admin: "Hospital admin",
+  platform_admin: "Platform admin",
+};
 
 export function Disclaimer() {
   return (
@@ -33,7 +67,7 @@ export function Disclaimer() {
 function UserMenu({ user, onSignOut }) {
   return (
     <div className="flex items-center gap-3 text-sm">
-      <span className="opacity-90" title={user.role === "admin" ? "Staff account" : "Member account"}>
+      <span className="opacity-90" title={ACCOUNT_LABELS[user.role]}>
         {user.username}
       </span>
       <button onClick={() => navigate("/account/password")} className="hover:underline opacity-90">
@@ -66,16 +100,22 @@ export default function App() {
   if (!user) return <Shell><SignIn /></Shell>;
   if (user.must_change_password) return <Shell><ChangePassword forced /></Shell>;
 
-  const isAdmin = user.role === "admin";
-  const nav = isAdmin ? [...NAV, { path: "/admin", label: "Admin", icon: "👥" }] : NAV;
+  const nav = NAV[user.role] || [];
+  const allowed = (prefix) => nav.some((n) => n.path === prefix);
+  const denied = <p role="alert">Not permitted.</p>;
 
   const page = (() => {
     if (path.startsWith("/policies")) return <PolicyViewer />;
-    if (path === "/chat") return <ChatAssistant />;
+    if (path.startsWith("/chat")) return <ChatAssistant />;
     if (path === "/coverage") return <CoverageAssessment />;
     if (path === "/auth") return <PriorAuth />;
     if (path === "/account/password") return <ChangePassword />;
-    if (path === "/admin") return isAdmin ? <Admin /> : <p role="alert">Not permitted.</p>;
+    if (path.startsWith("/patients")) return allowed("/patients") ? <Patients /> : denied;
+    if (path === "/shared") return allowed("/shared") ? <SharedWithUs /> : denied;
+    if (path === "/staff") return allowed("/staff") ? <Staff /> : denied;
+    if (path === "/admin") return allowed("/admin") ? <Admin /> : denied;
+    // hospital accounts start on their patient list
+    if (!allowed("/")) return <Patients />;
     return <Dashboard />;
   })();
 

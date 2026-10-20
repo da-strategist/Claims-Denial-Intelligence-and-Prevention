@@ -15,7 +15,7 @@ from backend.app import audit, main, rate_limit
 from backend.app.auth import sessions as auth_sessions
 from backend.app.auth.users import Role, user_store
 from backend.app.routers import chat, coverage, policies
-from backend.app.services import registry, retrieval
+from backend.app.services import records, registry, retrieval
 from backend.app.services.conversations import store as conversation_store
 from backend.app.services.document_processor import chunk_text, extract_text_from_pdf
 
@@ -49,6 +49,9 @@ def data_dirs(tmp_path, monkeypatch):
         pytest.skip("synthetic policy PDF missing")
     dirs = {name: tmp_path / name for name in ("policies", "chunks", "uploads")}
     monkeypatch.setattr(user_store, "path", tmp_path / "users.json")
+    for store, name in ((records.orgs, "orgs"), (records.patients, "patients"),
+                        (records.shares, "shares")):
+        monkeypatch.setattr(store, "path", tmp_path / f"{name}.json")
     auth_sessions.sessions.reset()
     auth_sessions.login_throttle.reset()
     for d in dirs.values():
@@ -76,11 +79,11 @@ def data_dirs(tmp_path, monkeypatch):
 TEST_PASSWORD = "test password 123"
 
 
-def sign_in(client: TestClient, username: str, role: Role = Role.MEMBER,
-            plan_ids: list[str] | None = None) -> TestClient:
+def sign_in(client: TestClient, username: str, role: Role = Role.INDIVIDUAL,
+            org_id: str | None = None) -> TestClient:
     """Create an account (password already changed) and sign `client` in."""
     if user_store.get(username) is None:
-        user_store.create(username, TEST_PASSWORD, role, plan_ids, must_change_password=False)
+        user_store.create(username, TEST_PASSWORD, role, org_id, must_change_password=False)
     resp = client.post("/api/auth/login", json={"username": username, "password": TEST_PASSWORD})
     assert resp.status_code == 200, resp.text
     return client
@@ -95,9 +98,10 @@ def anon_client(data_dirs):
 
 @pytest.fixture
 def client(data_dirs):
-    """Signed in as an admin (sees every document)."""
+    """Signed in as the platform admin (sees sample documents, e.g. the
+    preloaded synthetic policy, and its own uploads, which are samples)."""
     with TestClient(main.app) as c:
-        yield sign_in(c, "admin@example.com", Role.ADMIN)
+        yield sign_in(c, "admin@example.com", Role.PLATFORM_ADMIN)
 
 
 @pytest.fixture

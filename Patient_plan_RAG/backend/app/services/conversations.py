@@ -30,6 +30,7 @@ class Conversation:
     id: str
     policy_id: str | None
     owner: str | None = None
+    patient_id: str | None = None
     turns: list[Turn] = field(default_factory=list)
     updated: float = field(default_factory=lambda: time.monotonic())
 
@@ -48,19 +49,22 @@ class ConversationStore:
             del self._items[cid]
 
     def get_or_create(self, conversation_id: str | None, policy_id: str | None,
-                      owner: str | None = None) -> Conversation:
+                      owner: str | None = None, patient_id: str | None = None) -> Conversation:
         """The live conversation for this ID, else a new one with a fresh ID.
 
         A conversation belongs to the user who started it (someone else's ID
-        starts a new conversation) and stays scoped to one policy: switching
-        policy starts a new conversation rather than mixing two plans.
+        starts a new conversation) and stays scoped to one policy and one
+        patient: switching either starts a new conversation rather than
+        mixing two plans or two patients.
         """
         self._expire()
         conv = self._items.get(conversation_id or "")
-        if conv and conv.owner == owner and (policy_id is None or policy_id == conv.policy_id):
+        if (conv and conv.owner == owner and conv.patient_id == patient_id
+                and (policy_id is None or policy_id == conv.policy_id)):
             self._items.move_to_end(conv.id)
             return conv
-        conv = Conversation(id=uuid.uuid4().hex[:12], policy_id=policy_id, owner=owner)
+        conv = Conversation(id=uuid.uuid4().hex[:12], policy_id=policy_id, owner=owner,
+                            patient_id=patient_id)
         self._items[conv.id] = conv
         while len(self._items) > self.max_conversations:
             self._items.popitem(last=False)

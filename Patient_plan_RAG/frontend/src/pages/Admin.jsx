@@ -1,59 +1,29 @@
 import React, { useEffect, useState } from "react";
 import { api } from "../services/api";
 import { useAuth } from "../auth/AuthContext";
+import TemporaryPassword from "../components/TemporaryPassword";
 
-/** One-time display of a temporary password. */
-function TemporaryPassword({ username, password, onDismiss }) {
-  return (
-    <div role="status" className="bg-amber-50 border border-amber-300 rounded p-4 mb-4 text-sm">
-      <p className="font-semibold">Temporary password for {username}</p>
-      <p className="font-mono text-base my-2 select-all">{password}</p>
-      <p className="text-gray-600">
-        Shown once. Give it to the member securely; they must change it at sign-in.
-      </p>
-      <button onClick={onDismiss} className="mt-2 text-blue-700 hover:underline">
-        Done
-      </button>
-    </div>
-  );
-}
+const ROLE_LABELS = {
+  individual: "Individual",
+  hospital_staff: "Hospital staff",
+  hospital_admin: "Hospital admin",
+  platform_admin: "Platform admin",
+};
 
-function PlanPicker({ plans, selected, onChange }) {
-  if (plans.length === 0) return <p className="text-xs text-gray-500">No staff plans uploaded yet.</p>;
-  return (
-    <div className="flex flex-wrap gap-3">
-      {plans.map((p) => (
-        <label key={p.document_id} className="text-xs flex items-center gap-1">
-          <input
-            type="checkbox"
-            checked={selected.includes(p.document_id)}
-            onChange={(e) =>
-              onChange(e.target.checked
-                ? [...selected, p.document_id]
-                : selected.filter((id) => id !== p.document_id))
-            }
-          />
-          {p.plan_name || p.filename}
-        </label>
-      ))}
-    </div>
-  );
-}
-
+/** Platform admin: onboard hospitals, manage accounts. No access to anyone's policies. */
 export default function Admin() {
   const { user } = useAuth();
+  const [orgs, setOrgs] = useState([]);
   const [users, setUsers] = useState([]);
-  const [plans, setPlans] = useState([]);
   const [error, setError] = useState("");
   const [temp, setTemp] = useState(null);
-  const [form, setForm] = useState({ username: "", role: "member", planIds: [] });
-  const [editing, setEditing] = useState(null); // {username, planIds}
+  const [form, setForm] = useState({ name: "", adminUsername: "" });
 
   const load = () =>
-    Promise.all([api.listUsers(), api.listPolicies()])
-      .then(([u, p]) => {
+    Promise.all([api.listOrgs(), api.listUsers()])
+      .then(([o, u]) => {
+        setOrgs(o);
         setUsers(u);
-        setPlans(p.filter((d) => !d.owner)); // staff plans only
       })
       .catch((e) => setError(e.message));
   useEffect(() => { load(); }, []);
@@ -68,111 +38,98 @@ export default function Admin() {
     }
   };
 
-  const create = (e) => {
+  const createOrg = (e) => {
     e.preventDefault();
     act(async () => {
-      const r = await api.createUser(form.username.trim(), form.role, form.planIds);
-      setTemp({ username: r.username, password: r.temporary_password });
-      setForm({ username: "", role: "member", planIds: [] });
+      const r = await api.createOrg(form.name.trim(), form.adminUsername.trim());
+      setTemp({ username: r.admin_username, password: r.temporary_password });
+      setForm({ name: "", adminUsername: "" });
     });
-  };
-
-  const planName = (id) => {
-    const p = plans.find((d) => d.document_id === id);
-    return p ? p.plan_name || p.filename : id;
   };
 
   return (
     <div className="space-y-6">
-      <h2 className="text-2xl font-bold">Members & plans</h2>
+      <h2 className="text-2xl font-bold">Hospitals & accounts</h2>
+      <p className="text-sm text-gray-600">
+        Add a hospital and its first hospital admin; they manage their own staff and patients.
+        Platform admins never see individuals' or patients' policy documents.
+      </p>
       {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
       {temp && <TemporaryPassword {...temp} onDismiss={() => setTemp(null)} />}
 
-      <form onSubmit={create} className="bg-white rounded-lg shadow p-5 space-y-3">
-        <h3 className="font-semibold">Add an account</h3>
-        <div className="flex flex-wrap gap-3 items-end">
-          <label className="text-sm">
-            <span className="block text-gray-700">Email</span>
-            <input
-              type="email"
-              required
-              maxLength={254}
-              value={form.username}
-              onChange={(e) => setForm({ ...form, username: e.target.value })}
-              className="border rounded px-3 py-1.5"
-            />
-          </label>
-          <label className="text-sm">
-            <span className="block text-gray-700">Role</span>
-            <select
-              value={form.role}
-              onChange={(e) => setForm({ ...form, role: e.target.value })}
-              className="border rounded px-3 py-1.5"
-            >
-              <option value="member">Member (policyholder)</option>
-              <option value="admin">Admin (staff)</option>
-            </select>
-          </label>
-          <button type="submit" className="bg-blue-600 text-white px-4 py-1.5 rounded text-sm hover:bg-blue-700">
-            Create
-          </button>
-        </div>
-        {form.role === "member" && (
-          <div>
-            <p className="text-sm text-gray-700 mb-1">Plans this member can see</p>
-            <PlanPicker plans={plans} selected={form.planIds}
-                        onChange={(planIds) => setForm({ ...form, planIds })} />
-          </div>
-        )}
+      <form onSubmit={createOrg} className="bg-white rounded-lg shadow p-5 flex flex-wrap gap-3 items-end">
+        <label className="text-sm">
+          <span className="block text-gray-700">Hospital name</span>
+          <input required maxLength={200} value={form.name}
+                 onChange={(e) => setForm({ ...form, name: e.target.value })}
+                 className="border rounded px-3 py-1.5" />
+        </label>
+        <label className="text-sm">
+          <span className="block text-gray-700">Hospital admin email</span>
+          <input type="email" required maxLength={254} value={form.adminUsername}
+                 onChange={(e) => setForm({ ...form, adminUsername: e.target.value })}
+                 className="border rounded px-3 py-1.5" />
+        </label>
+        <button type="submit" className="bg-blue-600 text-white px-4 py-1.5 rounded text-sm hover:bg-blue-700">
+          Add hospital
+        </button>
       </form>
 
-      <div className="bg-white rounded-lg shadow">
+      <section className="bg-white rounded-lg shadow">
+        <h3 className="font-semibold p-4 border-b">Hospitals</h3>
+        {orgs.length === 0 ? (
+          <p className="p-4 text-sm text-gray-500">No hospitals yet.</p>
+        ) : (
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b text-left text-gray-500">
+                <th className="p-3">Name</th>
+                <th>Staff</th>
+                <th>Patients</th>
+                <th>Status</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {orgs.map((o) => (
+                <tr key={o.org_id} className="border-b">
+                  <td className="p-3">{o.name}</td>
+                  <td>{o.staff_count}</td>
+                  <td>{o.patient_count}</td>
+                  <td>{o.disabled ? "Disabled" : "Active"}</td>
+                  <td className="text-xs pr-3">
+                    <button onClick={() => act(() => api.updateOrg(o.org_id, { disabled: !o.disabled }))}
+                            className="text-red-700 hover:underline">
+                      {o.disabled ? "Enable" : "Disable"}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </section>
+
+      <section className="bg-white rounded-lg shadow">
+        <h3 className="font-semibold p-4 border-b">Accounts</h3>
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b text-left text-gray-500">
               <th className="p-3">Email</th>
-              <th>Role</th>
-              <th>Plans</th>
+              <th>Type</th>
+              <th>Hospital</th>
               <th>Status</th>
               <th></th>
             </tr>
           </thead>
           <tbody>
             {users.map((u) => (
-              <tr key={u.username} className="border-b align-top">
+              <tr key={u.username} className="border-b">
                 <td className="p-3">{u.username}</td>
-                <td className="capitalize">{u.role}</td>
-                <td className="py-3 pr-3">
-                  {editing?.username === u.username ? (
-                    <div className="space-y-2">
-                      <PlanPicker plans={plans} selected={editing.planIds}
-                                  onChange={(planIds) => setEditing({ ...editing, planIds })} />
-                      <button
-                        onClick={() => act(async () => {
-                          await api.updateUser(u.username, { plan_ids: editing.planIds });
-                          setEditing(null);
-                        })}
-                        className="text-blue-700 text-xs hover:underline"
-                      >
-                        Save plans
-                      </button>
-                    </div>
-                  ) : u.role === "admin" ? (
-                    <span className="text-gray-400">All</span>
-                  ) : (
-                    u.plan_ids.map(planName).join(", ") || <span className="text-gray-400">None</span>
-                  )}
-                </td>
-                <td>
-                  {u.disabled ? "Disabled" : u.must_change_password ? "Awaiting first sign-in" : "Active"}
-                </td>
+                <td>{ROLE_LABELS[u.role] || u.role}</td>
+                <td>{u.org_name || "—"}</td>
+                <td>{u.disabled ? "Disabled" : u.must_change_password ? "Awaiting first sign-in" : "Active"}</td>
                 <td className="text-xs space-x-3 whitespace-nowrap pr-3">
-                  {u.role === "member" && editing?.username !== u.username && (
-                    <button onClick={() => setEditing({ username: u.username, planIds: u.plan_ids })}
-                            className="text-blue-700 hover:underline">
-                      Edit plans
-                    </button>
-                  )}
                   <button
                     onClick={() => act(async () => {
                       const r = await api.resetPassword(u.username);
@@ -183,10 +140,8 @@ export default function Admin() {
                     Reset password
                   </button>
                   {u.username !== user.username && (
-                    <button
-                      onClick={() => act(() => api.updateUser(u.username, { disabled: !u.disabled }))}
-                      className="text-red-700 hover:underline"
-                    >
+                    <button onClick={() => act(() => api.updateUser(u.username, { disabled: !u.disabled }))}
+                            className="text-red-700 hover:underline">
                       {u.disabled ? "Enable" : "Disable"}
                     </button>
                   )}
@@ -195,7 +150,7 @@ export default function Admin() {
             ))}
           </tbody>
         </table>
-      </div>
+      </section>
     </div>
   );
 }

@@ -4,11 +4,11 @@ import os
 
 from fastapi import APIRouter, Depends
 
-from ..auth.access import can_access
+from ..auth.access import Access
 from ..auth.sessions import Permission, require
-from ..auth.users import User
+from ..auth.users import HOSPITAL_ROLES, User
 from ..models.common import DISCLAIMER
-from ..services import registry
+from ..services import records, registry
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
@@ -17,7 +17,7 @@ router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 @router.get("")
 async def dashboard_stats(user: User = Depends(require(Permission.VIEW_DASHBOARD))):
     """Summary stats over the policies this user may see."""
-    policies = [p for p in registry.load() if can_access(user, p)]
+    policies = Access(user).visible(registry.load())
 
     total_chunks = 0
     total_pages = 0
@@ -30,6 +30,8 @@ async def dashboard_stats(user: User = Depends(require(Permission.VIEW_DASHBOARD
         "total_pages": total_pages,
         "total_chunks": total_chunks,
         "mode": os.getenv("APP_MODE", "demo"),
+        "patient_count": (sum(1 for p in records.patients.all() if p.org_id == user.org_id)
+                          if user.role in HOSPITAL_ROLES else None),
         "disclaimer": DISCLAIMER,
         "policies": [
             {

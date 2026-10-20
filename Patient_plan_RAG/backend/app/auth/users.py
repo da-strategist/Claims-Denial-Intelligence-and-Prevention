@@ -10,7 +10,7 @@ import hmac
 import json
 import os
 import secrets
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, fields
 from datetime import UTC, datetime
 from enum import Enum
 from pathlib import Path
@@ -25,8 +25,15 @@ _SCRYPT_N, _SCRYPT_R, _SCRYPT_P = 2 ** 14, 8, 1
 
 
 class Role(str, Enum):
-    MEMBER = "member"   # policyholder: sees only their own plans and uploads
-    ADMIN = "admin"     # insurer staff: manages plans and member accounts
+    INDIVIDUAL = "individual"          # self-registered policyholder: own documents only
+    HOSPITAL_STAFF = "hospital_staff"  # sees their hospital's patients + policies shared with it
+    HOSPITAL_ADMIN = "hospital_admin"  # hospital staff who also manage that hospital's staff
+    PLATFORM_ADMIN = "platform_admin"  # operator: hospitals and accounts, no patient documents
+
+
+HOSPITAL_ROLES = frozenset({Role.HOSPITAL_STAFF, Role.HOSPITAL_ADMIN})
+# Roles stored before Phase F (insurer model)
+_LEGACY_ROLES = {"member": Role.INDIVIDUAL, "admin": Role.PLATFORM_ADMIN}
 
 
 def hash_password(password: str) -> str:
@@ -65,7 +72,7 @@ class User:
     username: str  # email address, lowercased
     role: Role
     password_hash: str = ""
-    plan_ids: list[str] = field(default_factory=list)  # staff-assigned plans (members)
+    org_id: str | None = None  # hospital organisation (hospital roles only)
     must_change_password: bool = False
     disabled: bool = False
     created_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
@@ -75,7 +82,7 @@ class User:
         return {
             "username": self.username,
             "role": self.role.value,
-            "plan_ids": list(self.plan_ids),
+            "org_id": self.org_id,
             "must_change_password": self.must_change_password,
             "disabled": self.disabled,
         }
@@ -89,8 +96,13 @@ class UserStore:
     def _load(self) -> dict[str, User]:
         if not self.path.exists():
             return {}
-        raw = json.loads(self.path.read_text())
-        return {u["username"]: User(**{**u, "role": Role(u["role"])}) for u in raw}
+        known = {f.name for f in fields(User)}
+        users = {}
+        for raw in json.loads(self.path.read_text()):
+            role = _LEGACY_ROLES.get(raw["role"]) or Role(raw["role"])
+            kept = {k: v for k, v in raw.items() if k in known}  # drops e.g. old plan_ids
+            users[raw["username"]] = User(**{**kept, "role": role})
+        return users
 
     def _save(self, users: dict[str, User]) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -114,7 +126,7 @@ class UserStore:
         return user if verify_password(password, user.password_hash) else None
 
     def create(self, username: str, password: str, role: Role,
-               plan_ids: list[str] | None = None, must_change_password: bool = True) -> User:
+               org_id: str | None = None, must_change_password: bool = True) -> User:
         username = username.strip().lower()
         if "@" not in username:
             raise ValueError("Username must be an email address.")
@@ -123,9 +135,10 @@ class UserStore:
         with self._lock:
             users = self._load()
             if username in users:
-                raise ValueError(f"User {username} already exists.")
-            user = User(username, role, hash_password(password), list(plan_ids or []),
-                        must_change_password)
+                raise ValueError(f"An account for {username} already exists.")
+            if (role in HOSPITAL_ROLES) != bool(org_id):
+                raise ValueError("Hospital accounts need an organisation; others must not have one.")
+            user = User(username, role, hash_password(password), org_id, must_change_password)
             users[username] = user
             self._save(users)
         return user
@@ -143,7 +156,7 @@ class UserStore:
                     raise ValueError(problem)
                 user.password_hash = hash_password(password)
             for key, value in changes.items():
-                if key not in {"role", "plan_ids", "must_change_password", "disabled"}:
+                if key not in {"role", "org_id", "must_change_password", "disabled"}:
                     raise ValueError(f"Cannot change {key}")
                 setattr(user, key, value)
             self._save(users)

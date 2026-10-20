@@ -13,10 +13,11 @@ coverage, reimbursement, or authorization approval.**
 Patient_plan_RAG/
 ├── backend/app/         # Python FastAPI (port 8001)
 │   ├── main.py          # Entry point, lifespan, middleware, router registration
-│   ├── auth/            # users (scrypt), sessions + permissions, access rules
+│   ├── auth/            # users (scrypt), sessions + permissions, access rules (Access)
 │   ├── users.py         # account CLI (python -m backend.app.users)
 │   ├── models/          # Pydantic models (policy, coverage, chat)
-│   ├── routers/         # API routes (auth, admin, policies, chat, coverage, dashboard)
+│   ├── routers/         # auth, admin (hospitals/accounts), hospital (staff/patients/
+│   │                      shared), shares, policies, chat, coverage, dashboard
 │   └── services/        # Business logic
 │       ├── document_processor.py  # PDF extraction → text chunking
 │       ├── retrieval.py           # Keyword/hybrid chunk retrieval
@@ -27,9 +28,10 @@ Patient_plan_RAG/
 │       ├── App.jsx      # Hash-based routing, nav, disclaimer
 │       ├── auth/        # AuthContext (session state, 401 → sign-in)
 │       ├── components/  # ErrorBoundary (per-page + app-level)
+│       ├── hooks/       # usePolicyOptions (role-aware document pickers)
 │       ├── pages/       # Dashboard, PolicyViewer, ChatAssistant,
-│       │                  CoverageAssessment, PriorAuth, SignIn,
-│       │                  ChangePassword, Admin
+│       │                  CoverageAssessment, PriorAuth, SignIn (+ sign-up),
+│       │                  ChangePassword, Admin, Patients, SharedWithUs, Staff
 │       └── services/api.js  # Fetch wrapper for all API calls
 ├── synthetic_data/      # Policy PDF generator: render.py + policies/*.py specs
 ├── data/                # Runtime data (gitignored except policies/)
@@ -63,7 +65,7 @@ python -m synthetic_data.generate_policy
 uvicorn backend.app.main:app --reload --port 8001 --env-file .env
 
 # Create the first admin (prints a temporary password once; change it at sign-in)
-python -m backend.app.users add you@example.com --role admin
+python -m backend.app.users add you@example.com --role platform_admin
 
 # Run the tests (includes the multi-policy eval as a regression gate)
 python -m pytest
@@ -117,13 +119,28 @@ The Vite dev server proxies `/api` to the backend on port 8001.
    itself. Never remove these.
 
 ## API Endpoints
-Every route except health, login and logout requires a signed-in session
-(`require(Permission.X)` in `backend/app/auth/sessions.py`). Members see only
-their assigned plans and their own uploads; others' documents return 404.
-- `POST /api/auth/login` · `POST /api/auth/logout` · `GET /api/auth/me` ·
-  `POST /api/auth/password` — session cookie sign-in
-- `GET/POST /api/admin/users` · `PATCH /api/admin/users/{username}` ·
-  `POST /api/admin/users/{username}/reset-password` — admins only
+Every route except health, login, logout and register requires a signed-in
+session (`require(Permission.X)` in `backend/app/auth/sessions.py`). What a
+user sees is decided by `Access` in `backend/app/auth/access.py`; documents
+they may not see return 404.
+
+Roles: **individual** (self sign-up; own documents, can share with a
+hospital), **hospital_staff** / **hospital_admin** (one hospital's patients
+and shared policies; admins manage staff), **platform_admin** (hospitals and
+accounts; sample policies only, never anyone's documents).
+- `POST /api/auth/register` · `POST /api/auth/login` · `POST /api/auth/logout`
+  · `GET /api/auth/me` · `POST /api/auth/password`
+- Platform admin: `GET/POST /api/admin/orgs` · `PATCH /api/admin/orgs/{id}` ·
+  `GET /api/admin/users` · `PATCH /api/admin/users/{username}` ·
+  `POST /api/admin/users/{username}/reset-password`
+- Hospital: `GET/POST /api/hospital/patients` · `GET /api/hospital/patients/{id}`
+  · `GET /api/hospital/shared` · `PATCH /api/hospital/shared/{share_id}` ·
+  staff (hospital admins): `GET/POST /api/hospital/staff`,
+  `PATCH /api/hospital/staff/{username}`, `POST .../reset-password`
+- Individuals: `GET /api/shares/hospitals` · `GET/POST /api/shares` ·
+  `DELETE /api/shares/{share_id}`
+- `POST /api/policies/upload` takes `patient_id` (form field) for hospital staff;
+  `POST /api/chat` takes `patient_id` (required for hospital staff)
 - `GET  /api/health` — Health check + mode
 - `GET  /api/dashboard` — Stats and policy list
 - `GET  /api/policies` — List ingested policies
@@ -266,13 +283,60 @@ members by staff, and members may also upload private policy documents.
    chat shows where questions go and that conversations are kept ≤ 1 h.
    Tests write to a temp audit file (autouse fixture). 249 backend tests.
 
+### Phase F: Individuals and hospitals — done
+Phase E modelled an insurer (staff create members, assign plans). The
+platform is for (user, 2026-10-20):
+- **Individuals** — self sign-up, upload their own policies (private), ask
+  about them, and may share a policy with a hospital (and revoke it).
+- **Hospitals** — organisations with staff. Staff create patient records,
+  upload each patient's policy documents, see policies patients shared with
+  their hospital, and chat about one patient's coverage at a time. A
+  hospital admin manages that hospital's staff. Hospitals never see another
+  hospital's patients.
+- **Platform admin** (the former `admin`) — creates hospital organisations
+  and their first hospital admin; manages accounts; uploads sample policies.
+  Sees no individual's or patient's documents.
+- The 4 synthetic policies become **sample policies**: readable by every
+  signed-in user, labelled synthetic, only searched when selected.
+
+1. [x] **F1 Model and access rules** — roles individual / hospital_staff /
+       hospital_admin / platform_admin (legacy member/admin mapped);
+       organisations, patient records, shares stored as JSON; documents
+       owned by an individual, by a hospital patient record, or a sample;
+       `can_access` rewritten; chat without a document is limited to the
+       individual's own documents, and hospital chat requires a patient.
+2. [x] **F2 API** — self sign-up; platform admin: organisations + first
+       hospital admin; hospital admin: staff; hospital staff: patients and
+       patient uploads; individuals: share/unshare with a hospital, hospital
+       directory; audit records patient_id.
+3. [x] **F3 Frontend** — sign-up on the sign-in page; role-specific
+       navigation (individual: my policies + sharing; hospital: patients,
+       patient detail, shared with us, staff page for hospital admins;
+       platform admin: hospitals, accounts, samples); chat/coverage pickers
+       scoped by role (hospital picks a patient first).
+4. [x] **F4 Verify** — tests for every access rule across roles and
+       hospitals, end-to-end check on a scratch backend; migrate the existing
+       admin account to platform_admin.
+   Done: `auth/access.py` (Access: samples / individual-owned / hospital
+   patient documents / shares), `services/records.py` (orgs, patients,
+   shares), routers `hospital.py` + `shares.py`, `admin.py` rewritten,
+   `/api/auth/register`. Frontend: role navigation, `Patients`,
+   `SharedWithUs`, `Staff`, `Admin` (hospitals & accounts), share panel,
+   sign-up, `usePolicyOptions`. 262 backend + 47 frontend tests;
+   end-to-end check across all four roles on a scratch backend. Existing
+   `admin` accounts load as `platform_admin` (no file migration needed).
+
 ### Open before real (non-synthetic) use
 - HTTPS + `COOKIE_SECURE=true`; sessions, rate limits and conversations are
   in-memory per process (move to a shared store before multiple workers).
 - Audit log rotation/retention and off-host copies; uvicorn access logs
   include admin URLs with member emails.
-- Insurer SSO (OIDC) provider; self-service password reset (today staff
-  reset passwords); member identity verification at enrolment.
+- SSO (OIDC) for hospitals; self-service password reset and email
+  verification for self-registered individuals (no email service yet);
+  identity verification before an individual can share with a hospital.
+- Patient records (names, MRN, dates of birth) and documents are stored
+  unencrypted in data/ — add encryption at rest (claim_validation_tool has
+  a pattern) before real patient data.
 - BAA with Anthropic before live mode handles real member questions;
   privacy notice/consent wording reviewed by the plan's compliance team.
 4. [x] **E4 Frontend** — sign-in page, session-aware app shell (user menu,

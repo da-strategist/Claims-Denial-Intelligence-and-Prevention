@@ -19,6 +19,7 @@ from typing import Protocol
 
 from fastapi import Depends, HTTPException, Request
 
+from ..services import records
 from .users import Role, User, user_store
 
 SESSION_COOKIE = "ppr_session"
@@ -125,17 +126,24 @@ login_throttle = LoginThrottle()
 # ── Permissions ──────────────────────────────────────────────────────
 
 class Permission(str, Enum):
-    READ_POLICIES = "read_policies"      # list/view the plans you may access
+    READ_POLICIES = "read_policies"      # view documents you may access (auth/access.py)
     ASK = "ask"                          # chat and coverage questions
-    UPLOAD_POLICY = "upload_policy"      # members: private; admins: staff plans
+    UPLOAD_POLICY = "upload_policy"      # individuals: own; hospitals: to a patient; admin: samples
     VIEW_DASHBOARD = "view_dashboard"
-    MANAGE_USERS = "manage_users"        # create accounts, assign plans
+    SHARE_POLICIES = "share_policies"    # individuals share their documents with a hospital
+    MANAGE_PATIENTS = "manage_patients"  # hospital patient records
+    MANAGE_STAFF = "manage_staff"        # hospital admins: their hospital's staff
+    MANAGE_ORGS = "manage_orgs"          # platform admin: hospital organisations
+    MANAGE_USERS = "manage_users"        # platform admin: all accounts
 
 
+_COMMON = {Permission.READ_POLICIES, Permission.ASK, Permission.UPLOAD_POLICY,
+           Permission.VIEW_DASHBOARD}
 ROLE_PERMISSIONS: dict[Role, set[Permission]] = {
-    Role.MEMBER: {Permission.READ_POLICIES, Permission.ASK, Permission.UPLOAD_POLICY,
-                  Permission.VIEW_DASHBOARD},
-    Role.ADMIN: set(Permission),
+    Role.INDIVIDUAL: _COMMON | {Permission.SHARE_POLICIES},
+    Role.HOSPITAL_STAFF: _COMMON | {Permission.MANAGE_PATIENTS},
+    Role.HOSPITAL_ADMIN: _COMMON | {Permission.MANAGE_PATIENTS, Permission.MANAGE_STAFF},
+    Role.PLATFORM_ADMIN: _COMMON | {Permission.MANAGE_ORGS, Permission.MANAGE_USERS},
 }
 
 
@@ -144,6 +152,10 @@ def current_user(request: Request) -> User:
     token = request.cookies.get(SESSION_COOKIE)
     session = sessions.touch(token) if token else None
     user = user_store.get(session.username) if session else None
+    if user is not None and user.org_id:  # a disabled hospital disables its staff
+        org = records.orgs.get(user.org_id)
+        if org is None or org.disabled:
+            user = None
     if user is None or user.disabled:
         if token:
             sessions.end(token)

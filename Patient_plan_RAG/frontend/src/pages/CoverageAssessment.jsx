@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { api } from "../services/api";
+import { usePolicyOptions } from "../hooks/usePolicyOptions";
 
 const CLASSIFICATION_STYLES = {
   coverage_indicated: { bg: "bg-green-100", text: "text-green-800", label: "Coverage Indicated" },
@@ -10,20 +11,16 @@ const CLASSIFICATION_STYLES = {
 };
 
 export default function CoverageAssessment() {
-  const [policies, setPolicies] = useState([]);
+  const { options, error: policyError } = usePolicyOptions();
   const [selectedPolicy, setSelectedPolicy] = useState("");
-  const [policyError, setPolicyError] = useState("");
   const [serviceName, setServiceName] = useState("");
   const [serviceCode, setServiceCode] = useState("");
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    api.listPolicies().then((p) => {
-      setPolicies(p);
-      if (p.length > 0) setSelectedPolicy(p[0].document_id);
-    }).catch((e) => setPolicyError(e.message));
-  }, []);
+    if (!selectedPolicy && options.length > 0) setSelectedPolicy(options[0].id);
+  }, [options, selectedPolicy]);
 
   const handleCheck = async () => {
     if (!serviceName.trim() || !selectedPolicy) return;
@@ -58,9 +55,9 @@ export default function CoverageAssessment() {
               onChange={(e) => setSelectedPolicy(e.target.value)}
               className="w-full border rounded px-3 py-2 text-sm"
             >
-              {policies.map((p) => (
-                <option key={p.document_id} value={p.document_id}>
-                  {p.filename}
+              {options.map((o) => (
+                <option key={o.id} value={o.id}>
+                  {o.label}
                 </option>
               ))}
             </select>

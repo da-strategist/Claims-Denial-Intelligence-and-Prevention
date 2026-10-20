@@ -16,7 +16,7 @@ NEW_PASSWORD = "another long passphrase"
 
 @pytest.fixture
 def member(data_dirs):
-    return user_store.create("Member@Example.com", PASSWORD, Role.MEMBER, must_change_password=False)
+    return user_store.create("Member@Example.com", PASSWORD, Role.INDIVIDUAL, must_change_password=False)
 
 
 def _login(client, username="member@example.com", password=PASSWORD):
@@ -42,11 +42,11 @@ def test_password_policy():
 def test_create_user_rules_and_file_safety(data_dirs, member):
     assert member.username == "member@example.com"
     with pytest.raises(ValueError):
-        user_store.create("member@example.com", PASSWORD, Role.MEMBER)  # duplicate
+        user_store.create("member@example.com", PASSWORD, Role.INDIVIDUAL)  # duplicate
     with pytest.raises(ValueError):
-        user_store.create("not-an-email", PASSWORD, Role.MEMBER)
+        user_store.create("not-an-email", PASSWORD, Role.INDIVIDUAL)
     with pytest.raises(ValueError):
-        user_store.create("x@example.com", "short", Role.MEMBER)
+        user_store.create("x@example.com", "short", Role.INDIVIDUAL)
     text = user_store.path.read_text()
     assert PASSWORD not in text and "scrypt$" in text
     assert stat.S_IMODE(os.stat(user_store.path).st_mode) == 0o600
@@ -66,7 +66,7 @@ def test_login_sets_safe_cookie_and_me_hides_hash(client, member):
     cookie = resp.headers["set-cookie"]
     assert "ppr_session=" in cookie and "HttpOnly" in cookie and "SameSite=strict" in cookie
     me = client.get("/api/auth/me").json()
-    assert me["username"] == "member@example.com" and me["role"] == "member"
+    assert me["username"] == "member@example.com" and me["role"] == "individual"
     assert "password_hash" not in me
 
 
@@ -130,7 +130,7 @@ def test_password_change_rules(client, member):
 
 
 def test_password_change_clears_flag_and_signs_out_other_sessions(client, data_dirs):
-    user_store.create("new@example.com", PASSWORD, Role.MEMBER)  # must change by default
+    user_store.create("new@example.com", PASSWORD, Role.INDIVIDUAL)  # must change by default
     other = TestClient(main.app)
     assert _login(other, "new@example.com").json()["must_change_password"] is True
     _login(client, "new@example.com")
@@ -153,19 +153,28 @@ def test_state_changing_request_from_other_site_is_refused(client, member):
     assert ok.status_code == 200
 
 
+def test_legacy_roles_load_as_new_roles(data_dirs):
+    import json
+    user_store.path.write_text(json.dumps([
+        {"username": "old@example.com", "role": "admin", "password_hash": "x", "plan_ids": ["a"]},
+        {"username": "m@example.com", "role": "member", "password_hash": "x"}]))
+    assert user_store.get("old@example.com").role is Role.PLATFORM_ADMIN
+    assert user_store.get("m@example.com").role is Role.INDIVIDUAL
+
+
 # ── CLI ──────────────────────────────────────────────────────────────
 
-def test_cli_add_assign_reset_list(data_dirs, capsys):
-    assert users_cli.main(["add", "Admin@Example.com", "--role", "admin"]) == 0
+def test_cli_add_reset_list(data_dirs, capsys):
+    assert users_cli.main(["add", "Admin@Example.com", "--role", "platform_admin"]) == 0
     out = capsys.readouterr().out
     temp = out.split("sign-in): ")[1].strip()
     admin = user_store.get("admin@example.com")
-    assert admin.role is Role.ADMIN and admin.must_change_password
+    assert admin.role is Role.PLATFORM_ADMIN and admin.must_change_password
     assert user_store.authenticate("admin@example.com", temp)
 
-    assert users_cli.main(["add", "m@example.com", "--plans", "doc1"]) == 0
-    assert users_cli.main(["assign", "m@example.com", "doc1", "doc2"]) == 0
-    assert user_store.get("m@example.com").plan_ids == ["doc1", "doc2"]
+    assert users_cli.main(["add", "m@example.com"]) == 0
+    assert user_store.get("m@example.com").role is Role.INDIVIDUAL
+    assert users_cli.main(["add", "staff@example.com", "--role", "hospital_staff"]) == 1  # no org
     assert users_cli.main(["reset-password", "m@example.com"]) == 0
     assert users_cli.main(["list"]) == 0
     assert "m@example.com" in capsys.readouterr().out

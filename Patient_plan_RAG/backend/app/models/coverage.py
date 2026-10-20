@@ -92,6 +92,7 @@ class ChatMessage(BaseModel):
 class ChatRequest(DomainModel):
     question: str = Field(min_length=1, max_length=MAX_QUESTION_CHARS)
     policy_id: DocumentId | None = None
+    patient_id: DocumentId | None = None  # hospital staff: whose policies to search
     conversation_id: DocumentId | None = None
 
 

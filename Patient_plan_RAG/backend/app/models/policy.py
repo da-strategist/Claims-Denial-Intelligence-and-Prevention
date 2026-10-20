@@ -31,7 +31,11 @@ class PolicyDocument(DomainModel):
     page_count: int = 0
     chunk_count: int = 0
     chunker_version: int = 0  # 0 = ingested before versioning
-    owner: str | None = None  # uploader's username for private member uploads; None = staff plan
+    # Exactly one owner kind (see auth/access.py): an individual (`owner`),
+    # a hospital patient record (`org_id` + `patient_id`), or neither = sample.
+    owner: str | None = None
+    org_id: str | None = None
+    patient_id: str | None = None
     is_synthetic: bool = True
     error_message: str | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)

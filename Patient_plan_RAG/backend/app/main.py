@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from . import audit
 from .models.common import DISCLAIMER
 from .rate_limit import api_limiter, upload_limiter
-from .routers import admin, auth, chat, coverage, dashboard, policies
+from .routers import admin, auth, chat, coverage, dashboard, hospital, policies, shares
 
 # ── Directories ──────────────────────────────────────────────────────
 
@@ -56,7 +56,8 @@ async def rate_limit(request: Request, call_next):
     path = request.url.path
     if path.startswith("/api") and path != "/api/health":
         client = request.client.host if request.client else "unknown"
-        limiter = upload_limiter if path == "/api/policies/upload" else api_limiter
+        strict = path in ("/api/policies/upload", "/api/auth/register")
+        limiter = upload_limiter if strict else api_limiter
         wait = limiter.check(client)
         if wait is not None:
             return JSONResponse(
@@ -120,6 +121,8 @@ app.add_middleware(
 # Routers
 app.include_router(auth.router)
 app.include_router(admin.router)
+app.include_router(hospital.router)
+app.include_router(shares.router)
 app.include_router(policies.router)
 app.include_router(chat.router)
 app.include_router(coverage.router)

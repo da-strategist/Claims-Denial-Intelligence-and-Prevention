@@ -1,8 +1,7 @@
 """Manage accounts from the command line.
 
-    python -m backend.app.users add admin@example.com --role admin
-    python -m backend.app.users add member@example.com --plans <document_id> ...
-    python -m backend.app.users assign member@example.com <document_id> ...
+    python -m backend.app.users add admin@example.com --role platform_admin
+    python -m backend.app.users add person@example.com            # individual
     python -m backend.app.users reset-password member@example.com
     python -m backend.app.users disable member@example.com
     python -m backend.app.users list
@@ -27,11 +26,8 @@ def main(argv: list[str] | None = None) -> int:
     sub = parser.add_subparsers(dest="command", required=True)
     add = sub.add_parser("add", help="create an account")
     add.add_argument("username")
-    add.add_argument("--role", choices=[r.value for r in Role], default=Role.MEMBER.value)
-    add.add_argument("--plans", nargs="*", default=[], help="document IDs (members)")
-    assign = sub.add_parser("assign", help="set a member's plans")
-    assign.add_argument("username")
-    assign.add_argument("plans", nargs="*")
+    add.add_argument("--role", choices=[r.value for r in Role], default=Role.INDIVIDUAL.value)
+    add.add_argument("--org", help="organisation ID (hospital roles; normally created in the app)")
     for name in ("reset-password", "disable", "enable"):
         sub.add_parser(name).add_argument("username")
     sub.add_parser("list")
@@ -40,12 +36,9 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.command == "add":
             password = _temporary_password()
-            user = user_store.create(args.username, password, Role(args.role), args.plans)
+            user = user_store.create(args.username, password, Role(args.role), args.org)
             print(f"Created {user.role.value} {user.username}")
             print(f"Temporary password (shown once, must be changed at sign-in): {password}")
-        elif args.command == "assign":
-            user = user_store.update(args.username, plan_ids=args.plans)
-            print(f"{user.username} plans: {', '.join(user.plan_ids) or '(none)'}")
         elif args.command == "reset-password":
             password = _temporary_password()
             user_store.update(args.username, password=password, must_change_password=True)
@@ -56,7 +49,7 @@ def main(argv: list[str] | None = None) -> int:
         else:
             for u in user_store.all():
                 flags = " (disabled)" if u.disabled else ""
-                print(f"{u.role.value:<7} {u.username}{flags}  plans: {', '.join(u.plan_ids) or '-'}")
+                print(f"{u.role.value:<15} {u.username}{flags}  org: {u.org_id or '-'}")
     except (ValueError, KeyError) as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1

@@ -3,12 +3,12 @@
 import os
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 
-from ..audit import audit_document
-from ..auth.access import accessible_ids, entry_or_404
+from ..audit import audit_document, audit_patient
+from ..auth.access import Access
 from ..auth.sessions import Permission, require
-from ..auth.users import User
+from ..auth.users import HOSPITAL_ROLES, User
 from ..models.coverage import ChatRequest, ChatResponse
 from ..services import registry
 from ..services.conversations import store
@@ -30,18 +30,30 @@ async def chat(request: ChatRequest, http: Request,
     owner can continue it.
     """
     entries = registry.load()
+    access = Access(user)
     if request.policy_id:
-        entry_or_404(user, entries, request.policy_id)
-    conv = store.get_or_create(request.conversation_id, request.policy_id, owner=user.username)
+        access.entry_or_404(entries, request.policy_id)
+    if request.patient_id:
+        access.patient_or_404(request.patient_id)
+    if user.role in HOSPITAL_ROLES and not (request.policy_id or request.patient_id):
+        # never search across several patients at once
+        raise HTTPException(400, "Choose a patient or a policy document first")
+
+    conv = store.get_or_create(request.conversation_id, request.policy_id,
+                               owner=user.username, patient_id=request.patient_id)
     audit_document(http, conv.policy_id)
-    if conv.policy_id:  # access may have been revoked since the conversation began
-        entry_or_404(user, entries, conv.policy_id)
+    audit_patient(http, conv.patient_id)
+    # access may have been revoked since the conversation began
+    if conv.policy_id:
+        access.entry_or_404(entries, conv.policy_id)
+    if conv.patient_id:
+        access.patient_or_404(conv.patient_id)
     response = await answer_question(
         question=request.question,
         chunk_dir=CHUNK_DIR,
         document_id=conv.policy_id,
         history=list(conv.turns),
-        allowed_ids=accessible_ids(user, entries),
+        allowed_ids=access.default_search_ids(entries, conv.patient_id),
     )
     store.add_turn(conv, request.question, response.answer)
     response.conversation_id = conv.id

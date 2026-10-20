@@ -2,19 +2,101 @@ import React, { useEffect, useState, useRef } from "react";
 import { api } from "../services/api";
 import { useHashPath, navigate } from "../utils/route";
 import { useAuth } from "../auth/AuthContext";
+import { isHospital } from "../hooks/usePolicyOptions";
 
-function PrivateBadge() {
+function Badge({ children, title }) {
   return (
-    <span className="ml-2 bg-gray-100 text-gray-600 px-2 py-0.5 rounded text-xs"
-          title="Uploaded by you; only you can see it">
-      Private
+    <span className="ml-2 bg-gray-100 text-gray-600 px-2 py-0.5 rounded text-xs" title={title}>
+      {children}
     </span>
+  );
+}
+
+/** Who a document belongs to, from this user's point of view. */
+function OwnershipBadge({ doc, user }) {
+  if (!doc.owner && !doc.org_id)
+    return <Badge title="Synthetic example policy, visible to everyone">Sample</Badge>;
+  if (doc.owner === user?.username)
+    return <Badge title="Only you, and hospitals you share it with, can see it">Yours</Badge>;
+  if (doc.owner) return <Badge title="A patient shared this with your hospital">Shared by {doc.owner}</Badge>;
+  return <Badge title="Uploaded by your hospital for a patient">Patient record</Badge>;
+}
+
+/** Individuals: share one of their own documents with a hospital, or stop. */
+function SharePanel({ documentId }) {
+  const [hospitals, setHospitals] = useState([]);
+  const [shares, setShares] = useState([]);
+  const [choice, setChoice] = useState("");
+  const [error, setError] = useState("");
+
+  const load = () =>
+    Promise.all([api.hospitalDirectory(), api.myShares()])
+      .then(([h, s]) => {
+        setHospitals(h);
+        setShares(s.filter((x) => x.document_id === documentId));
+      })
+      .catch((e) => setError(e.message.replace(/^\d+: /, "")));
+  useEffect(() => { load(); }, [documentId]);
+
+  const act = async (fn) => {
+    setError("");
+    try {
+      await fn();
+      await load();
+    } catch (e) {
+      setError(e.message.replace(/^\d+: /, ""));
+    }
+  };
+
+  const sharedWith = new Set(shares.map((s) => s.org_id));
+  const available = hospitals.filter((h) => !sharedWith.has(h.org_id));
+
+  return (
+    <div className="border rounded p-4 mb-4 text-sm">
+      <h4 className="font-semibold mb-1">Share with a hospital</h4>
+      <p className="text-xs text-gray-500 mb-3">
+        A hospital you share with can read this policy and ask questions about it, until you
+        stop sharing.
+      </p>
+      {shares.length > 0 && (
+        <ul className="mb-3 space-y-1">
+          {shares.map((s) => (
+            <li key={s.share_id}>
+              Shared with <strong>{s.org_name}</strong>{" "}
+              <button onClick={() => act(() => api.unshare(s.share_id))} className="text-red-700 hover:underline ml-2">
+                Stop sharing
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {available.length > 0 ? (
+        <div className="flex gap-2">
+          <select aria-label="Hospital" value={choice} onChange={(e) => setChoice(e.target.value)}
+                  className="border rounded px-2 py-1">
+            <option value="">Choose a hospital…</option>
+            {available.map((h) => (
+              <option key={h.org_id} value={h.org_id}>{h.name}</option>
+            ))}
+          </select>
+          <button disabled={!choice} onClick={() => act(async () => {
+            await api.share(documentId, choice);
+            setChoice("");
+          })} className="border px-3 py-1 rounded hover:bg-gray-50 disabled:opacity-50">
+            Share
+          </button>
+        </div>
+      ) : (
+        hospitals.length === 0 && <p className="text-xs text-gray-500">No hospitals are on the platform yet.</p>
+      )}
+      {error && <p role="alert" className="text-red-600 mt-2">{error}</p>}
+    </div>
   );
 }
 
 function UploadPanel({ onUploaded }) {
   const { user } = useAuth();
-  const isAdmin = user?.role === "admin";
+  const isAdmin = user?.role === "platform_admin";
   const [uploading, setUploading] = useState(false);
   const [msg, setMsg] = useState("");
   const fileRef = useRef();
@@ -38,12 +120,12 @@ function UploadPanel({ onUploaded }) {
   return (
     <div className="bg-white rounded-lg shadow p-5 mb-6">
       <h3 className="font-semibold mb-1">
-        {isAdmin ? "Upload a plan document (PDF)" : "Upload your policy document (PDF)"}
+        {isAdmin ? "Upload a sample policy (PDF)" : "Upload your policy document (PDF)"}
       </h3>
       <p className="text-xs text-gray-500 mb-3">
         {isAdmin
-          ? "Staff uploads become plans you can assign to members."
-          : "Only you will be able to see documents you upload."}
+          ? "Samples are synthetic example policies that every user can see. Never upload real member documents here."
+          : "Only you will be able to see documents you upload, unless you share them with a hospital."}
       </p>
       <div className="flex items-center gap-3">
         <input
@@ -142,6 +224,7 @@ function PolicySummaryView({ documentId }) {
 }
 
 function PolicyDetail({ documentId }) {
+  const { user } = useAuth();
   const [policy, setPolicy] = useState(null);
   const [error, setError] = useState("");
   const [tab, setTab] = useState("summary");
@@ -173,12 +256,13 @@ function PolicyDetail({ documentId }) {
       <div className="bg-white rounded-lg shadow p-5">
         <h3 className="text-xl font-bold mb-1">
           {policy.plan_name || policy.filename}
-          {policy.owner && <PrivateBadge />}
+          <OwnershipBadge doc={policy} user={user} />
         </h3>
         <p className="text-sm text-gray-500 mb-4">
           {policy.page_count} pages · {policy.chunk_count} chunks ·{" "}
           <span className="capitalize">{policy.status}</span>
         </p>
+        {policy.owner && policy.owner === user?.username && <SharePanel documentId={documentId} />}
         <div className="flex gap-2 mb-4 border-b">
           {["summary", "chunks"].map((t) => (
             <button
@@ -266,14 +350,23 @@ export default function PolicyViewer() {
 
   return (
     <div>
-      <h2 className="text-2xl font-bold mb-4">Policy Documents</h2>
-      <UploadPanel onUploaded={load} />
+      <h2 className="text-2xl font-bold mb-4">
+        {user?.role === "individual" ? "My policies" : user?.role === "platform_admin" ? "Sample policies" : "Policy documents"}
+      </h2>
+      {isHospital(user) ? (
+        <p className="text-sm text-gray-600 mb-4">
+          Upload a patient's policy from their page under Patients. Policies patients share with
+          your hospital appear here and under Shared with us.
+        </p>
+      ) : (
+        <UploadPanel onUploaded={load} />
+      )}
       <div className="bg-white rounded-lg shadow">
         {policies.length === 0 ? (
           <p className="p-5 text-gray-500">
-            {user?.role === "admin"
-              ? "No plan documents uploaded yet."
-              : "No plans are linked to your account yet. Contact Member Services, or upload your own policy document above."}
+            {user?.role === "individual"
+              ? "Upload your insurance policy above to start asking questions about it."
+              : "No policy documents yet."}
           </p>
         ) : (
           <table className="w-full text-sm">
@@ -294,7 +387,7 @@ export default function PolicyViewer() {
                 >
                   <td className="p-3 font-medium">
                     {p.plan_name || p.filename}
-                    {p.owner && <PrivateBadge />}
+                    <OwnershipBadge doc={p} user={user} />
                   </td>
                   <td>{p.page_count}</td>
                   <td>{p.chunk_count}</td>
