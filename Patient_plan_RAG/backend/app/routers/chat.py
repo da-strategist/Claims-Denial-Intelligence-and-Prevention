@@ -3,8 +3,9 @@
 import os
 from pathlib import Path
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 
+from ..audit import audit_document
 from ..auth.access import accessible_ids, entry_or_404
 from ..auth.sessions import Permission, require
 from ..auth.users import User
@@ -20,7 +21,7 @@ CHUNK_DIR = Path(os.getenv("CHUNK_DIR", str(BASE_DIR / "data" / "chunks")))
 
 
 @router.post("")
-async def chat(request: ChatRequest,
+async def chat(request: ChatRequest, http: Request,
                user: User = Depends(require(Permission.ASK))) -> ChatResponse:
     """Answer a question grounded in the policy documents this user may see.
 
@@ -32,6 +33,7 @@ async def chat(request: ChatRequest,
     if request.policy_id:
         entry_or_404(user, entries, request.policy_id)
     conv = store.get_or_create(request.conversation_id, request.policy_id, owner=user.username)
+    audit_document(http, conv.policy_id)
     if conv.policy_id:  # access may have been revoked since the conversation began
         entry_or_404(user, entries, conv.policy_id)
     response = await answer_question(

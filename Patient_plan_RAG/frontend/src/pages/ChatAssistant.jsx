@@ -22,6 +22,19 @@ function Citation({ citation, index }) {
   );
 }
 
+/** Where member questions go, so nobody types personal details unawares. */
+function PrivacyNotice({ mode }) {
+  if (!mode) return null;
+  return (
+    <p className="text-xs text-gray-500 mb-2" role="note">
+      {mode === "live"
+        ? "Your questions and the matching policy passages are sent to Anthropic's Claude API to write the answer. Please don't include names, member IDs or other personal details."
+        : "Answers are put together on this server from your plan documents; your questions are not sent to any outside service."}{" "}
+      Conversations are kept for up to an hour so you can ask follow-up questions, then discarded.
+    </p>
+  );
+}
+
 export default function ChatAssistant() {
   const [policies, setPolicies] = useState([]);
   const [selectedPolicy, setSelectedPolicy] = useState("");
@@ -31,7 +44,12 @@ export default function ChatAssistant() {
   // Server-side conversation; follow-up questions send it back for context
   const [conversationId, setConversationId] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [mode, setMode] = useState(null);
   const messagesEnd = useRef(null);
+
+  useEffect(() => {
+    api.health().then((h) => setMode(h.mode)).catch(() => setMode(null));
+  }, []);
 
   useEffect(() => {
     api.listPolicies().then((p) => {
@@ -170,7 +188,10 @@ export default function ChatAssistant() {
         <div ref={messagesEnd} />
       </div>
 
-      <div className="mt-3 flex gap-2">
+      <div className="mt-3">
+        <PrivacyNotice mode={mode} />
+      </div>
+      <div className="flex gap-2">
         <input
           value={question}
           maxLength={2000}

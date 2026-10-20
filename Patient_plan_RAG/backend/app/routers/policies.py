@@ -5,9 +5,10 @@ import re
 import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, UploadFile
 from fastapi import Path as PathParam
 
+from ..audit import audit_document
 from ..auth.access import accessible_ids, entry_or_404
 from ..auth.sessions import Permission, require
 from ..auth.users import Role, User
@@ -60,7 +61,8 @@ async def get_policy(document_id: str = DocumentIdParam,
 
 @router.post("/upload")
 async def upload_policy(
-    file: UploadFile, user: User = Depends(require(Permission.UPLOAD_POLICY)),
+    file: UploadFile, request: Request,
+    user: User = Depends(require(Permission.UPLOAD_POLICY)),
 ) -> DocumentUploadResponse:
     """Upload and process a PDF policy document.
 
@@ -95,6 +97,7 @@ async def upload_policy(
     entries = registry.load()
     entries.append(doc.model_dump(mode="json"))
     registry.save(entries)
+    audit_document(request, doc.document_id)
 
     return DocumentUploadResponse(
         document_id=doc.document_id,

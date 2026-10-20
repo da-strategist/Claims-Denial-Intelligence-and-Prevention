@@ -230,7 +230,7 @@ Status as of 2026-10-18. Work top to bottom.
   are more or real policies and a larger eval; adopt only if it beats BM25
   there (hybrid behind a flag).
 
-### Phase E: Policyholder accounts and access control (current)
+### Phase E: Policyholder accounts and access control — done
 End users are health insurance policyholders. Until this phase the app had
 no sign-in: every policy, upload, summary and chat was open to anyone.
 Decisions (user, 2026-10-19): local accounts now behind a pluggable provider
@@ -253,10 +253,28 @@ members by staff, and members may also upload private policy documents.
    E1+E2 done: `backend/app/auth/` (users, sessions, access), routers
    `auth.py` + `admin.py`, `services/registry.py`; a structural test fails
    if any /api route lacks a sign-in dependency. 231 backend tests.
-3. [ ] **E3 Audit and PHI handling** — append-only audit log of who
+3. [x] **E3 Audit and PHI handling** — append-only audit log of who
        accessed which document/endpoint (never question text); no PHI in
        logs; clear notice in the UI when live mode sends questions to
        Anthropic; retention note for the in-memory conversation store.
+   E3 done: `backend/app/audit.py` — hash-chained JSONL (`data/audit.log`,
+   0600, gitignored) of every API request except health: user, role,
+   route, document, target account, status, client; never bodies,
+   questions, answers or passwords. `python -m backend.app.audit verify`.
+   Live mode redacts emails, SSNs, phone numbers and ID numbers from
+   everything sent to Anthropic; server logs carry no exception details;
+   chat shows where questions go and that conversations are kept ≤ 1 h.
+   Tests write to a temp audit file (autouse fixture). 249 backend tests.
+
+### Open before real (non-synthetic) use
+- HTTPS + `COOKIE_SECURE=true`; sessions, rate limits and conversations are
+  in-memory per process (move to a shared store before multiple workers).
+- Audit log rotation/retention and off-host copies; uvicorn access logs
+  include admin URLs with member emails.
+- Insurer SSO (OIDC) provider; self-service password reset (today staff
+  reset passwords); member identity verification at enrolment.
+- BAA with Anthropic before live mode handles real member questions;
+  privacy notice/consent wording reviewed by the plan's compliance team.
 4. [x] **E4 Frontend** — sign-in page, session-aware app shell (user menu,
        sign out, 401 → sign-in), password change, admin page (members,
        plan assignment, uploads), "private" label on member uploads.

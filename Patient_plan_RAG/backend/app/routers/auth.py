@@ -35,8 +35,9 @@ def _set_cookie(response: Response, token: str) -> None:
 
 
 @router.post("/login")
-async def login(body: LoginRequest, response: Response) -> dict:
+async def login(body: LoginRequest, request: Request, response: Response) -> dict:
     username = body.username.strip().lower()
+    request.state.audit_username = username  # the attempt is audited, success or not
     if wait := login_throttle.locked_for(username):
         raise HTTPException(429, "Too many failed sign-in attempts. Try again later.",
                             headers={"Retry-After": str(max(1, round(wait)))})

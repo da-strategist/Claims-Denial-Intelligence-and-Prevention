@@ -2,10 +2,11 @@
 
 import secrets
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi import Path as PathParam
 from pydantic import BaseModel, Field
 
+from ..audit import audit_target
 from ..auth.sessions import Permission, require, sessions
 from ..auth.users import Role, User, user_store
 from ..models.common import DocumentId
@@ -50,9 +51,10 @@ async def list_users(_: User = Depends(_admin)) -> list[dict]:
 
 
 @router.post("/users")
-async def create_user(body: NewUser, _: User = Depends(_admin)) -> dict:
+async def create_user(body: NewUser, request: Request, _: User = Depends(_admin)) -> dict:
     """Create an account with a temporary password (returned once; the user
     must change it at first sign-in)."""
+    audit_target(request, body.username.strip().lower())
     _check_staff_plans(body.plan_ids)
     temporary = secrets.token_urlsafe(12)
     try:

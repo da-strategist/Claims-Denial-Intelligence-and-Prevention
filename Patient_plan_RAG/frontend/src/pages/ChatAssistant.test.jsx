@@ -4,7 +4,7 @@ import ChatAssistant from "./ChatAssistant";
 import { api } from "../services/api";
 
 vi.mock("../services/api", () => ({
-  api: { listPolicies: vi.fn(), chat: vi.fn() },
+  api: { listPolicies: vi.fn(), chat: vi.fn(), health: vi.fn() },
 }));
 
 const POLICIES = [
@@ -15,6 +15,7 @@ const POLICIES = [
 beforeEach(() => {
   Element.prototype.scrollIntoView = vi.fn();
   api.listPolicies.mockResolvedValue(POLICIES);
+  api.health.mockResolvedValue({ mode: "demo" });
   let n = 0;
   api.chat.mockImplementation(async (q, policy, conv) => ({
     answer: `answer to ${q}`,
@@ -55,4 +56,17 @@ test("changing policy or New conversation starts over", async () => {
     ["pol2", null],
     ["pol2", null],
   ]);
+});
+
+
+test("privacy notice says where questions go", async () => {
+  api.health.mockResolvedValue({ mode: "live" });
+  render(<ChatAssistant />);
+  expect(await screen.findByRole("note")).toHaveTextContent("sent to Anthropic");
+  expect(screen.getByRole("note")).toHaveTextContent("up to an hour");
+});
+
+test("demo mode notice says questions stay on the server", async () => {
+  render(<ChatAssistant />);
+  expect(await screen.findByRole("note")).toHaveTextContent("not sent to any outside service");
 });

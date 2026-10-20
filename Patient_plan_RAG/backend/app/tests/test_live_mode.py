@@ -185,3 +185,25 @@ def test_chat_endpoint_in_live_mode_keeps_conversation(client, doc_id, monkeypat
     assert second_messages[0] == {"role": "user", "content": "Is an MRI covered?"}
     assert second_messages[1]["role"] == "assistant"
     assert first["disclaimer"]
+
+
+# ── Minimum necessary: identifiers never reach Anthropic ─────────────
+
+@pytest.mark.parametrize("text,kept", [
+    ("My email is jane.doe+x@mail.com", "My email is [redacted]"),
+    ("SSN 123-45-6789", "SSN [redacted]"),
+    ("call (555) 123-4567 today", "call [redacted] today"),
+    ("member ID W123456789", "member ID [redacted]"),
+    ("Plan AHI-GOLD-2025-PPO, $1,500, CPT 70551, 01/15/2026",
+     "Plan AHI-GOLD-2025-PPO, $1,500, CPT 70551, 01/15/2026"),
+])
+def test_redact_identifiers(text, kept):
+    assert rag.redact_identifiers(text) == kept
+
+
+def test_identifiers_are_redacted_from_question_and_history(fake):
+    _live("My member ID is W123456789, is an MRI covered?",
+          history=[Turn("I'm jane@mail.com", "Thanks.")])
+    sent = json.dumps(fake.calls[0]["messages"])
+    assert "W123456789" not in sent and "jane@mail.com" not in sent
+    assert "is an MRI covered?" in sent

@@ -148,6 +148,7 @@ def current_user(request: Request) -> User:
         if token:
             sessions.end(token)
         raise HTTPException(401, "Sign in required")
+    request.state.user = user  # for the audit log
     return user
 
 

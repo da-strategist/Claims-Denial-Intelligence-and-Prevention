@@ -9,6 +9,7 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
+from . import audit
 from .models.common import DISCLAIMER
 from .rate_limit import api_limiter, upload_limiter
 from .routers import admin, auth, chat, coverage, dashboard, policies
@@ -91,6 +92,17 @@ async def add_disclaimer_header(request: Request, call_next):
     response = await call_next(request)
     if request.url.path.startswith("/api"):
         response.headers["X-Disclaimer"] = DISCLAIMER
+    return response
+
+
+@app.middleware("http")
+async def audit_access(request: Request, call_next):
+    """Record every API request (identity and target, never content) in the
+    hash-chained audit log. Registered after the other middleware so refused
+    requests (403/429) are recorded too. A failed write fails the request."""
+    response = await call_next(request)
+    if request.url.path.startswith("/api") and request.url.path != "/api/health":
+        audit.record(audit.entry_for(request, response.status_code))
     return response
 
 

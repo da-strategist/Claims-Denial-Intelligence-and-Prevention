@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from backend.app import main, rate_limit
+from backend.app import audit, main, rate_limit
 from backend.app.auth import sessions as auth_sessions
 from backend.app.auth.users import Role, user_store
 from backend.app.routers import chat, coverage, policies
@@ -22,6 +22,13 @@ from backend.app.services.document_processor import chunk_text, extract_text_fro
 POLICY_PDF = (
     Path(__file__).resolve().parents[3] / "data" / "policies" / "apex_health_gold_ppo_2025.pdf"
 )
+
+
+@pytest.fixture(autouse=True)
+def isolated_audit_log(tmp_path, monkeypatch):
+    """Every test writes audit entries to its own temp file, never data/."""
+    monkeypatch.setattr(audit, "AUDIT_FILE", tmp_path / "audit.log")
+    return tmp_path / "audit.log"
 
 
 @pytest.fixture(scope="session")

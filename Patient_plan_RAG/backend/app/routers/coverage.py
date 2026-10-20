@@ -4,9 +4,10 @@ import os
 import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from pydantic import Field
 
+from ..audit import audit_document
 from ..auth.access import entry_or_404
 from ..auth.sessions import Permission, require
 from ..auth.users import User
@@ -47,9 +48,10 @@ class AuthChecklistRequest(DomainModel):
 
 
 @router.post("/assess")
-async def assess_coverage(req: AssessmentRequest,
+async def assess_coverage(req: AssessmentRequest, http: Request,
                           user: User = Depends(require(Permission.ASK))) -> CoverageAssessment:
     """Assess whether a service is covered under a policy."""
+    audit_document(http, req.document_id)
     entry_or_404(user, registry.load(), req.document_id)
     chunks = load_chunks(CHUNK_DIR, req.document_id)
     return assess_service(req.service_name, req.service_code, chunks)
@@ -57,9 +59,10 @@ async def assess_coverage(req: AssessmentRequest,
 
 @router.post("/auth-checklist")
 async def generate_auth_checklist(
-    req: AuthChecklistRequest, user: User = Depends(require(Permission.ASK)),
+    req: AuthChecklistRequest, http: Request, user: User = Depends(require(Permission.ASK)),
 ) -> AuthorizationChecklist:
     """Generate a prior authorization preparation checklist."""
+    audit_document(http, req.document_id)
     entry_or_404(user, registry.load(), req.document_id)
     query = (
         f"prior authorization precertification requirements {req.service_name} "

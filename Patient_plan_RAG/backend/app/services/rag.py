@@ -209,6 +209,23 @@ def _client():
     return anthropic.AsyncAnthropic()
 
 
+# Identifiers members sometimes type that the model never needs (minimum
+# necessary): removed from everything sent to Anthropic. The health question
+# itself has to be sent, since that is what gets answered.
+_IDENTIFIER_PATTERNS = [
+    re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+"),                                 # email
+    re.compile(r"\b\d{3}-\d{2}-\d{4}\b"),                                      # SSN
+    re.compile(r"(?<!\w)(?:\+?1[\s.-]?)?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}\b"),   # US phone
+    re.compile(r"\b[A-Za-z]{0,4}\d{7,}\b"),                                     # member/ID numbers
+]
+
+
+def redact_identifiers(text: str) -> str:
+    for pattern in _IDENTIFIER_PATTERNS:
+        text = pattern.sub("[redacted]", text)
+    return text
+
+
 def _passages_block(retrieved: list[tuple[DocumentChunk, float]]) -> str:
     """Retrieved chunks as numbered, escaped passages (ids start at 1)."""
     parts = []
@@ -260,7 +277,8 @@ async def _build_live_answer(
     """
     user_msg = (
         f"{_passages_block(retrieved)}\n\n"
-        f"<member_question>\n{html.escape(question, quote=False)}\n</member_question>"
+        f"<member_question>\n{html.escape(redact_identifiers(question), quote=False)}"
+        "\n</member_question>"
     )
     response = await _client().beta.messages.create(
         model=LIVE_MODEL,
@@ -274,8 +292,8 @@ async def _build_live_answer(
         },
         messages=[
             *(m for t in history or [] for m in (
-                {"role": "user", "content": t.question},
-                {"role": "assistant", "content": t.answer},
+                {"role": "user", "content": redact_identifiers(t.question)},
+                {"role": "assistant", "content": redact_identifiers(t.answer)},
             )),
             {"role": "user", "content": user_msg},
         ],
@@ -350,7 +368,9 @@ async def answer_question(
             answer_text, citations, confidence = await _build_live_answer(
                 question, retrieved, history)
         except Exception as exc:
-            log.warning("Live answer failed, using demo answer: %r", exc)
+            # type and status only: error details can echo request content
+            log.warning("Live answer failed (%s %s), using demo answer",
+                        type(exc).__name__, getattr(exc, "status_code", ""))
             answer_text, citations = _build_demo_answer(question, retrieved, query)
             answer_text += "\n\n(Live AI answer unavailable; showing matching policy passages.)"
     else:
