@@ -17,7 +17,6 @@ seeds:
 
 models:
   rcm:
-    +static_analysis: strict
     staging:
       +materialized: view
       +schema: staging

@@ -27,6 +27,12 @@ Data/raw_data/
 
 # Sensitive / credentials
 *.json
+# Each organisation's data folder (claims CSVs, PHI, app data)
+claim_validation_tool/backend/orgs/
+claim_validation_tool/deploy/certs/
+# ...but the frontend's npm manifests are needed to install it
+!claim_validation_tool/frontend/package.json
+!claim_validation_tool/frontend/package-lock.json
 *.p8
 *.pem
 .env
@@ -35,3 +41,6 @@ Data/raw_data/
 # Node / IDE
 node_modules/
 .vscode/
+
+# Daily briefs
+daily_brief_*.md

@@ -1,0 +1,29 @@
+from typing import Annotated
+
+from fastapi import APIRouter, Query
+
+from app.models import Dashboard, DashboardQuery, Permission
+from app.services.auth import require
+from app.services.dashboard import build_dashboard
+from app.services.org_context import OrgClaims, OrgRules, OrgSnapshot
+
+router = APIRouter(
+    prefix="/api/dashboard", tags=["dashboard"], dependencies=[require(Permission.CLAIMS_READ)]
+)
+
+
+@router.get("", response_model=Dashboard)
+def get_dashboard(
+    query: Annotated[DashboardQuery, Query()],
+    claims: OrgClaims,
+    rules: OrgRules,
+    snapshot: OrgSnapshot,
+) -> Dashboard:
+    """KPIs and chart data for the executive dashboard."""
+    return build_dashboard(
+        query,
+        claims.claims_frame(),
+        claims.denials_frame(),
+        snapshot.get(claims, rules.list()),
+        {payer.payer_id: payer for payer in claims.list_payers()},
+    )

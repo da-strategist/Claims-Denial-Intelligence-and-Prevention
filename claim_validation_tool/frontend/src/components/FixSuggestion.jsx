@@ -1,0 +1,184 @@
+import { useId, useState } from 'react'
+import { CLARIFICATION_TOPICS, INPUT_CLASS, SUGGESTION_ACTIONS } from '../constants'
+import AssistantPanel from './AssistantPanel'
+import Icon from './Icon'
+
+const CONFIDENCE_LABELS = { high: 'High confidence', medium: 'Medium confidence', low: 'Needs judgement' }
+
+function formatValue(change, value) {
+  if (value === null || value === undefined || value === '') return '—'
+  if (change.type === 'boolean') return value === 'true' ? 'Yes' : 'No'
+  return value
+}
+
+function ChangeInput({ change, value, onChange, inputId }) {
+  // Booleans are set by the fix itself; show them as a fixed change
+  if (change.type === 'boolean') {
+    return (
+      <span className="text-sm font-medium text-gray-900">
+        {formatValue(change, change.suggested_value)}
+      </span>
+    )
+  }
+  const listId = `${inputId}-options`
+  return (
+    <>
+      <input
+        id={inputId}
+        className={INPUT_CLASS}
+        value={value}
+        list={change.options ? listId : undefined}
+        placeholder={change.requires_input ? `Enter ${change.label.toLowerCase()}` : undefined}
+        onChange={(e) => onChange(e.target.value)}
+      />
+      {change.options && (
+        <datalist id={listId}>
+          {change.options.map((option) => (
+            <option key={option} value={option} />
+          ))}
+        </datalist>
+      )}
+    </>
+  )
+}
+
+function Citations({ citations }) {
+  if (citations.length === 0) return null
+  return (
+    <details className="group text-sm">
+      <summary className="cursor-pointer select-none text-xs font-medium text-gray-500 hover:text-gray-900">
+        Sources ({citations.length})
+      </summary>
+      <ul className="mt-2 space-y-1.5">
+        {citations.map((citation) => (
+          <li
+            key={`${citation.source_type}:${citation.reference_id}`}
+            className="rounded-lg bg-white px-3 py-2 ring-1 ring-gray-200/70"
+          >
+            <div className="text-xs font-medium text-gray-800">
+              {citation.title}
+              <span className="ml-1.5 font-normal text-gray-400">
+                {citation.source_type.replace('_', ' ')} · {citation.reference_id}
+              </span>
+            </div>
+            <div className="text-xs text-gray-600">{citation.excerpt}</div>
+          </li>
+        ))}
+      </ul>
+    </details>
+  )
+}
+
+/** One AI Fix suggestion: what to do, why, sources, and (if applicable) the fix form. */
+/** Without `onApply` (the user's role can't change claims) the suggestion is read-only. */
+export default function FixSuggestion({ suggestion, onApply }) {
+  const formId = useId()
+  const [values, setValues] = useState(() =>
+    Object.fromEntries(suggestion.changes.map((c) => [c.field, c.suggested_value ?? ''])),
+  )
+  const [applying, setApplying] = useState(false)
+  const [error, setError] = useState(null)
+  const [asking, setAsking] = useState(false)
+  const action = SUGGESTION_ACTIONS[suggestion.action]
+
+  const submit = async (event) => {
+    event.preventDefault()
+    setApplying(true)
+    setError(null)
+    try {
+      const editable = suggestion.changes.filter((c) => c.type !== 'boolean')
+      await onApply(suggestion, Object.fromEntries(editable.map((c) => [c.field, values[c.field]])))
+    } catch (err) {
+      setError(err.message)
+      setApplying(false)
+    }
+  }
+
+  return (
+    <div className="space-y-3 rounded-2xl bg-violet-50/60 p-4">
+      <div className="flex flex-wrap items-center gap-2 text-xs">
+        <span className="inline-flex items-center gap-1 font-medium text-violet-700">
+          <Icon name="sparkle" className="h-3.5 w-3.5" strokeWidth={2} />
+          Suggested fix
+        </span>
+        <span className={`rounded-full px-2 py-0.5 font-medium ${action.style}`}>{action.label}</span>
+        <span className="text-gray-500">{CONFIDENCE_LABELS[suggestion.confidence]}</span>
+      </div>
+
+      <div>
+        <div className="text-[15px] font-semibold text-gray-900">{suggestion.title}</div>
+        <p className="mt-0.5 text-sm text-gray-700">{suggestion.summary}</p>
+        <p className="mt-1 text-sm text-gray-500">{suggestion.reasoning}</p>
+      </div>
+
+      {suggestion.steps.length > 0 && (
+        <ol className="list-decimal space-y-1 pl-5 text-sm text-gray-700 marker:text-gray-400">
+          {suggestion.steps.map((step) => (
+            <li key={step}>{step}</li>
+          ))}
+        </ol>
+      )}
+
+      <Citations citations={suggestion.citations} />
+
+      {suggestion.action === 'apply' && !onApply && (
+        <p className="border-t border-violet-100 pt-3 text-xs text-gray-500">
+          Your role can view this fix but not apply it.
+        </p>
+      )}
+
+      {suggestion.action === 'apply' && onApply && (
+        <form onSubmit={submit} className="space-y-3 border-t border-violet-100 pt-3">
+          {suggestion.changes.map((change) => {
+            const inputId = `${formId}-${change.field}`
+            return (
+              <div
+                key={change.field}
+                className="grid items-center gap-x-3 gap-y-1 sm:grid-cols-[10rem_1fr]"
+              >
+                <label htmlFor={inputId} className="text-sm text-gray-600">
+                  {change.label}
+                  <span className="block text-xs text-gray-400">
+                    now {formatValue(change, change.current_value)}
+                  </span>
+                </label>
+                <ChangeInput
+                  change={change}
+                  inputId={inputId}
+                  value={values[change.field]}
+                  onChange={(value) => setValues((prev) => ({ ...prev, [change.field]: value }))}
+                />
+              </div>
+            )
+          })}
+          {error && (
+            <p role="alert" className="text-sm text-red-700">
+              {error}
+            </p>
+          )}
+          <button type="submit" disabled={applying} className="btn-primary">
+            {applying ? 'Applying…' : 'Apply fix & re-validate'}
+          </button>
+        </form>
+      )}
+
+      {suggestion.needs_clarification && (
+        <div className="space-y-2 border-t border-violet-100 pt-3">
+          {asking ? (
+            <AssistantPanel claimId={suggestion.claim_id} topic={suggestion.clarification_topic} />
+          ) : (
+            <div className="flex flex-wrap items-center gap-2">
+              <button type="button" onClick={() => setAsking(true)} className="btn-secondary btn-sm">
+                Ask the assistant
+              </button>
+              <span className="text-xs text-gray-500">
+                {CLARIFICATION_TOPICS[suggestion.clarification_topic]}: researched in coverage
+                policies, NCCI/MUE edits, payer contracts, and CARC/RARC codes
+              </span>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}

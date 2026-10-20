@@ -1,11 +1,23 @@
 [project]
 name = "healthcare-rcm-project"
 version = "0.1.0"
-description = "Add your description here"
+description = "Claims Denial Intelligence & Prevention Platform"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "numpy>=2.4.4",
     "pandas>=3.0.2",
     "requests>=2.33.1",
+    "fastapi>=0.115.0",
+    "uvicorn>=0.34.0",
+    "anthropic>=1.15.0",
+    "reportlab>=5.0.1",
+    "cryptography>=50.0.2",
+]
+
+[dependency-groups]
+dev = [
+    "httpx2>=2.13.1",
+    "pypdf>=6.21.1",
+    "pytest>=9.1.1",
 ]

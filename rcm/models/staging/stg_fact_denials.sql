@@ -7,7 +7,7 @@ WITH src_denials as
             payer_id,
             cast(denial_date as date) as denial_date,
             root_cause_category,
-            carc_code,
+            cast(carc_code as STRING) as carc_code,
             rarc_code,
             round(cast(denial_amount as numeric), 2) as denial_amount,
             workflow_failure_point,

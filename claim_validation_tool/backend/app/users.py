@@ -1,0 +1,89 @@
+"""Manage sign-in accounts. Passwords are typed at a hidden prompt, never on the command line.
+
+    uv run python -m app.users add alice --name "Alice Jones" --role admin --org meridian
+    uv run python -m app.users list
+    uv run python -m app.users password alice
+    uv run python -m app.users role alice biller
+    uv run python -m app.users disable alice      # signs them out on their next request
+    uv run python -m app.users enable alice
+
+Roles: analyst (claims and dashboards, no patient details), biller (also patient details and
+changing claims), admin (also validation rules, users, and the audit log), and platform
+(runs the hosted service: organisations only, no patient data; created without --org).
+"""
+
+import argparse
+import getpass
+import sys
+
+from app.data.orgs import get_org_registry
+from app.data.users import get_user_store
+from app.models import Role
+
+
+def _new_password() -> str:
+    password = getpass.getpass("New password: ")
+    if getpass.getpass("Repeat it: ") != password:
+        raise ValueError("The passwords don't match")
+    return password
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Manage sign-in accounts")
+    commands = parser.add_subparsers(dest="command", required=True)
+    add = commands.add_parser("add", help="create an account")
+    add.add_argument("username")
+    add.add_argument("--name", help="display name (defaults to the username)")
+    add.add_argument("--role", type=Role, choices=list(Role), required=True)
+    add.add_argument(
+        "--org", help="organisation ID (see python -m app.orgs list); not for --role platform"
+    )
+    commands.add_parser("list", help="show accounts")
+    for name, text in [
+        ("password", "set a new password"),
+        ("disable", "block sign-in"),
+        ("enable", "allow sign-in again"),
+    ]:
+        commands.add_parser(name, help=text).add_argument("username")
+    role = commands.add_parser("role", help="change an account's role")
+    role.add_argument("username")
+    role.add_argument("role", type=Role, choices=list(Role))
+    args = parser.parse_args(argv)
+
+    users = get_user_store()
+    try:
+        match args.command:
+            case "add":
+                if args.role == Role.PLATFORM:
+                    if args.org:
+                        raise ValueError("Platform accounts belong to no organisation: leave out --org")
+                elif not args.org:
+                    raise ValueError("Give the account's organisation with --org")
+                elif get_org_registry().get(args.org) is None:
+                    raise LookupError(f"No organisation {args.org} (see python -m app.orgs list)")
+                user = users.add(
+                    args.username, args.name or args.username, args.role, _new_password(), args.org
+                )
+                print(f"Created {user.username} ({user.role}) in {args.org}")
+            case "list":
+                for user in users.list():
+                    state = "active" if user.active else "disabled"
+                    org = user.organisation_id or ("(platform)" if user.role == Role.PLATFORM else "(none)")
+                    print(f"{user.username:20} {org:14} {user.role:8} {state:9} {user.display_name}")
+            case "password":
+                users.update(args.username, password=_new_password())
+                print(f"Password changed for {args.username}")
+            case "role":
+                users.update(args.username, role=args.role)
+                print(f"{args.username} is now {args.role}")
+            case "disable" | "enable":
+                users.update(args.username, active=args.command == "enable")
+                print(f"{args.username} {args.command}d")
+    except (ValueError, LookupError) as err:
+        print(err, file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
