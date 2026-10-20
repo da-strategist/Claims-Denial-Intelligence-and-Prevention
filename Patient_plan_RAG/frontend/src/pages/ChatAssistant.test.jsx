@@ -4,7 +4,10 @@ import ChatAssistant from "./ChatAssistant";
 import { api } from "../services/api";
 
 vi.mock("../services/api", () => ({
-  api: { listPolicies: vi.fn(), listPatients: vi.fn(), chat: vi.fn(), health: vi.fn() },
+  api: {
+    listPolicies: vi.fn(), listPatients: vi.fn(), chat: vi.fn(), health: vi.fn(),
+    chatSuggestions: vi.fn(), getPolicySummary: vi.fn(),
+  },
 }));
 let mockUser = { username: "m@example.com", role: "individual" };
 vi.mock("../auth/AuthContext", () => ({ useAuth: () => ({ user: mockUser }) }));
@@ -18,6 +21,11 @@ beforeEach(() => {
   mockUser = { username: "m@example.com", role: "individual" };
   window.location.hash = "/chat";
   api.listPatients.mockResolvedValue([]);
+  api.chatSuggestions.mockResolvedValue({ questions: ["What are my copays?"] });
+  api.getPolicySummary.mockResolvedValue({
+    deductible: { description: "Individual: $1,500" }, out_of_pocket_max: { description: "$6,000" },
+    copayments: [{ service: "Specialist Office Visit", amount: "$50 copay" }],
+  });
   Element.prototype.scrollIntoView = vi.fn();
   api.listPolicies.mockResolvedValue(POLICIES);
   api.health.mockResolvedValue({ mode: "demo" });
@@ -112,4 +120,33 @@ test("a patient link preselects the patient", async () => {
   api.listPatients.mockResolvedValue([{ patient_id: "p2", name: "Pat Two", reference: "", documents: [] }]);
   render(<ChatAssistant />);
   await waitFor(() => expect(screen.getByLabelText("Patient")).toHaveValue("p2"));
+});
+
+
+test("starter questions fill the question box", async () => {
+  render(<ChatAssistant />);
+  await userEvent.click(await screen.findByRole("button", { name: "What are my copays?" }));
+  expect(screen.getByPlaceholderText(/ask/i)).toHaveValue("What are my copays?");
+  expect(api.chatSuggestions).toHaveBeenCalled();
+});
+
+test("plan at a glance shows the selected plan's key numbers", async () => {
+  render(<ChatAssistant />);
+  const glance = await screen.findByRole("complementary", { name: "Plan at a glance" });
+  expect(glance).toHaveTextContent("Individual: $1,500");
+  expect(glance).toHaveTextContent("Specialist Office Visit");
+});
+
+test("answers show suggested next steps with their source", async () => {
+  api.chat.mockResolvedValueOnce({
+    answer: "MRI needs prior authorization.", citations: [], follow_up_suggestions: [],
+    conversation_id: "c1",
+    next_steps: [{ text: "Ask your provider to request prior authorization.", document_id: "pol1",
+                   page_number: 3, section: "PRIOR AUTHORIZATION" }],
+  });
+  render(<ChatAssistant />);
+  await waitFor(() => expect(screen.getByLabelText("Policy")).toHaveValue("pol1"));
+  await userEvent.type(screen.getByPlaceholderText(/ask/i), "Is MRI covered?{Enter}");
+  expect(await screen.findByText("Suggested next steps")).toBeInTheDocument();
+  expect(screen.getByText(/based on page 3, PRIOR AUTHORIZATION/)).toBeInTheDocument();
 });

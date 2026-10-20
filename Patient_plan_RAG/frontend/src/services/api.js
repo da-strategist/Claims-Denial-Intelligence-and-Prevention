@@ -86,6 +86,25 @@ export const api = {
       body: JSON.stringify({ patient_id: patientId || null }),
     }),
 
+  // Individuals: my account
+  overview: () => request("/me/overview"),
+  updateProfile: (fullName, phone) => request("/me/profile", {
+    method: "PATCH", body: JSON.stringify({ full_name: fullName, phone }),
+  }),
+  listProviders: () => request("/me/providers"),
+  addProvider: (provider) => post("/me/providers", provider),
+  updateProvider: (id, provider) => request(`/me/providers/${id}`, {
+    method: "PATCH", body: JSON.stringify(provider),
+  }),
+  deleteProvider: (id) => request(`/me/providers/${id}`, { method: "DELETE" }),
+  sharingOverview: () => request("/me/sharing"),
+  removeHospitalAccess: (orgId) => request(`/me/sharing/${orgId}`, { method: "DELETE" }),
+  exportMyData: () => request("/me/export"),
+  signOutEverywhere: () => post("/me/sign-out-everywhere"),
+  deleteAccount: (confirmEmail) => request("/me", {
+    method: "DELETE", body: JSON.stringify({ confirm_email: confirmEmail }),
+  }),
+
   // Individuals: share a policy with a hospital
   hospitalDirectory: () => request("/shares/hospitals"),
   myShares: () => request("/shares"),
@@ -99,6 +118,10 @@ export const api = {
   listPolicies: () => request("/policies"),
   getPolicy: (id) => request(`/policies/${id}`),
   getPolicySummary: (id) => request(`/policies/${id}/summary`),
+  renamePolicy: (id, displayName) => request(`/policies/${id}`, {
+    method: "PATCH", body: JSON.stringify({ display_name: displayName }),
+  }),
+  deletePolicy: (id) => request(`/policies/${id}`, { method: "DELETE" }),
   getPolicyChunks: (id, page = 1) =>
     request(`/policies/${id}/chunks?page=${page}`),
   uploadPolicy: async (file, patientId) => {
@@ -123,6 +146,13 @@ export const api = {
         patient_id: patientId || null,
       }),
     }),
+
+  chatSuggestions: (policyId, patientId) => {
+    const params = new URLSearchParams();
+    if (policyId) params.set("policy_id", policyId);
+    if (patientId) params.set("patient_id", patientId);
+    return request(`/chat/suggestions?${params}`);
+  },
 
   // Coverage
   assessCoverage: (serviceName, serviceCode, documentId) =>

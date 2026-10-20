@@ -7,6 +7,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request, UploadFile
 from fastapi import Path as PathParam
+from pydantic import BaseModel, Field
 
 from ..audit import audit_document, audit_patient
 from ..auth.access import Access, entry_or_404
@@ -19,7 +20,7 @@ from ..models.policy import (
     PolicyDocument,
     PolicySummary,
 )
-from ..services import registry
+from ..services import documents, registry
 from ..services.document_processor import process_document
 from ..services.policy_summarizer import summarize_policy
 from ..services.retrieval import load_chunks
@@ -151,3 +152,33 @@ async def get_policy_chunks(
         "page_size": page_size,
         "disclaimer": DISCLAIMER,
     }
+
+
+class DocumentChanges(BaseModel):
+    display_name: str = Field(max_length=120)
+
+
+def _manageable_or_404(user: User, document_id: str) -> dict:
+    """The document, if this user may change it; otherwise "not found" when
+    they can't see it, or 403 when they can see but not change it."""
+    entry = entry_or_404(user, registry.load(), document_id)
+    if not documents.can_manage(user, entry, UPLOAD_DIR):
+        raise HTTPException(403, "You can't change this document")
+    return entry
+
+
+@router.patch("/{document_id}")
+async def rename_policy(body: DocumentChanges, document_id: str = DocumentIdParam,
+                        user: User = Depends(require(Permission.UPLOAD_POLICY))) -> PolicyDocument:
+    """Give a document your own name (empty restores the plan name)."""
+    _manageable_or_404(user, document_id)
+    return PolicyDocument(**documents.rename(document_id, body.display_name.strip()))
+
+
+@router.delete("/{document_id}")
+async def delete_policy(document_id: str = DocumentIdParam,
+                        user: User = Depends(require(Permission.UPLOAD_POLICY))) -> dict:
+    """Delete a document: the file, its search index, and every share of it."""
+    entry = _manageable_or_404(user, document_id)
+    documents.delete(entry, CHUNK_DIR, UPLOAD_DIR)
+    return {"deleted": document_id}

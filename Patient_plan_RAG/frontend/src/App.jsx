@@ -13,6 +13,9 @@ import PriorAuth from "./pages/PriorAuth";
 import Patients from "./pages/Patients";
 import SharedWithUs from "./pages/SharedWithUs";
 import Staff from "./pages/Staff";
+import MyAccount from "./pages/MyAccount";
+import SharingAccess from "./pages/SharingAccess";
+import Settings from "./pages/Settings";
 
 const ASK = [
   { path: "/chat", label: "Ask a Question", icon: "💬" },
@@ -23,9 +26,12 @@ const ASK = [
 /** Navigation for each kind of account. */
 const NAV = {
   individual: [
-    { path: "/", label: "Dashboard", icon: "📊" },
+    { path: "/", label: "My Account", icon: "🏠" },
     { path: "/policies", label: "My Policies", icon: "📋" },
-    ...ASK,
+    { path: "/chat", label: "Ask a Question", icon: "💬" },
+    { path: "/coverage", label: "Coverage Check", icon: "🔍" },
+    { path: "/sharing", label: "Sharing & Access", icon: "🔐" },
+    { path: "/settings", label: "Settings", icon: "⚙️" },
   ],
   hospital_staff: [
     { path: "/patients", label: "Patients", icon: "🏥" },
@@ -108,14 +114,17 @@ export default function App() {
     if (path.startsWith("/policies")) return <PolicyViewer />;
     if (path.startsWith("/chat")) return <ChatAssistant />;
     if (path === "/coverage") return <CoverageAssessment />;
-    if (path === "/auth") return <PriorAuth />;
+    if (path === "/auth") return allowed("/auth") ? <PriorAuth /> : denied;
+    if (path === "/sharing") return allowed("/sharing") ? <SharingAccess /> : denied;
+    if (path === "/settings") return allowed("/settings") ? <Settings /> : denied;
     if (path === "/account/password") return <ChangePassword />;
     if (path.startsWith("/patients")) return allowed("/patients") ? <Patients /> : denied;
     if (path === "/shared") return allowed("/shared") ? <SharedWithUs /> : denied;
     if (path === "/staff") return allowed("/staff") ? <Staff /> : denied;
     if (path === "/admin") return allowed("/admin") ? <Admin /> : denied;
-    // hospital accounts start on their patient list
+    // hospital accounts start on their patient list; individuals on their account
     if (!allowed("/")) return <Patients />;
+    if (user.role === "individual") return <MyAccount />;
     return <Dashboard />;
   })();
 

@@ -32,6 +32,7 @@ data/users.tmp
 data/orgs.json
 data/patients.json
 data/shares.json
+data/providers.json
 data/*.tmp
 # Audit log: who accessed what
 data/audit.log

@@ -23,6 +23,9 @@ vi.mock("./pages/Admin", () => ({ default: () => <p>admin page</p> }));
 vi.mock("./pages/Patients", () => ({ default: () => <p>patients page</p> }));
 vi.mock("./pages/SharedWithUs", () => ({ default: () => <p>shared page</p> }));
 vi.mock("./pages/Staff", () => ({ default: () => <p>staff page</p> }));
+vi.mock("./pages/MyAccount", () => ({ default: () => <p>my account page</p> }));
+vi.mock("./pages/SharingAccess", () => ({ default: () => <p>sharing page</p> }));
+vi.mock("./pages/Settings", () => ({ default: () => <p>settings page</p> }));
 
 const MEMBER = { username: "m@example.com", role: "individual", org_id: null, must_change_password: false };
 const ADMIN = { ...MEMBER, username: "a@example.com", role: "platform_admin" };
@@ -54,6 +57,7 @@ afterEach(() => vi.restoreAllMocks());
 // ── Error boundary (signed in) ───────────────────────────────────────
 
 test("a crashing page keeps the disclaimer and navigation on screen", async () => {
+  api.me.mockResolvedValue(ADMIN);  // the admin lands on the (crashing) Dashboard
   renderApp();
   expect(await screen.findByRole("alert")).toHaveTextContent("Something went wrong on this page");
   expect(screen.getByText(/Demonstration Only/)).toBeInTheDocument();
@@ -61,6 +65,7 @@ test("a crashing page keeps the disclaimer and navigation on screen", async () =
 });
 
 test("navigating away from a crashed page recovers", async () => {
+  api.me.mockResolvedValue(ADMIN);  // the admin lands on the (crashing) Dashboard
   renderApp();
   await screen.findByRole("alert");
   goTo("/chat");
@@ -148,7 +153,7 @@ test("sign out returns to the sign-in page", async () => {
 
 test("each kind of account gets its own navigation", async () => {
   const cases = [
-    [MEMBER, ["Dashboard", "My Policies", "Ask a Question", "Coverage Check", "Prior Auth"]],
+    [MEMBER, ["My Account", "My Policies", "Ask a Question", "Coverage Check", "Sharing & Access", "Settings"]],
     [STAFF, ["Patients", "Shared with us", "Ask a Question", "Coverage Check", "Prior Auth"]],
     [HADMIN, ["Patients", "Shared with us", "Ask a Question", "Coverage Check", "Prior Auth", "Staff"]],
     [ADMIN, ["Dashboard", "Hospitals & Accounts", "Sample Policies", "Ask a Question"]],
@@ -170,7 +175,8 @@ test("hospital accounts start on the patient list", async () => {
 });
 
 test("pages outside your role are refused", async () => {
-  for (const [user, path] of [[MEMBER, "/admin"], [MEMBER, "/patients"], [STAFF, "/staff"],
+  for (const [user, path] of [[MEMBER, "/admin"], [MEMBER, "/patients"], [MEMBER, "/auth"],
+                              [STAFF, "/settings"], [STAFF, "/sharing"], [STAFF, "/staff"],
                               [ADMIN, "/patients"], [STAFF, "/admin"]]) {
     api.me.mockResolvedValue(user);
     window.location.hash = path;
@@ -204,4 +210,10 @@ test("individuals can create an account from the sign-in page", async () => {
   await userEvent.click(screen.getByRole("button", { name: "Create account" }));
   expect(await screen.findByText("chat page")).toBeInTheDocument();
   expect(api.register).toHaveBeenCalledWith("new@example.com", "a long passphrase");
+});
+
+
+test("individuals land on My Account, not the system dashboard", async () => {
+  renderApp();
+  expect(await screen.findByText("my account page")).toBeInTheDocument();
 });

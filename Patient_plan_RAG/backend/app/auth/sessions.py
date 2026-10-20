@@ -131,6 +131,7 @@ class Permission(str, Enum):
     UPLOAD_POLICY = "upload_policy"      # individuals: own; hospitals: to a patient; admin: samples
     VIEW_DASHBOARD = "view_dashboard"
     SHARE_POLICIES = "share_policies"    # individuals share their documents with a hospital
+    MANAGE_OWN_DATA = "manage_own_data"  # individuals: providers, export, delete account
     MANAGE_PATIENTS = "manage_patients"  # hospital patient records
     MANAGE_STAFF = "manage_staff"        # hospital admins: their hospital's staff
     MANAGE_ORGS = "manage_orgs"          # platform admin: hospital organisations
@@ -140,7 +141,7 @@ class Permission(str, Enum):
 _COMMON = {Permission.READ_POLICIES, Permission.ASK, Permission.UPLOAD_POLICY,
            Permission.VIEW_DASHBOARD}
 ROLE_PERMISSIONS: dict[Role, set[Permission]] = {
-    Role.INDIVIDUAL: _COMMON | {Permission.SHARE_POLICIES},
+    Role.INDIVIDUAL: _COMMON | {Permission.SHARE_POLICIES, Permission.MANAGE_OWN_DATA},
     Role.HOSPITAL_STAFF: _COMMON | {Permission.MANAGE_PATIENTS},
     Role.HOSPITAL_ADMIN: _COMMON | {Permission.MANAGE_PATIENTS, Permission.MANAGE_STAFF},
     Role.PLATFORM_ADMIN: _COMMON | {Permission.MANAGE_ORGS, Permission.MANAGE_USERS},

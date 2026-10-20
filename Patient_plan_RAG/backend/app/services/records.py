@@ -56,6 +56,19 @@ class Share:
     created_at: str = field(default_factory=_now)
 
 
+@dataclass
+class Provider:
+    """A healthcare provider an individual keeps for reference (not
+    necessarily on the platform)."""
+    provider_id: str
+    owner: str                # the individual's username
+    name: str
+    kind: str = "doctor"      # doctor, hospital, clinic, pharmacy, other
+    phone: str = ""
+    notes: str = ""
+    created_at: str = field(default_factory=_now)
+
+
 T = TypeVar("T")
 
 
@@ -110,3 +123,5 @@ class JsonStore(Generic[T]):
 orgs = JsonStore(Path(os.getenv("ORGS_FILE", str(DATA_DIR / "orgs.json"))), Org, "org_id")
 patients = JsonStore(Path(os.getenv("PATIENTS_FILE", str(DATA_DIR / "patients.json"))), Patient, "patient_id")
 shares = JsonStore(Path(os.getenv("SHARES_FILE", str(DATA_DIR / "shares.json"))), Share, "share_id")
+providers = JsonStore(Path(os.getenv("PROVIDERS_FILE", str(DATA_DIR / "providers.json"))),
+                      Provider, "provider_id")

@@ -31,7 +31,8 @@ Patient_plan_RAG/
 │       ├── hooks/       # usePolicyOptions (role-aware document pickers)
 │       ├── pages/       # Dashboard, PolicyViewer, ChatAssistant,
 │       │                  CoverageAssessment, PriorAuth, SignIn (+ sign-up),
-│       │                  ChangePassword, Admin, Patients, SharedWithUs, Staff
+│       │                  ChangePassword, Admin, Patients, SharedWithUs, Staff,
+│       │                  MyAccount, SharingAccess, Settings
 │       └── services/api.js  # Fetch wrapper for all API calls
 ├── synthetic_data/      # Policy PDF generator: render.py + policies/*.py specs
 ├── data/                # Runtime data (gitignored except policies/)
@@ -138,7 +139,15 @@ accounts; sample policies only, never anyone's documents).
   staff (hospital admins): `GET/POST /api/hospital/staff`,
   `PATCH /api/hospital/staff/{username}`, `POST .../reset-password`
 - Individuals: `GET /api/shares/hospitals` · `GET/POST /api/shares` ·
-  `DELETE /api/shares/{share_id}`
+  `DELETE /api/shares/{share_id}` · `GET /api/me/overview` ·
+  `PATCH /api/me/profile` · `GET/POST /api/me/providers` ·
+  `PATCH/DELETE /api/me/providers/{id}` · `GET /api/me/sharing` ·
+  `DELETE /api/me/sharing/{org_id}` · `GET /api/me/export` ·
+  `POST /api/me/sign-out-everywhere` · `DELETE /api/me` (body: confirm_email)
+- `PATCH/DELETE /api/policies/{id}` — rename/delete (owner; hospital for its
+  patient documents; platform admin for uploaded samples)
+- `GET /api/chat/suggestions` — starter questions; chat answers include
+  `next_steps` (each with document, page and section)
 - `POST /api/policies/upload` takes `patient_id` (form field) for hospital staff;
   `POST /api/chat` takes `patient_id` (required for hospital staff)
 - `GET  /api/health` — Health check + mode
@@ -326,11 +335,57 @@ platform is for (user, 2026-10-20):
    end-to-end check across all four roles on a scratch backend. Existing
    `admin` accounts load as `platform_admin` (no file migration needed).
 
+### Phase G: Individual accounts — built, awaiting the user's review
+Agreed with the user 2026-10-20; review together when done.
+1. [x] **G1 Backend** — profile (name, phone) on the account; personal
+       providers (name, type, phone, notes); "my insurance" overview grouped
+       by insurer from policy metadata (plan, plan ID, dates, expired flag);
+       rename/delete a policy (file, chunks, registry, shares); sharing
+       overview per hospital + remove a hospital's access to everything;
+       account: export my data, sign out everywhere, delete account
+       (profile, policies, shares, providers removed; hospitals lose access
+       at once; an "account deleted" audit entry is appended — earlier audit
+       lines are kept, the chain cannot be rewritten).
+2. [x] **G2 Chat for individuals** — plan at a glance (deductible, OOP max,
+       copays, dates); starter questions generated from the user's own
+       policies; follow-up suggestions from the sections an answer cited;
+       grounded next-step suggestions (cited, labelled as suggestions, never
+       promising coverage; live mode returns them in the structured answer,
+       verified like citations).
+3. [x] **G3 Frontend** — individuals land on "My account" (profile, my
+       insurance, my providers, quick actions) instead of the system
+       dashboard; My policies (rename, delete); Ask; Sharing & access;
+       Settings (profile, password, sign out everywhere, export, delete
+       account with email confirmation). Prior Auth (a provider workflow
+       with CPT/NPI fields) leaves the individual navigation.
+4. [x] **G4 Verify** — tests per feature, end-to-end check as an
+       individual, then review with the user.
+   Built: `routers/me.py` (overview, profile, providers, sharing overview,
+   remove a hospital, export, sign out everywhere, delete account),
+   `services/documents.py` (rename/delete + who may), PATCH/DELETE
+   /api/policies/{id}, `services/suggestions.py` + GET /api/chat/suggestions
+   + `next_steps` on chat answers. Next steps fire only from sentences about
+   the question's subject (most of its specific words, or a qualifier like
+   "Prior authorization required after 12 visits"), and respect negations
+   ("does not require referrals"); `test_suggestions.py` pins them per
+   policy. Frontend: `MyAccount`, `SharingAccess`, `Settings`, rename/delete
+   on policy pages, plan-at-a-glance + starter questions + next steps in
+   chat. 293 backend + 60 frontend tests; end-to-end check as an individual.
+
+### Phase H: Hospital accounts (next, review with the user)
+Review the hospital workflow end to end (patients, uploads, shared
+policies, staff, chat per patient) and close the gaps found.
+
+### Phase I: Platform admin (after H, review with the user)
+Review onboarding, account management, samples and oversight views.
+
 ### Open before real (non-synthetic) use
 - HTTPS + `COOKIE_SECURE=true`; sessions, rate limits and conversations are
   in-memory per process (move to a shared store before multiple workers).
 - Audit log rotation/retention and off-host copies; uvicorn access logs
-  include admin URLs with member emails.
+  include admin URLs with member emails. The audit log stores emails in
+  plain text and is append-only by design, so deleted accounts' past
+  entries keep the email: switch to pseudonymous user IDs before real use.
 - SSO (OIDC) for hospitals; self-service password reset and email
   verification for self-registered individuals (no email service yet);
   identity verification before an individual can share with a hospital.

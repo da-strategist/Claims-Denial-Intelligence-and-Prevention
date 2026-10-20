@@ -13,8 +13,9 @@ import os
 import re
 from pathlib import Path
 
-from ..models.coverage import ChatResponse, SourceCitation
+from ..models.coverage import ChatResponse, NextStep, SourceCitation
 from ..models.policy import DocumentChunk
+from . import suggestions
 from .conversations import Turn
 from .policy_summarizer import _paragraphs
 from .retrieval import _tokenize, retrieve_for_policy
@@ -95,6 +96,41 @@ def _scored_paragraphs(
     return sorted(scored, key=lambda x: x[0], reverse=True)
 
 
+# Words that say what kind of question it is, not what it's about
+_GENERIC_QUERY_WORDS = frozenset(_tokenize(
+    "cover covered coverage plan plans policy benefit benefits service services care "
+    "visit get need many much pay cost costs include includes see"))
+
+
+# Sentences that qualify the one before them ("Prior authorization required
+# after 12 visits.") rather than starting a new subject
+_QUALIFIER_RE = re.compile(
+    r"^(prior authori|requires?\b|must\b|limited\b|up to\b|precertif|approval|referral|"
+    r"not covered)", re.I)
+
+
+def _about_subject(query: str, quoted: list[tuple[str, str]]) -> list[tuple[str, str]]:
+    """Sentences of the quoted paragraphs that are about the question's
+    subject, for next steps. The paragraph must contain more than half of the
+    question's specific words, and the sentence must mention one of them or
+    qualify the sentence before it. So a step never comes from a passage that
+    only shares a common word ("surgery" for "cosmetic surgery"), nor from a
+    neighbouring sentence merged in by PDF line wrapping."""
+    subject = set(_tokenize(query)) - _GENERIC_QUERY_WORDS
+    if not subject:
+        return []
+    out = []
+    for cid, text in quoted:
+        if len(subject & set(_tokenize(text))) * 2 <= len(subject):
+            continue
+        sentences = re.split(r"(?<=[.;])\s+", text)
+        for i, sentence in enumerate(sentences):
+            mentions = subject & set(_tokenize(sentence))
+            if mentions or (i > 0 and _QUALIFIER_RE.match(sentence)):
+                out.append((cid, sentence))
+    return out
+
+
 def _build_demo_answer(
     question: str,
     retrieved: list[tuple[DocumentChunk, float]],
@@ -171,7 +207,11 @@ question, say so plainly and set confidence to "insufficient_evidence".
 
 Never say that a service is guaranteed to be covered, reimbursed, or \
 authorized. Describe what the policy text says, including any conditions, and \
-separate what the text states from your interpretation. Use plain language."""
+separate what the text states from your interpretation. Use plain language.
+
+You may add up to three practical next steps (for example asking the provider
+to request prior authorization), each tied to the passage id whose wording
+supports it. Phrase them as suggestions; never say a service will be covered."""
 
 _ANSWER_SCHEMA = {
     "type": "object",
@@ -193,8 +233,20 @@ _ANSWER_SCHEMA = {
             "type": "string",
             "enum": ["supported", "interpreted", "insufficient_evidence"],
         },
+        "next_steps": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "text": {"type": "string"},
+                    "passage_id": {"type": "integer"},
+                },
+                "required": ["text", "passage_id"],
+                "additionalProperties": False,
+            },
+        },
     },
-    "required": ["answer", "citations", "confidence"],
+    "required": ["answer", "citations", "confidence", "next_steps"],
     "additionalProperties": False,
 }
 
@@ -268,12 +320,12 @@ async def _build_live_answer(
     question: str,
     retrieved: list[tuple[DocumentChunk, float]],
     history: list[Turn] | None = None,
-) -> tuple[str, list[SourceCitation], str]:
+) -> tuple[str, list[SourceCitation], str, list[dict]]:
     """Ask Claude for an answer grounded in the retrieved passages.
 
-    Returns (answer, citations, confidence). Citations are only those the app
-    could verify against the passages it sent; page and section come from the
-    chunks, never from the model.
+    Returns (answer, citations, confidence, next_steps). Citations and next
+    steps are kept only when they point at a passage the app sent; page and
+    section come from the chunks, never from the model.
     """
     user_msg = (
         f"{_passages_block(retrieved)}\n\n"
@@ -305,6 +357,7 @@ async def _build_live_answer(
             "the policy, or contact your plan administrator." + _LIVE_NOTICE,
             [],
             "insufficient_evidence",
+            [],
         )
 
     text = next((b.text for b in response.content if b.type == "text"), "")
@@ -321,7 +374,14 @@ async def _build_live_answer(
         confidence = "insufficient_evidence"
     else:
         confidence = "supported" if citations else "interpreted"
-    return answer + _LIVE_NOTICE, citations, confidence
+    steps = []
+    for step in data.get("next_steps", [])[:suggestions.MAX_NEXT_STEPS]:
+        idx, text = step.get("passage_id"), str(step.get("text", "")).strip()
+        if isinstance(idx, int) and 1 <= idx <= len(retrieved) and text:
+            chunk = retrieved[idx - 1][0]
+            steps.append({"text": text, "document_id": chunk.document_id,
+                          "page_number": chunk.page_number, "section": chunk.section_heading})
+    return answer + _LIVE_NOTICE, citations, confidence, steps
 
 
 # ── Public interface ─────────────────────────────────────────────────
@@ -361,12 +421,15 @@ async def answer_question(
     retrieved = retrieve_for_policy(query, chunk_dir, document_id, top_k, allowed_ids)
 
     confidence = "supported" if retrieved else "insufficient_evidence"
+    quoted = [(cid, text) for _, cid, text in _scored_paragraphs(query, retrieved)[:4]]
+    steps = suggestions.next_steps(_about_subject(query, quoted), retrieved)
     if effective_mode == "live" and retrieved:
         # Credentials are resolved by the SDK (API key, auth token, or an
         # `ant auth login` profile). Any failure degrades to the demo answer.
         try:
-            answer_text, citations, confidence = await _build_live_answer(
+            answer_text, citations, confidence, live_steps = await _build_live_answer(
                 question, retrieved, history)
+            steps = live_steps or steps
         except Exception as exc:
             # type and status only: error details can echo request content
             log.warning("Live answer failed (%s %s), using demo answer",
@@ -376,25 +439,12 @@ async def answer_question(
     else:
         answer_text, citations = _build_demo_answer(question, retrieved, query)
 
-    # Suggest follow-up questions
-    follow_ups: list[str] = []
-    q_lower = question.lower()
-    if "cover" in q_lower:
-        follow_ups.append("What are the cost-sharing requirements for this service?")
-        follow_ups.append("Does this service require prior authorization?")
-    if "auth" in q_lower or "prior" in q_lower:
-        follow_ups.append("What documentation is needed for this authorization request?")
-    if "cost" in q_lower or "pay" in q_lower:
-        follow_ups.append("What is the out-of-pocket maximum for this plan?")
-    if not follow_ups:
-        follow_ups = [
-            "What services require prior authorization under this plan?",
-            "What are the plan's exclusions and limitations?",
-        ]
+    follow_ups = suggestions.follow_ups(question, retrieved) if retrieved else []
 
     return ChatResponse(
         answer=answer_text,
         citations=citations,
-        follow_up_suggestions=follow_ups[:3],
+        follow_up_suggestions=follow_ups,
+        next_steps=[NextStep(**s) for s in steps],
         confidence=confidence,
     )

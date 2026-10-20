@@ -22,6 +22,67 @@ function OwnershipBadge({ doc, user }) {
   return <Badge title="Uploaded by your hospital for a patient">Patient record</Badge>;
 }
 
+const docName = (d) => d.display_name || d.plan_name || d.filename;
+
+/** Whether this user may rename/delete the document (the server re-checks). */
+function canManage(doc, user) {
+  if (user?.role === "individual") return doc.owner === user.username;
+  if (isHospital(user)) return Boolean(doc.org_id) && doc.org_id === user.org_id;
+  if (user?.role === "platform_admin") return !doc.owner && !doc.org_id;
+  return false;
+}
+
+/** Rename or delete a document. */
+function ManagePanel({ doc, onRenamed }) {
+  const [name, setName] = useState(doc.display_name || "");
+  const [editing, setEditing] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const [error, setError] = useState("");
+
+  const run = async (fn) => {
+    setError("");
+    try {
+      await fn();
+    } catch (e) {
+      setError(e.message.replace(/^\d+: /, ""));
+    }
+  };
+
+  return (
+    <div className="text-sm mb-4 space-y-2">
+      {editing ? (
+        <form onSubmit={(e) => {
+          e.preventDefault();
+          run(async () => {
+            onRenamed(await api.renamePolicy(doc.document_id, name.trim()));
+            setEditing(false);
+          });
+        }} className="flex gap-2 items-center">
+          <input aria-label="Policy name" maxLength={120} value={name} placeholder={doc.plan_name || doc.filename}
+                 onChange={(e) => setName(e.target.value)} className="border rounded px-2 py-1" />
+          <button type="submit" className="text-blue-700 hover:underline">Save</button>
+          <button type="button" onClick={() => setEditing(false)} className="text-gray-500 hover:underline">Cancel</button>
+        </form>
+      ) : confirming ? (
+        <div className="flex gap-3 items-center">
+          <span>Delete this policy{doc.owner ? " and stop sharing it with every hospital" : ""}? This can't be undone.</span>
+          <button onClick={() => run(async () => {
+            await api.deletePolicy(doc.document_id);
+            navigate("/policies");
+          })} className="bg-red-600 text-white px-3 py-1 rounded hover:bg-red-700">Delete</button>
+          <button onClick={() => setConfirming(false)} className="text-gray-500 hover:underline">Cancel</button>
+        </div>
+      ) : (
+        <div className="flex gap-4">
+          <button onClick={() => setEditing(true)} className="text-blue-700 hover:underline">Rename</button>
+          <button onClick={() => setConfirming(true)} className="text-red-700 hover:underline">Delete</button>
+        </div>
+      )}
+      {error && <p role="alert" className="text-red-600">{error}</p>}
+    </div>
+  );
+}
+
 /** Individuals: share one of their own documents with a hospital, or stop. */
 function SharePanel({ documentId }) {
   const [hospitals, setHospitals] = useState([]);
@@ -255,13 +316,14 @@ function PolicyDetail({ documentId }) {
       </button>
       <div className="bg-white rounded-lg shadow p-5">
         <h3 className="text-xl font-bold mb-1">
-          {policy.plan_name || policy.filename}
+          {docName(policy)}
           <OwnershipBadge doc={policy} user={user} />
         </h3>
         <p className="text-sm text-gray-500 mb-4">
           {policy.page_count} pages · {policy.chunk_count} chunks ·{" "}
           <span className="capitalize">{policy.status}</span>
         </p>
+        {canManage(policy, user) && <ManagePanel doc={policy} onRenamed={setPolicy} />}
         {policy.owner && policy.owner === user?.username && <SharePanel documentId={documentId} />}
         <div className="flex gap-2 mb-4 border-b">
           {["summary", "chunks"].map((t) => (
@@ -386,7 +448,7 @@ export default function PolicyViewer() {
                   onClick={() => navigate(`/policies/${p.document_id}`)}
                 >
                   <td className="p-3 font-medium">
-                    {p.plan_name || p.filename}
+                    {docName(p)}
                     <OwnershipBadge doc={p} user={user} />
                   </td>
                   <td>{p.page_count}</td>

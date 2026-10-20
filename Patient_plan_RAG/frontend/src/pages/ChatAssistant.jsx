@@ -43,6 +43,57 @@ function PrivacyNotice({ mode }) {
   );
 }
 
+const fmtDate = (iso) => (iso ? new Date(`${iso}T00:00:00`).toLocaleDateString() : "");
+
+/** Key numbers of the selected plan, from its summary (verbatim policy text). */
+function PlanAtAGlance({ option }) {
+  const [summary, setSummary] = useState(null);
+  useEffect(() => {
+    setSummary(null);
+    if (option) api.getPolicySummary(option.id).then(setSummary).catch(() => setSummary(null));
+  }, [option?.id]);
+  if (!option || !summary) return null;
+  const doc = option.doc;
+  const rows = [
+    ["Coverage", doc.effective_date || doc.expiration_date
+      ? `${fmtDate(doc.effective_date)} – ${fmtDate(doc.expiration_date)}` : ""],
+    ["Deductible", summary.deductible?.description],
+    ["Out-of-pocket max", summary.out_of_pocket_max?.description],
+    ...summary.copayments.filter((c) => c.service !== "Note").slice(0, 4).map((c) => [c.service, c.amount]),
+  ].filter(([, v]) => v);
+  if (rows.length === 0) return null;
+  return (
+    <aside aria-label="Plan at a glance" className="bg-white rounded-lg shadow p-4 text-sm mb-3">
+      <p className="font-semibold mb-2">{option.label} at a glance</p>
+      <dl className="grid grid-cols-[max-content_1fr] gap-x-3 gap-y-1">
+        {rows.map(([k, v]) => (
+          <React.Fragment key={k}>
+            <dt className="text-gray-500">{k}</dt>
+            <dd className="text-gray-800">{v}</dd>
+          </React.Fragment>
+        ))}
+      </dl>
+      <p className="text-xs text-gray-400 mt-2">Quoted from your policy document; ask for details below.</p>
+    </aside>
+  );
+}
+
+function NextSteps({ steps }) {
+  return (
+    <div className="mt-3 bg-white/70 border border-blue-100 rounded p-2">
+      <p className="text-xs font-semibold text-gray-600 mb-1">Suggested next steps</p>
+      <ul className="space-y-1">
+        {steps.map((s, i) => (
+          <li key={i} className="text-xs text-gray-700">
+            {s.text}{" "}
+            <span className="text-gray-400">(based on page {s.page_number || "?"}, {s.section || "policy"})</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 export default function ChatAssistant() {
   const { user } = useAuth();
   const hospital = isHospital(user);
@@ -78,6 +129,16 @@ export default function ChatAssistant() {
     return patient?.documents.some((d) => d.document_id === o.id);
   });
   const policyChoices = hospital ? patientDocs : options;
+  const selectedOption = options.find((o) => o.id === selectedPolicy);
+
+  // Starter questions built from the documents in scope
+  const [starters, setStarters] = useState([]);
+  useEffect(() => {
+    if (hospital && !selectedPatient) return setStarters([]);
+    api.chatSuggestions(selectedPolicy || undefined, hospital ? selectedPatient : undefined)
+      .then((r) => setStarters(r.questions))
+      .catch(() => setStarters([]));
+  }, [hospital, selectedPolicy, selectedPatient]);
   const canAsk = hospital ? Boolean(selectedPatient) : Boolean(selectedPolicy) || user?.role === "individual";
 
   useEffect(() => {
@@ -107,6 +168,7 @@ export default function ChatAssistant() {
           content: resp.answer,
           citations: resp.citations,
           followUps: resp.follow_up_suggestions,
+          nextSteps: resp.next_steps || [],
         },
       ]);
     } catch (e) {
@@ -174,6 +236,7 @@ export default function ChatAssistant() {
         </button>
       </div>
 
+      <PlanAtAGlance option={selectedOption} />
       <div className="flex-1 overflow-y-auto bg-white rounded-lg shadow p-4 space-y-4">
         {hospital && !selectedPatient && (
           <p className="text-sm text-gray-500">
@@ -182,13 +245,19 @@ export default function ChatAssistant() {
           </p>
         )}
         {messages.length === 0 && (!hospital || selectedPatient) && (
-          <div className="text-gray-400 text-center py-12">
+          <div className="text-center py-8">
             <p className="text-4xl mb-3">💬</p>
-            <p>Ask a question about your insurance policy.</p>
-            <p className="text-sm mt-1">
-              For example: "Does this plan cover MRI scans?" or "What is my
-              deductible?"
-            </p>
+            <p className="text-gray-500">Ask a question about {hospital ? "this patient's" : "your"} insurance policy.</p>
+            {starters.length > 0 && (
+              <div className="mt-4 flex flex-wrap justify-center gap-2 max-w-2xl mx-auto" aria-label="Suggested questions">
+                {starters.map((q) => (
+                  <button key={q} onClick={() => setQuestion(q)}
+                          className="text-sm bg-blue-50 text-blue-800 px-3 py-1.5 rounded-full border border-blue-200 hover:bg-blue-100">
+                    {q}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         )}
         {messages.map((m, i) => (
@@ -214,6 +283,7 @@ export default function ChatAssistant() {
                   ))}
                 </div>
               )}
+              {m.nextSteps?.length > 0 && <NextSteps steps={m.nextSteps} />}
               {m.followUps?.length > 0 && (
                 <div className="mt-3 flex flex-wrap gap-1">
                   {m.followUps.map((f, j) => (

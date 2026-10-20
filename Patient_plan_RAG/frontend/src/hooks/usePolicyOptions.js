@@ -6,7 +6,7 @@ export const isHospital = (user) =>
   user?.role === "hospital_staff" || user?.role === "hospital_admin";
 
 const isSample = (p) => !p.owner && !p.org_id;
-const name = (p) => p.plan_name || p.filename;
+const name = (p) => p.display_name || p.plan_name || p.filename;
 
 /**
  * The documents this user may pick, labelled for their role and ordered:

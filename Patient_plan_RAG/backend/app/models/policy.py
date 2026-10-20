@@ -36,6 +36,7 @@ class PolicyDocument(DomainModel):
     owner: str | None = None
     org_id: str | None = None
     patient_id: str | None = None
+    display_name: str = ""  # set by the owner; shown instead of the plan name
     is_synthetic: bool = True
     error_message: str | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)

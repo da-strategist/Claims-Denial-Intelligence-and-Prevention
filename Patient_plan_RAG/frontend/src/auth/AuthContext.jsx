@@ -34,12 +34,21 @@ export function AuthProvider({ children }) {
     }
   }, []);
 
+  /** Re-read the signed-in user (after a profile change); null when signed out. */
+  const refresh = useCallback(async () => {
+    try {
+      setUser(await api.me());
+    } catch {
+      setUser(null);
+    }
+  }, []);
+
   const changePassword = useCallback(async (current, next) => {
     setUser(await api.changePassword(current, next));
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, loading, signIn, register, signOut, changePassword }}>
+    <AuthContext.Provider value={{ user, loading, signIn, register, signOut, changePassword, refresh }}>
       {children}
     </AuthContext.Provider>
   );

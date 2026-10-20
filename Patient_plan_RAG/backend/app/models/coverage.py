@@ -96,10 +96,19 @@ class ChatRequest(DomainModel):
     conversation_id: DocumentId | None = None
 
 
+class NextStep(BaseModel):
+    """A suggested action, tied to the policy passage that prompted it."""
+    text: str
+    document_id: str
+    page_number: int | None = None
+    section: str = ""
+
+
 class ChatResponse(BaseModel):
     answer: str
     citations: list[SourceCitation] = Field(default_factory=list)
     follow_up_suggestions: list[str] = Field(default_factory=list)
+    next_steps: list[NextStep] = Field(default_factory=list)
     confidence: str = "supported"
     conversation_id: str = ""
     disclaimer: str = DISCLAIMER

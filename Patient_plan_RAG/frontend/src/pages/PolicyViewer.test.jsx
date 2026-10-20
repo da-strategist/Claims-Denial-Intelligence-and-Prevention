@@ -7,6 +7,7 @@ vi.mock("../services/api", () => ({
   api: {
     listPolicies: vi.fn(), getPolicy: vi.fn(), getPolicySummary: vi.fn(), getPolicyChunks: vi.fn(),
     uploadPolicy: vi.fn(), hospitalDirectory: vi.fn(), myShares: vi.fn(), share: vi.fn(), unshare: vi.fn(),
+    renamePolicy: vi.fn(), deletePolicy: vi.fn(),
   },
 }));
 let mockUser = { username: "alice@example.com", role: "individual" };
@@ -70,4 +71,35 @@ test("platform admin uploads samples, with a warning", async () => {
   render(<PolicyViewer />);
   expect(await screen.findByRole("heading", { name: "Sample policies" })).toBeInTheDocument();
   await waitFor(() => expect(screen.getByText(/Never upload real member documents/)).toBeInTheDocument());
+});
+
+
+test("owners can rename and delete their policy", async () => {
+  window.location.hash = "/policies/d1";
+  api.getPolicy.mockResolvedValue(MINE);
+  api.hospitalDirectory.mockResolvedValue([]);
+  api.myShares.mockResolvedValue([]);
+  api.renamePolicy.mockResolvedValue({ ...MINE, display_name: "Work plan" });
+  api.deletePolicy.mockResolvedValue({});
+  render(<PolicyViewer />);
+  await userEvent.click(await screen.findByRole("button", { name: "Rename" }));
+  await userEvent.type(screen.getByLabelText("Policy name"), "Work plan");
+  await userEvent.click(screen.getByRole("button", { name: "Save" }));
+  expect(api.renamePolicy).toHaveBeenCalledWith("d1", "Work plan");
+  expect(await screen.findByRole("heading", { name: /Work plan/ })).toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: "Delete" }));
+  expect(screen.getByText(/stop sharing it with every hospital/)).toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: "Delete" }));
+  expect(api.deletePolicy).toHaveBeenCalledWith("d1");
+  await waitFor(() => expect(window.location.hash).toBe("#/policies"));
+});
+
+test("hospital staff can read a shared policy but not change it", async () => {
+  mockUser = { username: "s@h.example", role: "hospital_staff", org_id: "o1" };
+  window.location.hash = "/policies/d1";
+  api.getPolicy.mockResolvedValue(MINE);  // owned by alice, shared with the hospital
+  render(<PolicyViewer />);
+  await screen.findByRole("heading", { name: /Gold PPO/ });
+  expect(screen.queryByRole("button", { name: "Rename" })).toBeNull();
+  expect(screen.queryByText("Share with a hospital")).toBeNull();
 });
