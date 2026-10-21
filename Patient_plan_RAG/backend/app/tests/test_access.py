@@ -10,27 +10,37 @@ from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
 
 from backend.app import main
-from backend.app.auth.sessions import current_user
+from backend.app.auth.sessions import current_user, signed_in
 from backend.app.auth.users import Role, user_store
 from backend.app.services import records
 from backend.app.tests.conftest import POLICY_PDF, TEST_PASSWORD, sign_in
 
 SUMMIT = POLICY_PDF.parent / "summit_care_silver_hmo_2026.pdf"
-OPEN_ROUTES = {"/api/health", "/api/auth/login", "/api/auth/logout", "/api/auth/register"}
+OPEN_ROUTES = {"/api/health", "/api/auth/login", "/api/auth/logout", "/api/auth/register",
+               "/api/auth/register/provider"}
 
 
 # ── Every route is protected ─────────────────────────────────────────
 
-def _depends_on(dependant, target) -> bool:
-    return any(d.call is target or _depends_on(d, target) for d in dependant.dependencies)
+def _depends_on(dependant, targets) -> bool:
+    return any(d.call in targets or _depends_on(d, targets) for d in dependant.dependencies)
+
+
+def _api_routes(routes):
+    """Every APIRoute, including those inside included routers (newer FastAPI
+    keeps them in a wrapper rather than copying them onto the app)."""
+    for r in routes:
+        if isinstance(r, APIRoute):
+            yield r
+        elif hasattr(r, "original_router"):
+            yield from _api_routes(r.original_router.routes)
 
 
 def test_every_api_route_requires_sign_in():
-    unprotected = [
-        r.path for r in main.app.routes
-        if isinstance(r, APIRoute) and r.path.startswith("/api")
-        and r.path not in OPEN_ROUTES and not _depends_on(r.dependant, current_user)
-    ]
+    routes = [r for r in _api_routes(main.app.routes) if r.path.startswith("/api")]
+    assert len(routes) > 50  # the walk reached the routers, not just /api/health
+    unprotected = [r.path for r in routes
+                   if r.path not in OPEN_ROUTES and not _depends_on(r.dependant, {current_user, signed_in})]
     assert unprotected == []
 
 
@@ -133,7 +143,8 @@ def test_dashboard_counts(world):
     w = world
     assert w["alice"].get("/api/dashboard").json()["total_policies"] == 2
     gs = w["gstaff"].get("/api/dashboard").json()
-    assert (gs["total_policies"], gs["patient_count"]) == (3, 1)
+    # Pat One, plus the record created when Alice shared a policy
+    assert (gs["total_policies"], gs["patient_count"]) == (3, 2)
     assert w["alice"].get("/api/dashboard").json()["patient_count"] is None
 
 
@@ -141,7 +152,8 @@ def test_dashboard_counts(world):
 
 def test_patients_are_per_hospital(world):
     w = world
-    general = w["gstaff"].get("/api/hospital/patients").json()
+    general = [p for p in w["gstaff"].get("/api/hospital/patients").json()
+               if not p["linked_username"]]  # leave out records created by sharing
     assert [p["patient_id"] for p in general] == [w["p1"]]
     assert {d["document_id"] for d in general[0]["documents"]} == {w["gen_doc"]}
     assert general[0]["reference"] == "MRN-1"
@@ -284,7 +296,7 @@ def test_platform_admin_onboards_a_hospital(world, anon_client):
                                                       "password": body["temporary_password"]})
     assert login.status_code == 200
     orgs = {o["name"]: o for o in w["admin"].get("/api/admin/orgs").json()}
-    assert orgs["General Hospital"]["patient_count"] == 1
+    assert orgs["General Hospital"]["patient_count"] == 2  # incl. the one created by sharing
 
 
 def test_duplicate_hospital_admin_creates_no_orphan_org(world):

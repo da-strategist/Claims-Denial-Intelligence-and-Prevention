@@ -4,7 +4,7 @@ import { navigate } from "../utils/route";
 
 const clean = (msg) => msg.replace(/^\d+: /, "");
 
-/** Which hospitals can see which of my policies; share, stop sharing, remove a hospital. */
+/** Which providers can see which of my policies; share, stop sharing, remove a provider. */
 export default function SharingAccess() {
   const [sharing, setSharing] = useState([]);
   const [hospitals, setHospitals] = useState([]);
@@ -38,7 +38,7 @@ export default function SharingAccess() {
     <div className="space-y-6">
       <h2 className="text-2xl font-bold">Sharing & access</h2>
       <p className="text-sm text-gray-600">
-        Hospitals can only see the policies you share with them, and lose access the moment you
+        Providers can only see the policies you share with them, and lose access the moment you
         stop sharing.
       </p>
       {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
@@ -50,7 +50,7 @@ export default function SharingAccess() {
             Upload a policy under <button onClick={() => navigate("/policies")} className="text-blue-700 hover:underline">My policies</button> first.
           </p>
         ) : hospitals.length === 0 ? (
-          <p className="text-sm text-gray-500">No hospitals are on the platform yet.</p>
+          <p className="text-sm text-gray-500">No providers are on the platform yet.</p>
         ) : (
           <div className="flex flex-wrap gap-2 text-sm">
             <select aria-label="Policy to share" value={form.documentId}
@@ -58,10 +58,10 @@ export default function SharingAccess() {
               <option value="">Choose a policy…</option>
               {policies.map((d) => <option key={d.document_id} value={d.document_id}>{label(d)}</option>)}
             </select>
-            <select aria-label="Hospital to share with" value={form.orgId}
+            <select aria-label="Provider to share with" value={form.orgId}
                     onChange={(e) => setForm({ ...form, orgId: e.target.value })} className="border rounded px-2 py-1">
-              <option value="">Choose a hospital…</option>
-              {hospitals.map((h) => <option key={h.org_id} value={h.org_id}>{h.name}{h.city ? ` — ${h.city}` : ""}</option>)}
+              <option value="">Choose a provider…</option>
+              {hospitals.map((h) => <option key={h.org_id} value={h.org_id}>{h.name}{h.category_label ? ` (${h.category_label})` : ""}{h.city ? ` — ${h.city}` : ""}</option>)}
             </select>
             <button disabled={!form.documentId || !form.orgId}
                     onClick={() => act(async () => {
@@ -76,9 +76,9 @@ export default function SharingAccess() {
       </section>
 
       <section className="bg-white rounded-lg shadow">
-        <h3 className="font-semibold p-4 border-b">Hospitals with access</h3>
+        <h3 className="font-semibold p-4 border-b">Providers with access</h3>
         {sharing.length === 0 ? (
-          <p className="p-4 text-sm text-gray-500">No hospital can see your policies.</p>
+          <p className="p-4 text-sm text-gray-500">No provider can see your policies.</p>
         ) : (
           <ul className="divide-y">
             {sharing.map((h) => (
@@ -108,9 +108,9 @@ export default function SharingAccess() {
       </section>
 
       <p className="text-xs text-gray-500">
-        A hospital may also keep its own copy of your policy (for example from your insurance
-        card at registration). Those are the hospital's records: stopping sharing or deleting your
-        account here doesn't remove them, so ask the hospital directly.
+        A provider may also keep its own copy of your policy (for example from your insurance
+        card at registration). Those are the provider's records: stopping sharing or deleting your
+        account here doesn't remove them, so ask the provider directly.
       </p>
     </div>
   );

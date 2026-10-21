@@ -1,11 +1,14 @@
-"""Platform administration: hospital organisations and all accounts.
+"""Platform administration: provider organisations and all accounts.
 
-The platform admin onboards a hospital (organisation + its first hospital
-admin) and can disable accounts or reset passwords. It never sees anyone's
-policy documents; the hospital manages its own staff and patients.
+Providers join two ways: they sign themselves up (pending until the platform
+admin approves or rejects them), or the platform admin creates one with its
+first provider admin (active at once). The platform admin can disable
+accounts or reset passwords. It never sees anyone's policy documents; the
+provider manages its own staff and patients.
 """
 
 import secrets
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi import Path as PathParam
@@ -28,6 +31,12 @@ OrgIdParam = PathParam(pattern=DOCUMENT_ID_PATTERN)
 class NewOrg(BaseModel):
     name: str = Field(min_length=2, max_length=200)
     admin_username: str = Field(min_length=3, max_length=254)
+    category: str = Field("hospital", max_length=40)
+    city: str = Field("", max_length=100)
+
+
+class Review(BaseModel):
+    note: str = Field("", max_length=500)
 
 
 class OrgChanges(BaseModel):
@@ -48,28 +57,45 @@ def _org_or_404(org_id: str) -> records.Org:
 
 def _org_summary(org: records.Org) -> dict:
     staff = [u for u in user_store.all() if u.org_id == org.org_id]
+    signer = user_store.get(org.signed_up_by) if org.signed_up_by else None
     return {"org_id": org.org_id, "name": org.name, "disabled": org.disabled,
-            "city": org.city,
+            "category": org.category, "status": org.status, "npi": org.npi,
+            "address": org.address, "city": org.city, "phone": org.phone,
+            "contact_email": org.contact_email, "created_at": org.created_at,
+            "signed_up_by": org.signed_up_by,
+            "signed_up_by_name": signer.full_name if signer else "",
+            "reviewed_by": org.reviewed_by, "reviewed_at": org.reviewed_at,
+            "review_note": org.review_note,
             "staff_count": len(staff),
             "patient_count": sum(1 for p in records.patients.all() if p.org_id == org.org_id)}
 
 
-# ── Hospital organisations ───────────────────────────────────────────
+# ── Provider organisations ───────────────────────────────────────────
 
 @router.get("/orgs")
 async def list_orgs(_: User = Depends(_orgs)) -> list[dict]:
-    return [_org_summary(o) for o in sorted(records.orgs.all(), key=lambda o: o.name.lower())]
+    """All providers; pending sign-ups first (oldest first), then by name."""
+    pending = sorted((o for o in records.orgs.all() if o.status == records.PENDING),
+                     key=lambda o: o.created_at)
+    rest = sorted((o for o in records.orgs.all() if o.status != records.PENDING),
+                  key=lambda o: o.name.lower())
+    return [_org_summary(o) for o in pending + rest]
 
 
 @router.post("/orgs")
 async def create_org(body: NewOrg, request: Request, _: User = Depends(_orgs)) -> dict:
-    """Create a hospital and its first hospital admin. The admin's temporary
-    password is returned once; they must change it at first sign-in."""
+    """Create a provider (active at once) and its first provider admin. The
+    admin's temporary password is returned once; they must change it at
+    first sign-in."""
     username = body.admin_username.strip().lower()
     audit_target(request, username)
+    if body.category not in records.PROVIDER_CATEGORIES:
+        raise HTTPException(400, "Choose a provider category.")
     if user_store.get(username):
         raise HTTPException(400, f"An account for {username} already exists.")
-    org = records.orgs.add(records.Org(records.new_id(), body.name.strip()))
+    org = records.orgs.add(records.Org(records.new_id(), body.name.strip(),
+                                       category=body.category, city=body.city.strip(),
+                                       contact_email=username))
     temporary = secrets.token_urlsafe(12)
     try:
         user_store.create(username, temporary, Role.HOSPITAL_ADMIN, org_id=org.org_id)
@@ -81,14 +107,46 @@ async def create_org(body: NewOrg, request: Request, _: User = Depends(_orgs)) -
 
 @router.patch("/orgs/{org_id}")
 async def update_org(body: OrgChanges, org_id: str = OrgIdParam, _: User = Depends(_orgs)) -> dict:
-    """Rename or disable a hospital; disabling signs out all its staff."""
+    """Rename or disable a provider; disabling signs out all its staff."""
     _org_or_404(org_id)
     changes = {k: v for k, v in body.model_dump().items() if v is not None}
     org = records.orgs.update(org_id, **changes)
     if org.disabled:
-        for u in user_store.all():
-            if u.org_id == org_id:
-                sessions.end_all_for(u.username)
+        _sign_out_staff(org_id)
+    return _org_summary(org)
+
+
+def _sign_out_staff(org_id: str) -> None:
+    for u in user_store.all():
+        if u.org_id == org_id:
+            sessions.end_all_for(u.username)
+
+
+def _review(org_id: str, status: str, note: str, admin: User) -> records.Org:
+    return records.orgs.update(org_id, status=status, review_note=note.strip(),
+                               reviewed_by=admin.username,
+                               reviewed_at=datetime.now(UTC).isoformat())
+
+
+@router.post("/orgs/{org_id}/approve")
+async def approve_org(body: Review, org_id: str = OrgIdParam,
+                      admin: User = Depends(_orgs)) -> dict:
+    """Approve a provider sign-up (or reverse a rejection): its staff can
+    work, and individuals can find it and share with it."""
+    if _org_or_404(org_id).status == records.ACTIVE:
+        raise HTTPException(400, "This provider is already approved.")
+    return _org_summary(_review(org_id, records.ACTIVE, body.note, admin))
+
+
+@router.post("/orgs/{org_id}/reject")
+async def reject_org(body: Review, org_id: str = OrgIdParam,
+                     admin: User = Depends(_orgs)) -> dict:
+    """Reject a pending provider sign-up: its admin can no longer sign in and
+    is shown the note. Approved providers are disabled instead."""
+    if _org_or_404(org_id).status != records.PENDING:
+        raise HTTPException(400, "Only pending sign-ups can be rejected; disable an approved provider instead.")
+    org = _review(org_id, records.REJECTED, body.note, admin)
+    _sign_out_staff(org_id)
     return _org_summary(org)
 
 

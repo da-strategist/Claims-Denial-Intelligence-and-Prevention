@@ -77,7 +77,7 @@ async def upload_policy(
         Access(user).patient_or_404(patient_id)
         ownership = {"org_id": user.org_id, "patient_id": patient_id}
     elif patient_id:
-        raise HTTPException(400, "Only hospital staff file documents under a patient")
+        raise HTTPException(400, "Only provider staff file documents under a patient")
     elif user.role is Role.INDIVIDUAL:
         ownership = {"owner": user.username}
     else:  # platform admin

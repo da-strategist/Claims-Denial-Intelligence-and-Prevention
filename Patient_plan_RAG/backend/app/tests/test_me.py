@@ -70,7 +70,8 @@ def test_providers_are_private_to_their_owner(world):
     w = world
     p = w["alice"].post("/api/me/providers", json={"name": "Dr. Lee", "kind": "doctor",
                                                    "phone": "555 0101", "notes": "GP"}).json()
-    assert [x["name"] for x in w["alice"].get("/api/me/providers").json()] == ["Dr. Lee"]
+    typed = [x["name"] for x in w["alice"].get("/api/me/providers").json() if not x["org_id"]]
+    assert typed == ["Dr. Lee"]  # (her shares also connected her to two providers)
     assert w["bob"].get("/api/me/providers").json() == []
     assert w["bob"].patch(f"/api/me/providers/{p['provider_id']}", json={"name": "x"}).status_code == 404
     assert w["bob"].delete(f"/api/me/providers/{p['provider_id']}").status_code == 404
@@ -78,7 +79,7 @@ def test_providers_are_private_to_their_owner(world):
     assert upd.json()["kind"] == "clinic"
     assert w["alice"].post("/api/me/providers", json={"name": "X", "kind": "astrologer"}).status_code == 422
     assert w["alice"].delete(f"/api/me/providers/{p['provider_id']}").status_code == 200
-    assert w["alice"].get("/api/me/providers").json() == []
+    assert [x for x in w["alice"].get("/api/me/providers").json() if not x["org_id"]] == []
 
 
 # ── Sharing overview ─────────────────────────────────────────────────
@@ -134,7 +135,7 @@ def test_export_contains_my_data_only(world):
     w["alice"].post("/api/me/providers", json={"name": "Dr. Lee"})
     data = w["alice"].get("/api/me/export").json()
     assert {p["document_id"] for p in data["policies"]} == {w["apex"], w["summit"]}
-    assert [p["name"] for p in data["providers"]] == ["Dr. Lee"]
+    assert sorted(p["name"] for p in data["providers"]) == ["Dr. Lee", "General Hospital", "Mercy Medical"]
     assert len(data["sharing"]) == 2 and "password_hash" not in json.dumps(data)
     assert w["gstaff"].get("/api/me/export").status_code == 403
 

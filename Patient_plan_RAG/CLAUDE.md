@@ -29,8 +29,9 @@ Patient_plan_RAG/
 │       ├── auth/        # AuthContext (session state, 401 → sign-in)
 │       ├── components/  # ErrorBoundary (per-page + app-level)
 │       ├── hooks/       # usePolicyOptions, usePolicyPicker (role-aware pickers)
-│       ├── pages/       # Dashboard, PolicyViewer, ChatAssistant,
-│       │                  CoverageAssessment, PriorAuth, SignIn (+ sign-up),
+│       ├── pages/       # Landing (public), SignIn, SignUp (individual +
+│       │                  provider), PendingApproval, Dashboard, PolicyViewer,
+│       │                  ChatAssistant, CoverageAssessment, PriorAuth,
 │       │                  ChangePassword, Admin, Patients, SharedWithUs, Staff,
 │       │                  MyAccount, SharingAccess, Settings,
 │       │                  HospitalOverview, HospitalAdmin
@@ -127,12 +128,23 @@ user sees is decided by `Access` in `backend/app/auth/access.py`; documents
 they may not see return 404.
 
 Roles: **individual** (self sign-up; own documents, can share with a
-hospital), **hospital_staff** / **hospital_admin** (one hospital's patients
-and shared policies; admins manage staff), **platform_admin** (hospitals and
-accounts; sample policies only, never anyone's documents).
-- `POST /api/auth/register` · `POST /api/auth/login` · `POST /api/auth/logout`
-  · `GET /api/auth/me` · `POST /api/auth/password`
-- Platform admin: `GET/POST /api/admin/orgs` · `PATCH /api/admin/orgs/{id}` ·
+provider), **hospital_staff** / **hospital_admin** (shown as "provider
+staff/admin": one provider organisation's patients and shared policies;
+admins manage staff), **platform_admin** (providers and accounts; sample
+policies only, never anyone's documents). Provider organisations have a
+category (hospital, clinic, pharmacy, laboratory, imaging, dental, other —
+same features for all) and a status: self-signed-up providers are
+`pending` (signed in, but every permission returns 403 and they are not
+listed for sharing) until the platform admin approves or rejects them;
+providers the platform admin creates are `active` at once. Internal names
+(`hospital_*` roles, `/api/hospital/*`) are unchanged; the UI says provider.
+- `POST /api/auth/register` · `POST /api/auth/register/provider` (pending
+  organisation + its admin) · `POST /api/auth/login` · `POST /api/auth/logout`
+  · `GET /api/auth/me` (includes org_name/org_category/org_status) ·
+  `POST /api/auth/password`
+- Platform admin: `GET/POST /api/admin/orgs` (pending first) ·
+  `PATCH /api/admin/orgs/{id}` · `POST /api/admin/orgs/{id}/approve` ·
+  `POST /api/admin/orgs/{id}/reject` (body: note) ·
   `GET /api/admin/users` · `PATCH /api/admin/users/{username}` ·
   `POST /api/admin/users/{username}/reset-password`
 - Hospital: `GET/POST /api/hospital/patients` (`?include_archived=`) ·
@@ -142,12 +154,16 @@ accounts; sample policies only, never anyone's documents).
   `GET /api/hospital/profile` (PATCH: hospital admins) ·
   `GET /api/hospital/access-log` (hospital admins) ·
   `GET /api/hospital/shared` · `PATCH /api/hospital/shared/{share_id}` ·
+  `POST /api/hospital/patients/{id}/merge` (body: into_patient_id) ·
+  `GET /api/hospital/connections` · `PATCH /api/hospital/connections/{id}`
+  (attach to a patient record; files that person's unfiled shares) ·
   staff (hospital admins): `GET/POST /api/hospital/staff`,
   `PATCH /api/hospital/staff/{username}`, `POST .../reset-password`
 - Individuals: `GET /api/shares/hospitals` · `GET/POST /api/shares` ·
   `DELETE /api/shares/{share_id}` · `GET /api/me/overview` ·
-  `PATCH /api/me/profile` · `GET/POST /api/me/providers` ·
-  `PATCH/DELETE /api/me/providers/{id}` · `GET /api/me/sharing` ·
+  `PATCH /api/me/profile` · `GET/POST /api/me/providers` (`org_id` = a
+  provider on the platform → a connection) ·
+  `PATCH/DELETE /api/me/providers/{id}` (PATCH `org_id` links a typed entry) · `GET /api/me/sharing` ·
   `DELETE /api/me/sharing/{org_id}` · `GET /api/me/export` ·
   `POST /api/me/sign-out-everywhere` · `DELETE /api/me` (body: confirm_email)
 - `PATCH/DELETE /api/policies/{id}` — rename/delete (owner; hospital for its
@@ -409,8 +425,68 @@ Agreed with the user 2026-10-21 (all items); review together when done.
    policy-options hook reloaded on every new user object (now keyed on
    identity). 305 backend + 70 frontend tests; end-to-end as a hospital.
 
-### Phase I: Platform admin (after H, review with the user)
-Review onboarding, account management, samples and oversight views.
+### Landing page and sign-ups — built, awaiting the user's review
+Agreed with the user 2026-10-21: a public landing page with two sign-ups,
+"Sign up as an individual" and "Sign up as a provider" (category chosen on
+the form); providers sign up freely but start pending; the platform admin
+can also create a provider directly (active at once). "Hospital" became
+"provider" in the UI. Test locally first; real production later.
+- [x] Backend: `Org.category/status/npi/signed_up_by/reviewed_*/review_note`
+      (older records load as active hospitals), `POST
+      /api/auth/register/provider`, pending providers blocked in `require()`,
+      rejected providers signed out and told why at sign-in, directory and
+      shares limited to approved providers (`Org.usable`), stricter rate
+      limit on provider sign-up.
+- [x] Frontend: `Landing`, `SignIn` (sign-in only), `SignUp`
+      (`IndividualSignUp`, `ProviderSignUp`), `PendingApproval` (check
+      again / sign out); after sign-up the app goes to the home page;
+      provider wording throughout; category shown in the share pickers.
+- [x] Fixed: the "every route requires sign-in" test only saw /api/health
+      (FastAPI 0.143 wraps included routers); it now walks them and checks
+      all 61 routes.
+   `test_providers.py` (16 tests); 321 backend + 76 frontend tests;
+   end-to-end on a scratch backend (sign-up, pending, approve, reject,
+   admin-created provider).
+- [x] Connections (user, 2026-10-21: "no auto-share"): an individual's
+      provider list entry can link to an approved provider on the platform
+      (search when adding, or "Link to …" on a typed entry whose name
+      matches). The provider then sees the person under "Patients who
+      added you" (Shared with us + Overview): name and email only, number
+      of policies shared, never policies themselves. After connecting the
+      individual is offered (not forced) to share policies. Staff attach a
+      connection to a patient record (or create one from it); the person's
+      unfiled shares, and later shares, file under it. Removing the
+      provider ends the connection and asks whether to stop sharing too.
+      `records.Provider.org_id/patient_id/connected_at`;
+      `test_connections.py` (10 tests); 331 backend + 81 frontend tests;
+      end-to-end on a scratch backend.
+- [x] Sharing creates the patient record (user, 2026-10-21): the first
+      share from a person to a provider creates a patient record
+      (`Patient.linked_username`, "Shared by patient", name from their
+      profile — unverified) and files the policy under it; later shares go
+      to the same record (restored if archived, recreated if deleted).
+      Sharing also connects the person (a typed entry with the provider's
+      name is linked, not duplicated). The person then appears in Patients
+      and in the Ask / Coverage / Prior Auth pickers, and chat about them
+      searches only what they shared plus the provider's uploads. Stopping
+      sharing empties the record but keeps it (it is the provider's).
+      `POST /api/hospital/patients/{id}/merge` merges a duplicate (shares,
+      uploads, checklists, connection, account link). Attaching a
+      connection to another record moves that person's shares from the
+      previous one. Shares made before this are filed at startup
+      (`services/sharing.backfill`, only where no connection exists yet).
+      "New" on shared policies now means shared in the last 7 days; the
+      overview lists recent shares with a link to the record.
+      `test_shared_patients.py` (11 tests); 342 backend + 83 frontend tests.
+
+### Phase I: Platform admin (review with the user)
+1. [x] **I1 Provider approval queue** — "Waiting for approval" on Providers
+       & accounts: details (category, NPI, location, who signed up, when),
+       note, approve / reject; rejected providers can be approved after all;
+       the provider table shows category, city and status; "Add provider"
+       takes a category and city.
+2. [ ] Review the rest with the user: onboarding, account management,
+       samples and oversight views.
 
 ### Open before real (non-synthetic) use
 - HTTPS + `COOKIE_SECURE=true`; sessions, rate limits and conversations are
@@ -419,6 +495,9 @@ Review onboarding, account management, samples and oversight views.
   include admin URLs with member emails. The audit log stores emails in
   plain text and is append-only by design, so deleted accounts' past
   entries keep the email: switch to pseudonymous user IDs before real use.
+- Provider verification: NPI registry lookup (live integration, not yet
+  allowed), email notice when a provider is approved/rejected, and bot
+  protection on the public sign-up forms (only per-client rate limits now).
 - SSO (OIDC) for hospitals; self-service password reset and email
   verification for self-registered individuals (no email service yet);
   identity verification before an individual can share with a hospital.

@@ -17,9 +17,9 @@ function OwnershipBadge({ doc, user }) {
   if (!doc.owner && !doc.org_id)
     return <Badge title="Synthetic example policy, visible to everyone">Sample</Badge>;
   if (doc.owner === user?.username)
-    return <Badge title="Only you, and hospitals you share it with, can see it">Yours</Badge>;
-  if (doc.owner) return <Badge title="A patient shared this with your hospital">Shared by {doc.owner}</Badge>;
-  return <Badge title="Uploaded by your hospital for a patient">Patient record</Badge>;
+    return <Badge title="Only you, and providers you share it with, can see it">Yours</Badge>;
+  if (doc.owner) return <Badge title="A patient shared this with your organisation">Shared by {doc.owner}</Badge>;
+  return <Badge title="Uploaded by your organisation for a patient">Patient record</Badge>;
 }
 
 const docName = (d) => d.display_name || d.plan_name || d.filename;
@@ -65,7 +65,7 @@ function ManagePanel({ doc, onRenamed }) {
         </form>
       ) : confirming ? (
         <div className="flex gap-3 items-center">
-          <span>Delete this policy{doc.owner ? " and stop sharing it with every hospital" : ""}? This can't be undone.</span>
+          <span>Delete this policy{doc.owner ? " and stop sharing it with every provider" : ""}? This can't be undone.</span>
           <button onClick={() => run(async () => {
             await api.deletePolicy(doc.document_id);
             navigate("/policies");
@@ -83,7 +83,7 @@ function ManagePanel({ doc, onRenamed }) {
   );
 }
 
-/** Individuals: share one of their own documents with a hospital, or stop. */
+/** Individuals: share one of their own documents with a provider, or stop. */
 function SharePanel({ documentId }) {
   const [hospitals, setHospitals] = useState([]);
   const [shares, setShares] = useState([]);
@@ -114,9 +114,9 @@ function SharePanel({ documentId }) {
 
   return (
     <div className="border rounded p-4 mb-4 text-sm">
-      <h4 className="font-semibold mb-1">Share with a hospital</h4>
+      <h4 className="font-semibold mb-1">Share with a provider</h4>
       <p className="text-xs text-gray-500 mb-3">
-        A hospital you share with can read this policy and ask questions about it, until you
+        A provider you share with can read this policy and ask questions about it, until you
         stop sharing.
       </p>
       {shares.length > 0 && (
@@ -133,11 +133,11 @@ function SharePanel({ documentId }) {
       )}
       {available.length > 0 ? (
         <div className="flex gap-2">
-          <select aria-label="Hospital" value={choice} onChange={(e) => setChoice(e.target.value)}
+          <select aria-label="Provider" value={choice} onChange={(e) => setChoice(e.target.value)}
                   className="border rounded px-2 py-1">
-            <option value="">Choose a hospital…</option>
+            <option value="">Choose a provider…</option>
             {available.map((h) => (
-              <option key={h.org_id} value={h.org_id}>{h.name}{h.city ? ` — ${h.city}` : ""}</option>
+              <option key={h.org_id} value={h.org_id}>{h.name}{h.category_label ? ` (${h.category_label})` : ""}{h.city ? ` — ${h.city}` : ""}</option>
             ))}
           </select>
           <button disabled={!choice} onClick={() => act(async () => {
@@ -148,7 +148,7 @@ function SharePanel({ documentId }) {
           </button>
         </div>
       ) : (
-        hospitals.length === 0 && <p className="text-xs text-gray-500">No hospitals are on the platform yet.</p>
+        hospitals.length === 0 && <p className="text-xs text-gray-500">No providers are on the platform yet.</p>
       )}
       {error && <p role="alert" className="text-red-600 mt-2">{error}</p>}
     </div>
@@ -186,7 +186,7 @@ function UploadPanel({ onUploaded }) {
       <p className="text-xs text-gray-500 mb-3">
         {isAdmin
           ? "Samples are synthetic example policies that every user can see. Never upload real member documents here."
-          : "Only you will be able to see documents you upload, unless you share them with a hospital."}
+          : "Only you will be able to see documents you upload, unless you share them with a provider."}
       </p>
       <div className="flex items-center gap-3">
         <input
@@ -418,7 +418,7 @@ export default function PolicyViewer() {
       {isHospital(user) ? (
         <p className="text-sm text-gray-600 mb-4">
           Upload a patient's policy from their page under Patients. Policies patients share with
-          your hospital appear here and under Shared with us.
+          your organisation appear here and under Shared with us.
         </p>
       ) : (
         <UploadPanel onUploaded={load} />

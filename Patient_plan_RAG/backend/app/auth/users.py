@@ -141,7 +141,7 @@ class UserStore:
             if username in users:
                 raise ValueError(f"An account for {username} already exists.")
             if (role in HOSPITAL_ROLES) != bool(org_id):
-                raise ValueError("Hospital accounts need an organisation; others must not have one.")
+                raise ValueError("Provider accounts need an organisation; others must not have one.")
             user = User(username, role, password_hash=hash_password(password), org_id=org_id,
                         must_change_password=must_change_password)
             users[username] = user

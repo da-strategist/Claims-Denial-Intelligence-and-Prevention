@@ -20,7 +20,8 @@ function PlanList({ rows, empty }) {
   );
 }
 
-/** Hospital landing page: patients, plans ended or ending soon, shares to file. */
+/** Provider landing page: patients, plans ended or ending soon, shares to
+ *  file, people who added the provider. */
 export default function HospitalOverview() {
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
@@ -42,11 +43,12 @@ export default function HospitalOverview() {
   return (
     <div className="space-y-6">
       <h2 className="text-2xl font-bold">Overview</h2>
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
         {card("Patients", data.patient_count, () => navigate("/patients"))}
         {card("Plans ended", data.plans_ended.length, () => {})}
         {card(`Ending within ${data.ending_soon_days} days`, data.plans_ending_soon.length, () => {})}
-        {card("Shared policies to file", data.unfiled_shares.length, () => navigate("/shared"))}
+        {card(`Shared in the last ${data.new_share_days} days`, data.recent_shares.length, () => navigate("/shared"))}
+        {card("New patients who added you", data.unlinked_connections.length, () => navigate("/shared"))}
       </div>
       <div className="grid gap-6 md:grid-cols-2">
         <section className="bg-white rounded-lg shadow p-5">
@@ -59,21 +61,55 @@ export default function HospitalOverview() {
         </section>
       </div>
       <section className="bg-white rounded-lg shadow p-5">
-        <h3 className="font-semibold mb-2">Shared with you, not yet filed</h3>
-        {data.unfiled_shares.length === 0 ? (
+        <h3 className="font-semibold mb-2">Patients who added you, not yet attached to a record</h3>
+        {data.unlinked_connections.length === 0 ? (
           <p className="text-sm text-gray-500">Nothing waiting.</p>
         ) : (
           <ul className="text-sm space-y-1">
-            {data.unfiled_shares.map((s) => (
-              <li key={s.share_id}>
-                {s.plan_name || s.filename} from {s.shared_by_name || s.shared_by}
-                {s.is_new && <span className="ml-2 bg-blue-100 text-blue-800 px-2 py-0.5 rounded text-xs">New</span>}{" "}
-                <button onClick={() => navigate("/shared")} className="text-blue-700 hover:underline">File it</button>
+            {data.unlinked_connections.map((c) => (
+              <li key={c.connection_id}>
+                {c.name || c.email}{c.name && <span className="text-gray-500"> · {c.email}</span>}
+                {c.is_new && <span className="ml-2 bg-blue-100 text-blue-800 px-2 py-0.5 rounded text-xs">New</span>}{" "}
+                <button onClick={() => navigate("/shared")} className="text-blue-700 hover:underline">Attach</button>
               </li>
             ))}
           </ul>
         )}
       </section>
+      <section className="bg-white rounded-lg shadow p-5">
+        <h3 className="font-semibold mb-2">Recently shared with you</h3>
+        {data.recent_shares.length === 0 ? (
+          <p className="text-sm text-gray-500">Nothing in the last {data.new_share_days} days.</p>
+        ) : (
+          <ul className="text-sm space-y-1">
+            {data.recent_shares.map((s) => (
+              <li key={s.share_id}>
+                {s.plan_name || s.filename} from {s.shared_by_name || s.shared_by}{" "}
+                {s.patient_id ? (
+                  <button onClick={() => navigate(`/patients/${s.patient_id}`)} className="text-blue-700 hover:underline">
+                    Open {s.patient_name}'s record
+                  </button>
+                ) : (
+                  <button onClick={() => navigate("/shared")} className="text-blue-700 hover:underline">File it</button>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+      {data.unfiled_shares.length > 0 && (
+        <section className="bg-white rounded-lg shadow p-5">
+          <h3 className="font-semibold mb-2">Shared with you, not filed</h3>
+          <ul className="text-sm space-y-1">
+            {data.unfiled_shares.map((s) => (
+              <li key={s.share_id}>
+                {s.plan_name || s.filename} from {s.shared_by_name || s.shared_by}{" "}
+                <button onClick={() => navigate("/shared")} className="text-blue-700 hover:underline">File it</button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
     </div>
   );
 }

@@ -153,9 +153,9 @@ def current_user(request: Request) -> User:
     token = request.cookies.get(SESSION_COOKIE)
     session = sessions.touch(token) if token else None
     user = user_store.get(session.username) if session else None
-    if user is not None and user.org_id:  # a disabled hospital disables its staff
+    if user is not None and user.org_id:  # a disabled or rejected provider disables its staff
         org = records.orgs.get(user.org_id)
-        if org is None or org.disabled:
+        if org is None or org.disabled or org.status == records.REJECTED:
             user = None
     if user is None or user.disabled:
         if token:
@@ -176,6 +176,9 @@ def require(permission: Permission):
     def check(user: User = Depends(current_user)) -> User:
         if user.must_change_password:
             raise HTTPException(403, "Password change required")
+        if user.org_id and not records.orgs.get(user.org_id).usable:
+            # a provider that signed itself up waits for the platform admin
+            raise HTTPException(403, "Your provider account is awaiting approval")
         if permission not in ROLE_PERMISSIONS[user.role]:
             raise HTTPException(403, "Not permitted")
         return user

@@ -1,8 +1,11 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { useHashPath, navigate } from "./utils/route";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { useAuth } from "./auth/AuthContext";
 import SignIn from "./pages/SignIn";
+import Landing from "./pages/Landing";
+import { IndividualSignUp, ProviderSignUp } from "./pages/SignUp";
+import PendingApproval from "./pages/PendingApproval";
 import ChangePassword from "./pages/ChangePassword";
 import Admin from "./pages/Admin";
 import Dashboard from "./pages/Dashboard";
@@ -45,11 +48,11 @@ const NAV = {
     { path: "/patients", label: "Patients", icon: "🏥" },
     { path: "/shared", label: "Shared with us", icon: "📨" },
     ...ASK,
-    { path: "/hospital-admin", label: "Hospital admin", icon: "👥" },
+    { path: "/provider-admin", label: "Provider admin", icon: "👥" },
   ],
   platform_admin: [
     { path: "/", label: "Dashboard", icon: "📊" },
-    { path: "/admin", label: "Hospitals & Accounts", icon: "🏛️" },
+    { path: "/admin", label: "Providers & Accounts", icon: "🏛️" },
     { path: "/policies", label: "Sample Policies", icon: "📋" },
     { path: "/chat", label: "Ask a Question", icon: "💬" },
   ],
@@ -57,8 +60,8 @@ const NAV = {
 
 const ACCOUNT_LABELS = {
   individual: "Personal account",
-  hospital_staff: "Hospital staff",
-  hospital_admin: "Hospital admin",
+  hospital_staff: "Provider staff",
+  hospital_admin: "Provider admin",
   platform_admin: "Platform admin",
 };
 
@@ -89,11 +92,24 @@ function UserMenu({ user, onSignOut }) {
   );
 }
 
-function Shell({ children }) {
+function Shell({ children, publicHeader = false }) {
   return (
     <div className="min-h-screen flex flex-col">
       <Disclaimer />
-      {children}
+      {publicHeader && (
+        <header className="bg-brand-800 text-white shadow-md">
+          <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
+            <h1 className="text-lg font-bold cursor-pointer" onClick={() => navigate("/")}>
+              Patient Plan RAG
+            </h1>
+            <button onClick={() => navigate("/signin")}
+                    className="bg-white/15 hover:bg-white/25 px-3 py-1 rounded text-sm">
+              Sign in
+            </button>
+          </div>
+        </header>
+      )}
+      <main className="flex-1">{children}</main>
       <footer className="text-center text-xs text-gray-400 py-4">
         Patient Plan RAG v0.1.0 — Synthetic data only — Not for clinical use
       </footer>
@@ -105,9 +121,22 @@ export default function App() {
   const path = useHashPath();
   const { user, loading, signOut } = useAuth();
 
+  const publicPath = path === "/signin" || path.startsWith("/signup");
+  // once signed in (or signed up), leave the public pages for the home page
+  useEffect(() => {
+    if (user && publicPath) navigate("/");
+  }, [user, publicPath]);
+
   if (loading) return <Shell><p className="text-center text-gray-500 mt-16">Loading...</p></Shell>;
-  if (!user) return <Shell><SignIn /></Shell>;
+  if (!user) {
+    const publicPage = path === "/" ? <Landing />
+      : path === "/signup/individual" ? <IndividualSignUp />
+      : path === "/signup/provider" ? <ProviderSignUp />
+      : <SignIn />;  // /signin, or a deep link that needs signing in first
+    return <Shell publicHeader>{publicPage}</Shell>;
+  }
   if (user.must_change_password) return <Shell><ChangePassword forced /></Shell>;
+  if (user.org_status === "pending") return <Shell><PendingApproval /></Shell>;
 
   const nav = NAV[user.role] || [];
   const allowed = (prefix) => nav.some((n) => n.path === prefix);
@@ -123,7 +152,7 @@ export default function App() {
     if (path === "/account/password") return <ChangePassword />;
     if (path.startsWith("/patients")) return allowed("/patients") ? <Patients /> : denied;
     if (path === "/shared") return allowed("/shared") ? <SharedWithUs /> : denied;
-    if (path === "/hospital-admin") return allowed("/hospital-admin") ? <HospitalAdmin /> : denied;
+    if (path === "/provider-admin") return allowed("/provider-admin") ? <HospitalAdmin /> : denied;
     if (path === "/admin") return allowed("/admin") ? <Admin /> : denied;
     // each kind of account has its own home page
     if (user.role === "individual") return <MyAccount />;

@@ -18,18 +18,26 @@ vi.mock("../auth/AuthContext", () => ({
 
 afterEach(() => vi.clearAllMocks());
 
-test("overview shows counts, ending plans and shares to file", async () => {
+test("overview shows counts, ending plans, recent shares and new connections", async () => {
   api.hospitalOverview.mockResolvedValue({
     patient_count: 3, archived_count: 1, ending_soon_days: 30,
     plans_ended: [{ patient_id: "p1", patient_name: "Pat One", document_id: "d1", plan: "Gold PPO", expiration_date: "2025-12-31" }],
     plans_ending_soon: [{ patient_id: "p2", patient_name: "Bea Two", document_id: "d2", plan: "Silver HMO", expiration_date: "2026-12-31" }],
-    unfiled_shares: [{ share_id: "s1", plan_name: "Gold PPO", shared_by: "alice@example.com", shared_by_name: "Alice Smith", is_new: true }],
+    new_share_days: 7,
+    recent_shares: [{ share_id: "s1", plan_name: "Gold PPO", shared_by: "alice@example.com", shared_by_name: "Alice Smith",
+                      patient_id: "p9", patient_name: "Alice Smith", is_new: true }],
+    unfiled_shares: [],
+    unlinked_connections: [{ connection_id: "c1", name: "Carl Three", email: "carl@example.com", is_new: false }],
   });
   render(<HospitalOverview />);
   expect(await screen.findByText("Bea Two")).toBeInTheDocument();
   expect(screen.getByText("Pat One")).toBeInTheDocument();
-  expect(screen.getByText(/from Alice Smith/)).toBeInTheDocument();
-  expect(screen.getByText("New")).toBeInTheDocument();
+  expect(screen.getByText(/Gold PPO from Alice Smith/)).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Open Alice Smith's record" })).toBeInTheDocument();
+  expect(screen.getByText("Shared in the last 7 days")).toBeInTheDocument();
+  expect(screen.queryByText("Shared with you, not filed")).toBeNull();
+  expect(screen.getByText(/Carl Three/)).toBeInTheDocument();
+  expect(screen.getByText("New patients who added you")).toBeInTheDocument();
   expect(screen.getByText("Ending within 30 days")).toBeInTheDocument();
 });
 
@@ -38,7 +46,7 @@ test("hospital admin edits the hospital profile", async () => {
   api.getHospitalProfile.mockResolvedValue({ org_id: "o1", name: "General Hospital", address: "", city: "", phone: "", contact_email: "" });
   api.updateHospitalProfile.mockImplementation(async (p) => ({ org_id: "o1", name: "General Hospital", ...p }));
   render(<HospitalAdmin />);
-  await userEvent.click(screen.getByRole("tab", { name: "Hospital profile" }));
+  await userEvent.click(screen.getByRole("tab", { name: "Organisation profile" }));
   await userEvent.type(await screen.findByLabelText("City"), "Springfield");
   await userEvent.click(screen.getByRole("button", { name: "Save" }));
   expect(api.updateHospitalProfile).toHaveBeenCalledWith({ address: "", city: "Springfield", phone: "", contact_email: "" });

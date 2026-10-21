@@ -26,6 +26,7 @@ UsernameParam = PathParam(min_length=3, max_length=254)
 PatientIdParam = PathParam(pattern=DOCUMENT_ID_PATTERN)
 ShareIdParam = PathParam(pattern=DOCUMENT_ID_PATTERN)
 ChecklistIdParam = PathParam(pattern=DOCUMENT_ID_PATTERN)
+ConnectionIdParam = PathParam(pattern=DOCUMENT_ID_PATTERN)
 ENDING_SOON_DAYS = 30
 NEW_SHARE_DAYS = 7
 
@@ -57,7 +58,7 @@ async def list_staff(admin: User = Depends(_staff_admin)) -> list[dict]:
 async def add_staff(body: NewStaff, request: Request, admin: User = Depends(_staff_admin)) -> dict:
     """Add a staff member to this hospital (temporary password returned once)."""
     if body.role not in (Role.HOSPITAL_STAFF, Role.HOSPITAL_ADMIN):
-        raise HTTPException(400, "Hospital accounts are staff or hospital admins")
+        raise HTTPException(400, "Provider accounts are staff or provider admins")
     username = body.username.strip().lower()
     audit_target(request, username)
     temporary = secrets.token_urlsafe(12)
@@ -100,6 +101,10 @@ class NewPatient(BaseModel):
     date_of_birth: str = Field("", pattern=r"^(\d{4}-\d{2}-\d{2})?$")
 
 
+class Merge(BaseModel):
+    into_patient_id: str = Field(pattern=DOCUMENT_ID_PATTERN)
+
+
 class PatientChanges(BaseModel):
     name: str | None = Field(None, min_length=1, max_length=200)
     reference: str | None = Field(None, max_length=50)
@@ -123,7 +128,7 @@ def _patient_view(access: Access, patient: records.Patient, entries: list[dict])
     return {
         "patient_id": patient.patient_id, "name": patient.name, "reference": patient.reference,
         "date_of_birth": patient.date_of_birth, "archived": patient.archived,
-        "created_at": patient.created_at,
+        "linked_username": patient.linked_username, "created_at": patient.created_at,
         "documents": [
             {**{k: e.get(k) for k in ("document_id", "filename", "display_name", "plan_name",
                                       "insurer_name", "plan_id", "effective_date",
@@ -173,6 +178,40 @@ async def update_patient(body: PatientChanges, patient_id: str = PatientIdParam,
     return _patient_view(access, patient, registry.load())
 
 
+@router.post("/patients/{patient_id}/merge")
+async def merge_patient(body: Merge, request: Request, patient_id: str = PatientIdParam,
+                        user: User = Depends(_patients)) -> dict:
+    """Merge a duplicate record (typically one created when the person shared
+    a policy) into another of this provider's records: shared policies,
+    uploads, saved checklists and the account link move; the duplicate is
+    deleted."""
+    access = Access(user)
+    source = access.patient_or_404(patient_id)
+    target = access.patient_or_404(body.into_patient_id)
+    if source.patient_id == target.patient_id:
+        raise HTTPException(400, "Choose a different record to merge into")
+    audit_patient(request, target.patient_id)
+    entries = registry.load()
+    for e in entries:
+        if e.get("org_id") == user.org_id and e.get("patient_id") == source.patient_id:
+            e["patient_id"] = target.patient_id
+    registry.save(entries)
+    for share in records.shares.all():
+        if share.org_id == user.org_id and share.patient_id == source.patient_id:
+            records.shares.update(share.share_id, patient_id=target.patient_id)
+    for link in records.providers.all():
+        if link.org_id == user.org_id and link.patient_id == source.patient_id:
+            records.providers.update(link.provider_id, patient_id=target.patient_id)
+    for c in records.checklists.all():
+        if c.org_id == user.org_id and c.patient_id == source.patient_id:
+            records.checklists.update(c.checklist_id, patient_id=target.patient_id)
+    if source.linked_username and not target.linked_username:
+        target = records.patients.update(target.patient_id, linked_username=source.linked_username)
+    records.patients.remove(source.patient_id)
+    # a fresh Access: the one above holds the shares as they were before the merge
+    return _patient_view(Access(user), target, registry.load())
+
+
 @router.delete("/patients/{patient_id}")
 async def delete_patient(patient_id: str = PatientIdParam, user: User = Depends(_patients)) -> dict:
     """Delete the record, the documents the hospital uploaded for this patient
@@ -191,6 +230,9 @@ async def delete_patient(patient_id: str = PatientIdParam, user: User = Depends(
     for share in records.shares.all():
         if share.org_id == user.org_id and share.patient_id == patient_id:
             records.shares.update(share.share_id, patient_id=None)
+    for link in records.providers.all():
+        if link.org_id == user.org_id and link.patient_id == patient_id:
+            records.providers.update(link.provider_id, patient_id=None)
     for c in records.checklists.all():
         if c.patient_id == patient_id:
             records.checklists.remove(c.checklist_id)
@@ -280,6 +322,7 @@ class FileShare(BaseModel):
 def _shared_rows(user: User) -> list[dict]:
     entries = {e["document_id"]: e for e in registry.load()}
     cutoff = (datetime.now(UTC) - timedelta(days=NEW_SHARE_DAYS)).isoformat()
+    names = {p.patient_id: p.name for p in records.patients.all() if p.org_id == user.org_id}
     rows = []
     for share in records.shares.all():
         if share.org_id != user.org_id or share.document_id not in entries:
@@ -291,15 +334,15 @@ def _shared_rows(user: User) -> list[dict]:
                      "insurer_name": e.get("insurer_name"),
                      "shared_by": share.shared_by,
                      "shared_by_name": sharer.full_name if sharer else "",
-                     "patient_id": share.patient_id, "created_at": share.created_at,
-                     "is_new": share.patient_id is None and share.created_at >= cutoff})
+                     "patient_id": share.patient_id, "patient_name": names.get(share.patient_id),
+                     "created_at": share.created_at, "is_new": share.created_at >= cutoff})
     return sorted(rows, key=lambda r: r["created_at"], reverse=True)
 
 
 @router.get("/shared")
 async def list_shared(user: User = Depends(_patients)) -> list[dict]:
-    """Policies individuals shared with this hospital (newest first; new,
-    unfiled shares are marked)."""
+    """Policies individuals shared with this provider (newest first; those
+    shared in the last NEW_SHARE_DAYS days are marked new)."""
     return _shared_rows(user)
 
 
@@ -318,12 +361,66 @@ async def file_shared(body: FileShare, request: Request, share_id: str = ShareId
     return {"share_id": share_id, "patient_id": body.patient_id}
 
 
+# ── Patients who added this provider (connections) ───────────────────
+
+def _connection_rows(user: User) -> list[dict]:
+    """Individuals who added this provider to their providers: name and email
+    only, and how many policies they chose to share."""
+    cutoff = (datetime.now(UTC) - timedelta(days=NEW_SHARE_DAYS)).isoformat()
+    names = {p.patient_id: p.name for p in records.patients.all() if p.org_id == user.org_id}
+    shared = {}
+    for share in records.shares.all():
+        if share.org_id == user.org_id:
+            shared[share.shared_by] = shared.get(share.shared_by, 0) + 1
+    rows = []
+    for link in records.providers.all():
+        person = user_store.get(link.owner) if link.org_id == user.org_id else None
+        if person is None:
+            continue
+        rows.append({"connection_id": link.provider_id, "email": person.username,
+                     "name": person.full_name, "connected_at": link.connected_at,
+                     "patient_id": link.patient_id, "patient_name": names.get(link.patient_id),
+                     "shared_count": shared.get(person.username, 0),
+                     "is_new": link.patient_id is None and link.connected_at >= cutoff})
+    return sorted(rows, key=lambda r: r["connected_at"], reverse=True)
+
+
+@router.get("/connections")
+async def list_connections(user: User = Depends(_patients)) -> list[dict]:
+    """Patients who added this provider (newest first)."""
+    return _connection_rows(user)
+
+
+@router.patch("/connections/{connection_id}")
+async def file_connection(body: FileShare, request: Request,
+                          connection_id: str = ConnectionIdParam,
+                          user: User = Depends(_patients)) -> dict:
+    """Attach a connection to one of this provider's patient records (or
+    detach). The person's policies that are unfiled or filed under their
+    previous record move to the new one, as do the ones they share later.
+    The previous record is kept (merge it to remove it)."""
+    link = records.providers.get(connection_id)
+    if link is None or link.org_id != user.org_id:
+        raise HTTPException(404, "Connection not found")
+    if body.patient_id:
+        Access(user).patient_or_404(body.patient_id)
+        for share in records.shares.all():
+            if (share.org_id == user.org_id and share.shared_by == link.owner
+                    and share.patient_id in (None, link.patient_id)):
+                records.shares.update(share.share_id, patient_id=body.patient_id)
+    audit_target(request, link.owner)
+    audit_patient(request, body.patient_id)
+    records.providers.update(connection_id, patient_id=body.patient_id)
+    return {"connection_id": connection_id, "patient_id": body.patient_id}
+
+
 # ── Overview ─────────────────────────────────────────────────────────
 
 @router.get("/overview")
 async def overview(user: User = Depends(_patients)) -> dict:
-    """The hospital's landing page: patients, plans ended or ending soon,
-    shares waiting to be filed."""
+    """The provider's landing page: patients, plans ended or ending soon,
+    shares waiting to be filed, people who added the provider but aren't
+    attached to a patient record yet."""
     access, entries = Access(user), registry.load()
     today = date.today()
     soon = (today + timedelta(days=ENDING_SOON_DAYS)).isoformat()
@@ -340,13 +437,18 @@ async def overview(user: User = Depends(_patients)) -> dict:
                 ended.append(row)
             elif end and end <= soon:
                 ending.append(row)
-    unfiled = [r for r in _shared_rows(user) if r["patient_id"] is None]
+    shared = _shared_rows(user)
+    unfiled = [r for r in shared if r["patient_id"] is None]
+    new_connections = [r for r in _connection_rows(user) if r["patient_id"] is None]
     return {
         "patient_count": len(active), "archived_count": len(patients) - len(active),
         "plans_ended": sorted(ended, key=lambda r: r["expiration_date"]),
         "plans_ending_soon": sorted(ending, key=lambda r: r["expiration_date"]),
         "ending_soon_days": ENDING_SOON_DAYS,
+        "recent_shares": [r for r in shared if r["is_new"]],
+        "new_share_days": NEW_SHARE_DAYS,
         "unfiled_shares": unfiled,
+        "unlinked_connections": new_connections,
     }
 
 

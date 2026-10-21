@@ -48,13 +48,17 @@ export const api = {
   me: () => request("/auth/me"),
   login: (username, password) => post("/auth/login", { username, password }),
   register: (username, password) => post("/auth/register", { username, password }),
+  registerProvider: (details) => post("/auth/register/provider", details),
   logout: () => post("/auth/logout"),
   changePassword: (currentPassword, newPassword) =>
     post("/auth/password", { current_password: currentPassword, new_password: newPassword }),
 
-  // Platform admin: hospitals and accounts
+  // Platform admin: providers (approval queue) and accounts
   listOrgs: () => request("/admin/orgs"),
-  createOrg: (name, adminUsername) => post("/admin/orgs", { name, admin_username: adminUsername }),
+  createOrg: ({ name, adminUsername, category, city }) =>
+    post("/admin/orgs", { name, admin_username: adminUsername, category, city }),
+  approveOrg: (orgId, note = "") => post(`/admin/orgs/${orgId}/approve`, { note }),
+  rejectOrg: (orgId, note = "") => post(`/admin/orgs/${orgId}/reject`, { note }),
   updateOrg: (orgId, changes) =>
     request(`/admin/orgs/${orgId}`, { method: "PATCH", body: JSON.stringify(changes) }),
   listUsers: () => request("/admin/users"),
@@ -79,6 +83,8 @@ export const api = {
   listPatients: (includeArchived = false) =>
     request(`/hospital/patients${includeArchived ? "?include_archived=true" : ""}`),
   createPatient: (patient) => post("/hospital/patients", patient),
+  mergePatient: (patientId, intoPatientId) =>
+    post(`/hospital/patients/${patientId}/merge`, { into_patient_id: intoPatientId }),
   getPatient: (id) => request(`/hospital/patients/${id}`),
   updatePatient: (id, changes) =>
     request(`/hospital/patients/${id}`, { method: "PATCH", body: JSON.stringify(changes) }),
@@ -96,6 +102,12 @@ export const api = {
   updateHospitalProfile: (profile) =>
     request("/hospital/profile", { method: "PATCH", body: JSON.stringify(profile) }),
   accessLog: () => request("/hospital/access-log"),
+  listConnections: () => request("/hospital/connections"),
+  fileConnection: (connectionId, patientId) =>
+    request(`/hospital/connections/${connectionId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ patient_id: patientId || null }),
+    }),
   listShared: () => request("/hospital/shared"),
   fileShared: (shareId, patientId) =>
     request(`/hospital/shared/${shareId}`, {

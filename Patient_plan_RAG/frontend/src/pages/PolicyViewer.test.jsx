@@ -30,7 +30,7 @@ test("individuals see their own and sample policies, labelled", async () => {
   expect(await screen.findByRole("heading", { name: "My policies" })).toBeInTheDocument();
   expect(screen.getByText("Yours")).toBeInTheDocument();
   expect(screen.getByText("Sample")).toBeInTheDocument();
-  expect(screen.getByText(/unless you share them with a hospital/)).toBeInTheDocument();
+  expect(screen.getByText(/unless you share them with a provider/)).toBeInTheDocument();
 });
 
 test("individuals share their own policy with a hospital and can stop sharing", async () => {
@@ -43,7 +43,7 @@ test("individuals share their own policy with a hospital and can stop sharing", 
   api.share.mockResolvedValue({});
   api.unshare.mockResolvedValue({});
   render(<PolicyViewer />);
-  await userEvent.selectOptions(await screen.findByLabelText("Hospital"), "o1");
+  await userEvent.selectOptions(await screen.findByLabelText("Provider"), "o1");
   await userEvent.click(screen.getByRole("button", { name: "Share" }));
   expect(api.share).toHaveBeenCalledWith("d1", "o1");
   expect(await screen.findByText("General Hospital")).toBeInTheDocument();
@@ -88,7 +88,7 @@ test("owners can rename and delete their policy", async () => {
   expect(api.renamePolicy).toHaveBeenCalledWith("d1", "Work plan");
   expect(await screen.findByRole("heading", { name: /Work plan/ })).toBeInTheDocument();
   await userEvent.click(screen.getByRole("button", { name: "Delete" }));
-  expect(screen.getByText(/stop sharing it with every hospital/)).toBeInTheDocument();
+  expect(screen.getByText(/stop sharing it with every provider/)).toBeInTheDocument();
   await userEvent.click(screen.getByRole("button", { name: "Delete" }));
   expect(api.deletePolicy).toHaveBeenCalledWith("d1");
   await waitFor(() => expect(window.location.hash).toBe("#/policies"));

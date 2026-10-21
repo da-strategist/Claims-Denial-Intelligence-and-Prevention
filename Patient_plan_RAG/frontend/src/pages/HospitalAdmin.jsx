@@ -37,8 +37,8 @@ function Profile() {
       }
     }} className="bg-white rounded-lg shadow p-5 space-y-3 max-w-xl">
       <p className="text-sm text-gray-600">
-        <strong>{form.name}</strong>. Individuals see these details when choosing which hospital
-        to share a policy with, so they can tell hospitals with similar names apart.
+        <strong>{form.name}</strong>. Individuals see these details when choosing which provider
+        to share a policy with, so they can tell providers with similar names apart.
       </p>
       {field("Address", "address", { maxLength: 200 })}
       {field("City", "city", { maxLength: 100 })}
@@ -113,14 +113,14 @@ function AccessLog() {
   );
 }
 
-const TABS = [["staff", "Staff"], ["profile", "Hospital profile"], ["log", "Access log"]];
+const TABS = [["staff", "Staff"], ["profile", "Organisation profile"], ["log", "Access log"]];
 
-/** Hospital admins: staff, the hospital's public profile, and the access log. */
+/** Provider admins: staff, the organisation's public profile, and the access log. */
 export default function HospitalAdmin() {
   const [tab, setTab] = useState("staff");
   return (
     <div className="space-y-4">
-      <h2 className="text-2xl font-bold">Hospital admin</h2>
+      <h2 className="text-2xl font-bold">Provider admin</h2>
       <div role="tablist" className="flex gap-2 border-b">
         {TABS.map(([key, label]) => (
           <button key={key} role="tab" aria-selected={tab === key} onClick={() => setTab(key)}

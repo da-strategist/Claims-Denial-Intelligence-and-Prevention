@@ -104,7 +104,7 @@ export default function Settings() {
       <Section title="Delete account" danger>
         <p className="text-sm text-gray-600 mb-3">
           This permanently deletes your profile, your uploaded policies and providers, and stops all
-          sharing: hospitals lose access immediately. It can't be undone. A record that the account
+          sharing: providers lose access immediately. It can't be undone. A record that the account
           existed and was deleted stays in the security log.
         </p>
         {deleting ? (

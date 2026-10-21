@@ -26,17 +26,47 @@ def new_id() -> str:
     return uuid.uuid4().hex[:12]
 
 
+# Kinds of provider organisation. Every category gets the same features; the
+# category is a label (and a filter when individuals choose whom to share with).
+PROVIDER_CATEGORIES = {
+    "hospital": "Hospital",
+    "clinic": "Clinic or physician practice",
+    "pharmacy": "Pharmacy",
+    "laboratory": "Laboratory",
+    "imaging": "Imaging centre",
+    "dental": "Dental practice",
+    "other": "Other provider",
+}
+
+# A provider that signed itself up starts "pending" until the platform admin
+# approves it; one the platform admin creates is "active" at once.
+PENDING, ACTIVE, REJECTED = "pending", "active", "rejected"
+
+
 @dataclass
 class Org:
+    """A provider organisation (hospital, clinic, pharmacy, ...) with staff."""
     org_id: str
     name: str
     disabled: bool = False
-    # Shown to individuals choosing whom to share with (set by the hospital admin)
+    category: str = "hospital"
+    status: str = ACTIVE
+    npi: str = ""             # as entered at sign-up; checked by hand (no registry lookup)
+    # Shown to individuals choosing whom to share with (set by the provider admin)
     address: str = ""
     city: str = ""
     phone: str = ""
     contact_email: str = ""
+    signed_up_by: str = ""    # set when the provider signed itself up
+    reviewed_by: str = ""
+    reviewed_at: str = ""
+    review_note: str = ""     # the platform admin's reason, shown to a rejected provider
     created_at: str = field(default_factory=_now)
+
+    @property
+    def usable(self) -> bool:
+        """Approved and not disabled: can sign in to work and receive shares."""
+        return self.status == ACTIVE and not self.disabled
 
 
 @dataclass
@@ -47,6 +77,9 @@ class Patient:
     reference: str = ""       # the hospital's own patient number (MRN)
     date_of_birth: str = ""   # ISO date, optional
     archived: bool = False    # hidden from the patient list, kept
+    # Set when the record was created because an individual shared a policy:
+    # their account (details are as they entered them, not verified)
+    linked_username: str = ""
     created_by: str = ""
     created_at: str = field(default_factory=_now)
 
@@ -80,15 +113,25 @@ class Checklist:
 
 @dataclass
 class Provider:
-    """A healthcare provider an individual keeps for reference (not
-    necessarily on the platform)."""
+    """A healthcare provider in an individual's list. Either typed in by hand
+    (not on the platform), or linked to a provider organisation on the
+    platform (`org_id`): that is a *connection* — the provider sees the
+    individual's name and email, but no policies unless they share one."""
     provider_id: str
     owner: str                # the individual's username
     name: str
-    kind: str = "doctor"      # doctor, hospital, clinic, pharmacy, other
+    kind: str = "doctor"      # doctor, hospital, clinic, pharmacy, laboratory, imaging, dental, other
     phone: str = ""
     notes: str = ""
+    org_id: str | None = None      # linked platform provider
+    patient_id: str | None = None  # set by that provider: its patient record for this person
+    connected_at: str = ""
     created_at: str = field(default_factory=_now)
+
+
+def connection(owner: str, org_id: str) -> "Provider | None":
+    """The individual's link to a platform provider, if any."""
+    return next((p for p in providers.all() if p.owner == owner and p.org_id == org_id), None)
 
 
 T = TypeVar("T")

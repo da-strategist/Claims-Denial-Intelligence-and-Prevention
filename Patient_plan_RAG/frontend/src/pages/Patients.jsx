@@ -39,7 +39,7 @@ function PatientForm({ initial, submitLabel, onSubmit, onCancel }) {
     <form onSubmit={submit} className="space-y-3">
       <div className="flex flex-wrap gap-3 items-end">
         {field("Name", "name", { required: true, maxLength: 200 })}
-        {field("Hospital number (MRN)", "reference", { maxLength: 50 })}
+        {field("Patient number (MRN)", "reference", { maxLength: 50 })}
         {field("Date of birth", "date_of_birth", { type: "date" })}
         <button type="submit" className="bg-blue-600 text-white px-4 py-1.5 rounded text-sm hover:bg-blue-700">
           {submitLabel}
@@ -141,6 +141,42 @@ function SavedChecklists({ patientId }) {
   );
 }
 
+const SharedBadge = ({ email }) => (
+  <span title={`Created when ${email} shared a policy with you. Details are as they entered them.`}
+        className="ml-2 bg-purple-100 text-purple-800 px-2 py-0.5 rounded text-xs">Shared by patient</span>
+);
+
+/** Move this record's policies, checklists and account link into another record. */
+function MergePanel({ patient, onMerged, onCancel, act }) {
+  const [others, setOthers] = useState([]);
+  const [into, setInto] = useState("");
+  useEffect(() => {
+    api.listPatients(true).then((all) => setOthers(all.filter((p) => p.patient_id !== patient.patient_id)));
+  }, [patient.patient_id]);
+  return (
+    <div className="border rounded p-3 bg-gray-50 text-sm space-y-2">
+      <p>
+        Merge <strong>{patient.name}</strong> into another record. Its policies, uploads and saved
+        checklists move there{patient.linked_username ? ", and future shares from this person go there too" : ""}.
+        This record is then deleted.
+      </p>
+      <div className="flex flex-wrap gap-2 items-center">
+        <select aria-label="Merge into" value={into} onChange={(e) => setInto(e.target.value)} className="border rounded px-2 py-1">
+          <option value="">Choose a record…</option>
+          {others.map((p) => (
+            <option key={p.patient_id} value={p.patient_id}>
+              {p.name}{p.reference ? ` (${p.reference})` : ""}{p.date_of_birth ? ` · ${p.date_of_birth}` : ""}
+            </option>
+          ))}
+        </select>
+        <button disabled={!into} onClick={() => act(async () => onMerged(await api.mergePatient(patient.patient_id, into)))}
+                className="bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-700 disabled:opacity-50">Merge</button>
+        <button onClick={onCancel} className="text-gray-500 hover:underline">Cancel</button>
+      </div>
+    </div>
+  );
+}
+
 function PatientDetail({ patientId }) {
   const [patient, setPatient] = useState(null);
   const [error, setError] = useState("");
@@ -148,6 +184,7 @@ function PatientDetail({ patientId }) {
   const [uploading, setUploading] = useState(false);
   const [editing, setEditing] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [merging, setMerging] = useState(false);
   const fileRef = useRef();
 
   const load = () => api.getPatient(patientId).then(setPatient).catch((e) => setError(clean(e.message)));
@@ -201,8 +238,10 @@ function PatientDetail({ patientId }) {
             <h2 className="text-xl font-bold">
               {patient.name}
               {patient.archived && <span className="ml-2 bg-gray-100 text-gray-600 px-2 py-0.5 rounded text-xs">Archived</span>}
+              {patient.linked_username && <SharedBadge email={patient.linked_username} />}
             </h2>
             <p className="text-sm text-gray-500">
+              {patient.linked_username && <>{patient.linked_username} · </>}
               {patient.reference && <>MRN {patient.reference} · </>}
               {patient.date_of_birth && <>Born {patient.date_of_birth} · </>}
               {patient.documents.length} policy document(s)
@@ -229,9 +268,12 @@ function PatientDetail({ patientId }) {
                   className="text-blue-700 hover:underline">
             {patient.archived ? "Restore" : "Archive"}
           </button>
+          <button onClick={() => setMerging(true)} className="text-blue-700 hover:underline">
+            Merge into existing record
+          </button>
           {confirmDelete ? (
             <span className="flex gap-2 items-center">
-              Delete this patient and the policies your hospital uploaded for them? Policies the
+              Delete this patient and the policies your organisation uploaded for them? Policies the
               patient shared stay theirs.
               <button onClick={() => act(async () => { await api.deletePatient(patientId); navigate("/patients"); })}
                       className="bg-red-600 text-white px-2 py-0.5 rounded">Delete</button>
@@ -241,6 +283,13 @@ function PatientDetail({ patientId }) {
             <button onClick={() => setConfirmDelete(true)} className="text-red-700 hover:underline">Delete patient</button>
           )}
         </div>
+        {merging && (
+          <MergePanel patient={patient} act={act} onCancel={() => setMerging(false)}
+                      onMerged={(target) => { setMerging(false); navigate(`/patients/${target.patient_id}`); }} />
+        )}
+        {patient.linked_username && !hasDocs && (
+          <p className="text-sm text-gray-500">No policies shared. The patient may have stopped sharing.</p>
+        )}
         {msg && <p className="text-sm text-gray-600">{msg}</p>}
       </div>
 
@@ -319,6 +368,7 @@ export default function Patients() {
                   <td className="p-3 font-medium">
                     {p.name}
                     {p.archived && <span className="ml-2 text-xs text-gray-500">(archived)</span>}
+                    {p.linked_username && <SharedBadge email={p.linked_username} />}
                   </td>
                   <td>{p.reference || "—"}</td>
                   <td>{p.date_of_birth || "—"}</td>

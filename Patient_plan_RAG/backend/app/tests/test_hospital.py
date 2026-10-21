@@ -61,13 +61,14 @@ def test_edit_patient_details(world):
 
 def test_archive_hides_patient_from_list_and_restore(world):
     w = world
+    ids = lambda **params: {p["patient_id"]: p["archived"] for p in
+                            w["gstaff"].get("/api/hospital/patients", params=params).json()}
     w["gstaff"].patch(f"/api/hospital/patients/{w['p1']}", json={"archived": True})
-    assert w["gstaff"].get("/api/hospital/patients").json() == []
-    archived = w["gstaff"].get("/api/hospital/patients", params={"include_archived": True}).json()
-    assert [p["archived"] for p in archived] == [True]
+    assert w["p1"] not in ids()
+    assert ids(include_archived=True)[w["p1"]] is True
     assert _patient(w).status_code == 200  # still reachable directly
     w["gstaff"].patch(f"/api/hospital/patients/{w['p1']}", json={"archived": False})
-    assert len(w["gstaff"].get("/api/hospital/patients").json()) == 1
+    assert w["p1"] in ids()
 
 
 def test_insurance_summary_per_patient(world):
@@ -130,10 +131,11 @@ def test_checklist_must_use_one_of_the_patients_documents(world):
 def test_shared_list_shows_sharer_name_and_new_flag(world):
     w = world
     [row] = w["gstaff"].get("/api/hospital/shared").json()
-    assert (row["shared_by_name"], row["is_new"], row["insurer_name"]) == \
-        ("Alice Smith", True, "Summit Care Health Plan, Inc.")
+    assert (row["shared_by_name"], row["is_new"], row["insurer_name"], row["patient_name"]) == \
+        ("Alice Smith", True, "Summit Care Health Plan, Inc.", "Alice Smith")  # filed automatically
     w["gstaff"].patch(f"/api/hospital/shared/{w['share']}", json={"patient_id": w["p1"]})
-    assert w["gstaff"].get("/api/hospital/shared").json()[0]["is_new"] is False
+    row = w["gstaff"].get("/api/hospital/shared").json()[0]
+    assert (row["patient_name"], row["is_new"]) == ("Pat One", True)  # new = shared recently
 
 
 class _FixedDate(real_dt.date):
@@ -142,14 +144,16 @@ class _FixedDate(real_dt.date):
         return cls(2026, 12, 10)
 
 
-def test_overview_lists_ended_and_ending_plans_and_unfiled_shares(world, monkeypatch):
+def test_overview_lists_ended_and_ending_plans_and_recent_shares(world, monkeypatch):
     monkeypatch.setattr(hospital, "date", _FixedDate)
     o = world["gstaff"].get("/api/hospital/overview").json()
-    assert o["patient_count"] == 1
+    assert o["patient_count"] == 2  # Pat One + Alice (created when she shared)
     assert [r["document_id"] for r in o["plans_ended"]] == [world["apex_doc"]]
-    assert [r["document_id"] for r in o["plans_ending_soon"]] == [world["summit_doc"]]  # ends 2026-12-31
-    assert o["plans_ending_soon"][0]["patient_name"] == "Pat One"
-    assert [s["share_id"] for s in o["unfiled_shares"]] == [world["share"]]
+    # both 2026 plans end 2026-12-31: Pat One's upload, and the one Alice shared
+    assert {(r["patient_name"], r["document_id"]) for r in o["plans_ending_soon"]} == {
+        ("Pat One", world["summit_doc"]), ("Alice Smith", world["alice_doc"])}
+    assert [s["share_id"] for s in o["recent_shares"]] == [world["share"]]
+    assert o["unfiled_shares"] == []  # filed under Alice's record when she shared
     assert world["alice"].get("/api/hospital/overview").status_code == 403
 
 

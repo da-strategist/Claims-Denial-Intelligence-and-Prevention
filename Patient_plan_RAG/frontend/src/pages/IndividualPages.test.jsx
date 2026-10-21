@@ -37,7 +37,10 @@ const OVERVIEW = {
 beforeEach(() => {
   api.overview.mockResolvedValue(OVERVIEW);
   api.sharingOverview.mockResolvedValue(OVERVIEW.sharing);
-  api.hospitalDirectory.mockResolvedValue([{ org_id: "o1", name: "General Hospital" }, { org_id: "o2", name: "Mercy" }]);
+  api.hospitalDirectory.mockResolvedValue([
+    { org_id: "o1", name: "General Hospital", category_label: "Hospital", city: "Springfield" },
+    { org_id: "o2", name: "Mercy", category_label: "Hospital", city: "Riverton" },
+  ]);
   api.listPolicies.mockResolvedValue([
     { document_id: "d1", filename: "a.pdf", plan_name: "Gold PPO Plan", owner: "alice@example.com" },
     { document_id: "s9", filename: "sample.pdf", plan_name: "Sample", owner: null },
@@ -55,19 +58,66 @@ test("my account shows profile, insurance by company, providers and sharing", as
   expect(screen.getByText("Summit Care")).toBeInTheDocument();
   expect(screen.getByText("Ended")).toBeInTheDocument();
   expect(screen.getByText("Dr. Lee")).toBeInTheDocument();
-  expect(screen.getByText(/1 hospital can see some of your policies: General Hospital/)).toBeInTheDocument();
+  expect(screen.getByText(/1 provider can see some of your policies: General Hospital/)).toBeInTheDocument();
 });
 
-test("adding and removing a provider", async () => {
+test("adding a provider by hand, and removing one", async () => {
   render(<MyAccount />);
   await screen.findByText("Dr. Lee");
+  expect(screen.getByText("Not on the platform")).toBeInTheDocument();
   await userEvent.click(screen.getByRole("button", { name: "+ Add a provider" }));
+  await userEvent.click(screen.getByRole("button", { name: "Not listed? Add it by hand" }));
   await userEvent.type(screen.getByLabelText("Provider name"), "City Pharmacy");
   await userEvent.selectOptions(screen.getByLabelText("Provider type"), "pharmacy");
   await userEvent.click(screen.getByRole("button", { name: "Add provider" }));
   expect(api.addProvider).toHaveBeenCalledWith({ name: "City Pharmacy", kind: "pharmacy", phone: "", notes: "" });
   await userEvent.click(screen.getByRole("button", { name: "Remove" }));
   expect(api.deleteProvider).toHaveBeenCalledWith("p1");
+});
+
+const LINKED = { provider_id: "p2", name: "General Hospital", kind: "hospital", category_label: "Hospital",
+                 city: "Springfield", phone: "", notes: "", org_id: "o1", on_platform: true };
+
+test("finding a provider on the platform connects, then offers to share (never automatic)", async () => {
+  api.addProvider.mockResolvedValue({ ...LINKED, org_id: "o2", provider_id: "p3", name: "Mercy" });
+  render(<MyAccount />);
+  await screen.findByText("Dr. Lee");
+  await userEvent.click(screen.getByRole("button", { name: "+ Add a provider" }));
+  await userEvent.type(screen.getByLabelText("Find a provider"), "mer");
+  expect(screen.queryByRole("button", { name: "Add General Hospital" })).toBeNull();
+  // the list reloads with the new connection, and the share offer appears under it
+  api.overview.mockResolvedValue({ ...OVERVIEW, providers: [...OVERVIEW.providers,
+    { ...LINKED, org_id: "o2", provider_id: "p3", name: "Mercy" }] });
+  await userEvent.click(screen.getByRole("button", { name: "Add Mercy" }));
+  expect(api.addProvider).toHaveBeenCalledWith({ org_id: "o2" });
+  expect(api.share).not.toHaveBeenCalled();
+  const offer = await screen.findByRole("region", { name: "Share with Mercy" });
+  expect(within(offer).getByText(/can see your name and email, but none of your policies/)).toBeInTheDocument();
+  await userEvent.click(within(offer).getByLabelText("Silver HMO"));
+  await userEvent.click(within(offer).getByRole("button", { name: "Share selected" }));
+  expect(api.share).toHaveBeenCalledWith("d2", "o2");
+  expect(api.share).toHaveBeenCalledTimes(1);
+});
+
+test("a typed entry matching a platform provider can be linked", async () => {
+  api.overview.mockResolvedValue({ ...OVERVIEW, providers: [{ ...OVERVIEW.providers[0], name: "general hospital" }] });
+  api.updateProvider.mockResolvedValue({ ...LINKED, provider_id: "p1" });
+  render(<MyAccount />);
+  await userEvent.click(await screen.findByRole("button", { name: "Link to General Hospital" }));
+  expect(api.updateProvider).toHaveBeenCalledWith("p1", { phone: "555 0101", notes: "GP", org_id: "o1" });
+});
+
+test("removing a provider you share with asks about the shared policies", async () => {
+  api.overview.mockResolvedValue({ ...OVERVIEW, providers: [LINKED] });
+  render(<MyAccount />);
+  expect(await screen.findByText("On the platform")).toBeInTheDocument();
+  expect(screen.getByText(/1 policy shared/)).toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: "Remove" }));
+  const dialog = screen.getByRole("alertdialog", { name: "Remove General Hospital" });
+  expect(api.deleteProvider).not.toHaveBeenCalled();
+  await userEvent.click(within(dialog).getByRole("button", { name: "Remove and stop sharing" }));
+  await waitFor(() => expect(api.deleteProvider).toHaveBeenCalledWith("p2"));
+  expect(api.removeHospitalAccess).toHaveBeenCalledWith("o1");
 });
 
 test("a new account is prompted to upload a policy", async () => {
@@ -87,14 +137,14 @@ test("sharing page: share, stop sharing, remove a hospital", async () => {
   const policyOptions = [...screen.getByLabelText("Policy to share").options].map((o) => o.textContent);
   expect(policyOptions).toEqual(["Choose a policy…", "Gold PPO Plan"]);  // samples can't be shared
   await userEvent.selectOptions(screen.getByLabelText("Policy to share"), "d1");
-  await userEvent.selectOptions(screen.getByLabelText("Hospital to share with"), "o2");
+  await userEvent.selectOptions(screen.getByLabelText("Provider to share with"), "o2");
   await userEvent.click(screen.getByRole("button", { name: "Share" }));
   expect(api.share).toHaveBeenCalledWith("d1", "o2");
   await userEvent.click(screen.getByRole("button", { name: "Stop sharing" }));
   expect(api.unshare).toHaveBeenCalledWith("s1");
   await userEvent.click(screen.getByRole("button", { name: "Remove all access" }));
   expect(api.removeHospitalAccess).toHaveBeenCalledWith("o1");
-  expect(screen.getByText(/hospital's records/)).toBeInTheDocument();
+  expect(screen.getByText(/provider's records/)).toBeInTheDocument();
 });
 
 // ── Settings ─────────────────────────────────────────────────────────

@@ -30,9 +30,11 @@ for d in (UPLOAD_DIR, POLICY_DIR, CHUNK_DIR):
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Ingest new PDFs and re-ingest stale documents before serving."""
+    from .services import sharing
     from .services.ingest import sync_registry
 
     sync_registry(POLICY_DIR, UPLOAD_DIR, CHUNK_DIR)
+    sharing.backfill()  # patient records for shares made before they were automatic
     yield
 
 
@@ -56,7 +58,7 @@ async def rate_limit(request: Request, call_next):
     path = request.url.path
     if path.startswith("/api") and path != "/api/health":
         client = request.client.host if request.client else "unknown"
-        strict = path in ("/api/policies/upload", "/api/auth/register")
+        strict = path in ("/api/policies/upload", "/api/auth/register", "/api/auth/register/provider")
         limiter = upload_limiter if strict else api_limiter
         wait = limiter.check(client)
         if wait is not None:

@@ -7,10 +7,10 @@ import { api } from "../services/api";
 
 vi.mock("../services/api", () => ({
   api: {
-    listPatients: vi.fn(), createPatient: vi.fn(), getPatient: vi.fn(), uploadPolicy: vi.fn(),
+    listPatients: vi.fn(), createPatient: vi.fn(), mergePatient: vi.fn(), getPatient: vi.fn(), uploadPolicy: vi.fn(),
     updatePatient: vi.fn(), deletePatient: vi.fn(), listChecklists: vi.fn(), updateChecklist: vi.fn(),
     deleteChecklist: vi.fn(),
-    listShared: vi.fn(), fileShared: vi.fn(),
+    listShared: vi.fn(), fileShared: vi.fn(), listConnections: vi.fn(), fileConnection: vi.fn(),
     listStaff: vi.fn(), addStaff: vi.fn(), updateStaff: vi.fn(), resetStaffPassword: vi.fn(),
   },
 }));
@@ -35,6 +35,7 @@ beforeEach(() => {
   window.location.hash = "/patients";
   api.listPatients.mockResolvedValue([P1, P2]);
   api.listChecklists.mockResolvedValue([]);
+  api.listConnections.mockResolvedValue([]);
 });
 afterEach(() => vi.clearAllMocks());
 
@@ -53,7 +54,7 @@ test("adding a patient opens their record", async () => {
   render(<Patients />);
   await screen.findByText("Pat One");
   await userEvent.type(screen.getByLabelText("Name"), "New Person");
-  await userEvent.type(screen.getByLabelText("Hospital number (MRN)"), "MRN-9");
+  await userEvent.type(screen.getByLabelText("Patient number (MRN)"), "MRN-9");
   await userEvent.click(screen.getByRole("button", { name: "Add patient" }));
   expect(api.createPatient).toHaveBeenCalledWith({ name: "New Person", reference: "MRN-9", date_of_birth: "" });
   await waitFor(() => expect(window.location.hash).toBe("#/patients/p9"));
@@ -111,6 +112,34 @@ test("nothing shared yet", async () => {
   api.listShared.mockResolvedValue([]);
   render(<SharedWithUs />);
   expect(await screen.findByText(/Nothing has been shared/)).toBeInTheDocument();
+  expect(screen.getByText(/No one has added your organisation yet/)).toBeInTheDocument();
+});
+
+const CONN = { connection_id: "c1", name: "Alice Smith", email: "alice@example.com",
+               connected_at: "2026-10-21T10:00:00+00:00", patient_id: null, patient_name: null,
+               shared_count: 0, is_new: true };
+
+test("people who added the provider can be attached to a patient record", async () => {
+  api.listShared.mockResolvedValue([]);
+  api.listConnections.mockResolvedValue([CONN]);
+  api.fileConnection.mockResolvedValue({});
+  render(<SharedWithUs />);
+  const row = (await screen.findByText("Alice Smith")).closest("tr");
+  expect(within(row).getByText("alice@example.com")).toBeInTheDocument();
+  expect(within(row).getByText("New")).toBeInTheDocument();
+  await userEvent.selectOptions(within(row).getByLabelText("Patient record for Alice Smith"), "p2");
+  expect(api.fileConnection).toHaveBeenCalledWith("c1", "p2");
+});
+
+test("a patient record can be created from a connection", async () => {
+  api.listShared.mockResolvedValue([]);
+  api.listConnections.mockResolvedValue([CONN]);
+  api.createPatient.mockResolvedValue({ patient_id: "p3" });
+  api.fileConnection.mockResolvedValue({});
+  render(<SharedWithUs />);
+  await userEvent.click(await screen.findByRole("button", { name: "Create patient record" }));
+  expect(api.createPatient).toHaveBeenCalledWith({ name: "Alice Smith" });
+  await waitFor(() => expect(api.fileConnection).toHaveBeenCalledWith("c1", "p3"));
 });
 
 // ── Staff ────────────────────────────────────────────────────────────
@@ -186,4 +215,39 @@ test("archived patients appear only when asked for", async () => {
   await screen.findByText("Pat One");
   await userEvent.click(screen.getByLabelText("Show archived"));
   expect(api.listPatients).toHaveBeenLastCalledWith(true);
+});
+
+// ── Records created by sharing ───────────────────────────────────────
+
+const SHARED = { patient_id: "p9", name: "Alice Smith", reference: "", date_of_birth: "", archived: false,
+                 linked_username: "alice@example.com",
+                 documents: [{ document_id: "d9", filename: "a.pdf", plan_name: "Gold PPO", insurer_name: "Apex",
+                               coverage_status: "active", shared_by: "alice@example.com" }] };
+
+test("records created by sharing are labelled in the list and on the record", async () => {
+  api.listPatients.mockResolvedValue([P1, SHARED]);
+  api.getPatient.mockResolvedValue(SHARED);
+  render(<Patients />);
+  const row = (await screen.findByText("Alice Smith")).closest("tr");
+  expect(within(row).getByText("Shared by patient")).toBeInTheDocument();
+  goTo("/patients/p9");
+  const heading = await screen.findByRole("heading", { name: /Alice Smith/ });
+  expect(within(heading).getByText("Shared by patient")).toBeInTheDocument();
+  expect(heading.nextElementSibling).toHaveTextContent("alice@example.com");
+  expect(screen.getByRole("button", { name: "Ask about coverage" })).toBeEnabled();
+});
+
+test("a duplicate record can be merged into an existing one", async () => {
+  api.listPatients.mockResolvedValue([P1, SHARED]);
+  api.getPatient.mockResolvedValue(SHARED);
+  api.mergePatient.mockResolvedValue({ ...P1 });
+  window.location.hash = "/patients/p9";
+  render(<Patients />);
+  await userEvent.click(await screen.findByRole("button", { name: "Merge into existing record" }));
+  const select = await screen.findByLabelText("Merge into");
+  await waitFor(() => expect(within(select).getAllByRole("option")).toHaveLength(2)); // placeholder + Pat One
+  await userEvent.selectOptions(select, "p1");
+  await userEvent.click(screen.getByRole("button", { name: "Merge" }));
+  expect(api.mergePatient).toHaveBeenCalledWith("p9", "p1");
+  await waitFor(() => expect(window.location.hash).toBe("#/patients/p1"));
 });
