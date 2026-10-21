@@ -44,6 +44,7 @@ export default function SharedWithUs() {
             <thead>
               <tr className="border-b text-left text-gray-500">
                 <th className="p-3">Policy</th>
+                <th>Insurer</th>
                 <th>Shared by</th>
                 <th>Filed under patient</th>
               </tr>
@@ -55,8 +56,13 @@ export default function SharedWithUs() {
                     <button onClick={() => navigate(`/policies/${s.document_id}`)} className="text-blue-700 hover:underline">
                       {s.plan_name || s.filename}
                     </button>
+                    {s.is_new && <span className="ml-2 bg-blue-100 text-blue-800 px-2 py-0.5 rounded text-xs">New</span>}
                   </td>
-                  <td>{s.shared_by}</td>
+                  <td>{s.insurer_name || "—"}</td>
+                  <td>
+                    {s.shared_by_name || s.shared_by}
+                    {s.shared_by_name && <span className="block text-xs text-gray-500">{s.shared_by}</span>}
+                  </td>
                   <td>
                     <select
                       aria-label={`Patient for ${s.plan_name || s.filename}`}

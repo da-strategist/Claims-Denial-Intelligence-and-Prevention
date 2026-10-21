@@ -61,7 +61,7 @@ export default function SharingAccess() {
             <select aria-label="Hospital to share with" value={form.orgId}
                     onChange={(e) => setForm({ ...form, orgId: e.target.value })} className="border rounded px-2 py-1">
               <option value="">Choose a hospital…</option>
-              {hospitals.map((h) => <option key={h.org_id} value={h.org_id}>{h.name}</option>)}
+              {hospitals.map((h) => <option key={h.org_id} value={h.org_id}>{h.name}{h.city ? ` — ${h.city}` : ""}</option>)}
             </select>
             <button disabled={!form.documentId || !form.orgId}
                     onClick={() => act(async () => {

@@ -49,6 +49,7 @@ def _org_or_404(org_id: str) -> records.Org:
 def _org_summary(org: records.Org) -> dict:
     staff = [u for u in user_store.all() if u.org_id == org.org_id]
     return {"org_id": org.org_id, "name": org.name, "disabled": org.disabled,
+            "city": org.city,
             "staff_count": len(staff),
             "patient_count": sum(1 for p in records.patients.all() if p.org_id == org.org_id)}
 

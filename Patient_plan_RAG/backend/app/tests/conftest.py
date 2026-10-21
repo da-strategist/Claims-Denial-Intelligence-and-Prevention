@@ -50,7 +50,8 @@ def data_dirs(tmp_path, monkeypatch):
     dirs = {name: tmp_path / name for name in ("policies", "chunks", "uploads")}
     monkeypatch.setattr(user_store, "path", tmp_path / "users.json")
     for store, name in ((records.orgs, "orgs"), (records.patients, "patients"),
-                        (records.shares, "shares"), (records.providers, "providers")):
+                        (records.shares, "shares"), (records.providers, "providers"),
+                        (records.checklists, "checklists")):
         monkeypatch.setattr(store, "path", tmp_path / f"{name}.json")
     auth_sessions.sessions.reset()
     auth_sessions.login_throttle.reset()

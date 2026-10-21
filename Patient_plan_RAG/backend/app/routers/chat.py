@@ -57,6 +57,7 @@ async def chat(request: ChatRequest, http: Request,
         document_id=conv.policy_id,
         history=list(conv.turns),
         allowed_ids=access.default_search_ids(entries, conv.patient_id),
+        audience=suggestions.STAFF if user.role in HOSPITAL_ROLES else suggestions.MEMBER,
     )
     store.add_turn(conv, request.question, response.answer)
     response.conversation_id = conv.id
@@ -86,4 +87,5 @@ async def starter_questions(
         summary = summarize_policy(e["document_id"], load_chunks(CHUNK_DIR, e["document_id"]))
         services[e["document_id"]] = [c["service"] for c in summary.covered_services
                                       if 3 <= len(c["service"]) <= 40]
-    return {"questions": suggestions.starters(scope, services)}
+    audience = suggestions.STAFF if user.role in HOSPITAL_ROLES else suggestions.MEMBER
+    return {"questions": suggestions.starters(scope, services, audience)}

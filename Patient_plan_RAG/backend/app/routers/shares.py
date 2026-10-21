@@ -29,8 +29,9 @@ def _own_document_or_404(user: User, document_id: str) -> dict:
 
 @router.get("/hospitals")
 async def hospital_directory(_: User = Depends(_share)) -> list[dict]:
-    """Hospitals an individual can share with (names only)."""
-    return [{"org_id": o.org_id, "name": o.name}
+    """Hospitals an individual can share with: name and location, so similar
+    names can be told apart."""
+    return [{"org_id": o.org_id, "name": o.name, "city": o.city, "address": o.address}
             for o in sorted(records.orgs.all(), key=lambda o: o.name.lower()) if not o.disabled]
 
 

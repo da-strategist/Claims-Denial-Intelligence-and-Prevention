@@ -76,9 +76,26 @@ export const api = {
     }),
   resetStaffPassword: (username) =>
     post(`/hospital/staff/${encodeURIComponent(username)}/reset-password`),
-  listPatients: () => request("/hospital/patients"),
+  listPatients: (includeArchived = false) =>
+    request(`/hospital/patients${includeArchived ? "?include_archived=true" : ""}`),
   createPatient: (patient) => post("/hospital/patients", patient),
   getPatient: (id) => request(`/hospital/patients/${id}`),
+  updatePatient: (id, changes) =>
+    request(`/hospital/patients/${id}`, { method: "PATCH", body: JSON.stringify(changes) }),
+  deletePatient: (id) => request(`/hospital/patients/${id}`, { method: "DELETE" }),
+  listChecklists: (patientId) => request(`/hospital/patients/${patientId}/checklists`),
+  saveChecklist: (patientId, checklist) => post(`/hospital/patients/${patientId}/checklists`, checklist),
+  updateChecklist: (patientId, id, items) =>
+    request(`/hospital/patients/${patientId}/checklists/${id}`, {
+      method: "PATCH", body: JSON.stringify({ items }),
+    }),
+  deleteChecklist: (patientId, id) =>
+    request(`/hospital/patients/${patientId}/checklists/${id}`, { method: "DELETE" }),
+  hospitalOverview: () => request("/hospital/overview"),
+  getHospitalProfile: () => request("/hospital/profile"),
+  updateHospitalProfile: (profile) =>
+    request("/hospital/profile", { method: "PATCH", body: JSON.stringify(profile) }),
+  accessLog: () => request("/hospital/access-log"),
   listShared: () => request("/hospital/shared"),
   fileShared: (shareId, patientId) =>
     request(`/hospital/shared/${shareId}`, {

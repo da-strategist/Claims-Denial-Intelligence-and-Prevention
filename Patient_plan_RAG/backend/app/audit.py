@@ -78,6 +78,20 @@ def verify(path: Path | None = None) -> tuple[bool, int, str]:
     return True, n, ""
 
 
+def read_entries(path: Path | None = None) -> list[dict]:
+    """All entries, oldest first (malformed lines skipped)."""
+    path = path or AUDIT_FILE
+    if not path.exists():
+        return []
+    out = []
+    for line in path.read_text().splitlines():
+        try:
+            out.append(json.loads(line))
+        except json.JSONDecodeError:
+            continue
+    return out
+
+
 def audit_document(request: Request, document_id: str | None) -> None:
     """Name the document a request touched (when it isn't in the path)."""
     if document_id:

@@ -24,30 +24,37 @@ def _name(entry: dict) -> str:
     return entry.get("display_name") or entry.get("plan_name") or entry["filename"]
 
 
+# Wording differs by audience: "member" (an individual about their own plan)
+# or "staff" (hospital staff about a patient). The rules are the same.
+MEMBER, STAFF = "member", "staff"
+
+
 # ── Starter questions ────────────────────────────────────────────────
 
-def starters(entries: list[dict], covered_services: dict[str, list[str]]) -> list[str]:
+def starters(entries: list[dict], covered_services: dict[str, list[str]],
+             audience: str = MEMBER) -> list[str]:
     """Questions to start with, for the documents in scope.
 
     `covered_services` maps document_id → service names from its summary.
     """
+    my = "my" if audience == MEMBER else "the patient's"
     if not entries:
         return [
-            "What does my plan cover?",
+            f"What does {my} plan cover?",
             "What needs prior authorization?",
-            "What are my copays and deductible?",
+            f"What are {my} copays and deductible?",
         ]
     out: list[str] = []
     for e in entries[:2]:
         name = _name(e)
-        out.append(f"What are my copays and deductible under {name}?")
+        out.append(f"What are {my} copays and deductible under {name}?")
         out.append(f"What needs prior authorization under {name}?")
         for service in covered_services.get(e["document_id"], [])[:1]:
             out.append(f"Is {service.lower()} covered under {name}?")
         if e.get("expiration_date"):
             out.append(f"When does {name} start and end?")
     if len(entries) > 1:
-        out.insert(0, "Which of my plans has the lower deductible?")
+        out.insert(0, f"Which of {my} plans has the lower deductible?")
     seen, unique = set(), []
     for q in out:
         if q not in seen:
@@ -58,37 +65,56 @@ def starters(entries: list[dict], covered_services: dict[str, list[str]]) -> lis
 
 # ── Follow-up questions ──────────────────────────────────────────────
 
-_SECTION_FOLLOW_UPS = [
-    (("prior auth", "approval", "precertification", "pre-certification"),
-     "What does my provider need to submit for prior authorization?"),
-    (("exclusion", "not covered", "do not cover", "not cover"),
-     "Are there similar services my plan does cover?"),
-    (("copay", "cost", "deductible", "you pay", "coinsurance"),
-     "What is my out-of-pocket maximum?"),
-    (("referral",), "When do I need a referral?"),
-    (("appeal", "grievance", "disagree"), "How long do I have to file an appeal?"),
-    (("covered", "benefit", "plan cover"), "Are there limits on how often this is covered?"),
+_SECTION_KEYS = [
+    ("prior_auth", ("prior auth", "approval", "precertification", "pre-certification")),
+    ("excluded", ("exclusion", "not covered", "do not cover", "not cover")),
+    ("costs", ("copay", "cost", "deductible", "you pay", "coinsurance")),
+    ("referral", ("referral",)),
+    ("appeal", ("appeal", "grievance", "disagree")),
+    ("limits", ("covered", "benefit", "plan cover")),
 ]
 
-_DEFAULT_FOLLOW_UPS = [
-    "What services need prior authorization under this plan?",
-    "What does this plan not cover?",
-    "What are my copays?",
-]
+_FOLLOW_UP_TEXT = {
+    MEMBER: {
+        "prior_auth": "What does my provider need to submit for prior authorization?",
+        "excluded": "Are there similar services my plan does cover?",
+        "costs": "What is my out-of-pocket maximum?",
+        "referral": "When do I need a referral?",
+        "appeal": "How long do I have to file an appeal?",
+        "limits": "Are there limits on how often this is covered?",
+    },
+    STAFF: {
+        "prior_auth": "What documentation does the prior authorization request need?",
+        "excluded": "Are there similar services the patient's plan does cover?",
+        "costs": "What is the patient's out-of-pocket maximum?",
+        "referral": "When does the patient need a referral?",
+        "appeal": "How long is the appeal window after a denial?",
+        "limits": "Are there limits on how often this is covered?",
+    },
+}
+
+_DEFAULT_FOLLOW_UPS = {
+    MEMBER: ["What services need prior authorization under this plan?",
+             "What does this plan not cover?", "What are my copays?"],
+    STAFF: ["What services need prior authorization under this plan?",
+            "What does this plan not cover?", "What are the patient's copays?"],
+}
 
 
-def follow_ups(question: str, retrieved: list[tuple[DocumentChunk, float]]) -> list[str]:
+def follow_ups(question: str, retrieved: list[tuple[DocumentChunk, float]],
+               audience: str = MEMBER) -> list[str]:
     """Follow-ups for the kinds of section the answer drew on (best first),
     skipping any that just repeat the question's topic."""
     q = question.lower()
+    texts = _FOLLOW_UP_TEXT[audience]
     out: list[str] = []
     for chunk, _ in retrieved:
         heading = chunk.section_heading.lower()
-        for keys, suggestion in _SECTION_FOLLOW_UPS:
-            if any(k in heading for k in keys) and suggestion not in out:
-                if not any(k in q for k in keys):
-                    out.append(suggestion)
-    for d in _DEFAULT_FOLLOW_UPS:
+        for kind, keys in _SECTION_KEYS:
+            suggestion = texts[kind]
+            if any(k in heading for k in keys) and suggestion not in out and not any(k in q for k in keys):
+                out.append(suggestion)
+    for d in _DEFAULT_FOLLOW_UPS[audience]:
         if len(out) >= MAX_FOLLOW_UPS:
             break
         # skip defaults on a topic already suggested (e.g. two prior-auth questions)
@@ -102,29 +128,47 @@ def follow_ups(question: str, retrieved: list[tuple[DocumentChunk, float]]) -> l
 _LIMIT_RE = re.compile(r"(?:limited to|up to) \d+ (?:combined )?(?:visits|days)[^.;,]*", re.I)
 
 _RULES = [
-    (re.compile(r"prior authori[sz]ation|precertification|advance approval|needs? approval|"
-                r"requires? approval|gets? approval", re.I),
-     "Ask your provider to request prior authorization before the service; without it, the "
-     "policy says the claim may be denied or reduced."),
-    (re.compile(r"referral", re.I),
-     "Get a referral from your primary care provider before booking."),
+    ("prior_auth", re.compile(r"prior authori[sz]ation|precertification|advance approval|"
+                              r"needs? approval|requires? approval|gets? approval", re.I)),
+    ("referral", re.compile(r"referral", re.I)),
 ]
 # Wording that says the opposite of a rule ("does not require referrals")
 _NEGATED = {
-    "Get a referral from your primary care provider before booking.": re.compile(
+    "referral": re.compile(
         r"\bno referrals?\b|referrals? (?:are|is) not (?:needed|required)|"
         r"(?:does|do) not (?:need|require) (?:a )?referrals?|without a referral", re.I),
 }
 
+_STEP_TEXT = {
+    MEMBER: {
+        "prior_auth": "Ask your provider to request prior authorization before the service; "
+                      "without it, the policy says the claim may be denied or reduced.",
+        "referral": "Get a referral from your primary care provider before booking.",
+        "excluded": "This appears under exclusions. Ask your provider about covered "
+                    "alternatives, and confirm with your insurer before going ahead.",
+        "limit": "Keep track of how much you use: the policy says it is {limit}.",
+    },
+    STAFF: {
+        "prior_auth": "Request prior authorization before scheduling; without it, the policy "
+                      "says the claim may be denied or reduced.",
+        "referral": "Confirm the patient has a referral from their primary care provider "
+                    "before booking.",
+        "excluded": "This appears under exclusions. Discuss covered alternatives with the "
+                    "patient and confirm with the insurer before proceeding.",
+        "limit": "Check how much the patient has already used: the policy says it is {limit}.",
+    },
+}
 
-def next_steps(paragraphs: list[tuple[str, str]], retrieved: list[tuple[DocumentChunk, float]]
-               ) -> list[dict]:
+
+def next_steps(paragraphs: list[tuple[str, str]], retrieved: list[tuple[DocumentChunk, float]],
+               audience: str = MEMBER) -> list[dict]:
     """Next steps triggered by policy wording in the quoted paragraphs.
 
     `paragraphs` is [(chunk_id, text)] best first: sentences of the quoted
     passages, already narrowed to those about the question's subject. Each
     step records where its trigger appeared.
     """
+    texts = _STEP_TEXT[audience]
     by_id = {c.chunk_id: c for c, _ in retrieved}
     steps: list[dict] = []
     used: set[str] = set()
@@ -141,16 +185,15 @@ def next_steps(paragraphs: list[tuple[str, str]], retrieved: list[tuple[Document
             continue
         heading = chunk.section_heading.lower()
         if any(k in heading for k in ("exclusion", "not covered", "do not cover", "not cover")):
-            add("This appears under exclusions. Ask your provider about covered alternatives, "
-                "and confirm with your insurer before going ahead.", chunk)
+            add(texts["excluded"], chunk)
             continue
-        for pattern, step in _RULES:
-            negated = _NEGATED.get(step)
+        for kind, pattern in _RULES:
+            negated = _NEGATED.get(kind)
             if negated and negated.search(text):
                 continue
             # a bullet under a prior-auth heading counts even without the wording
             if pattern.search(text) or pattern.search(heading):
-                add(step, chunk)
+                add(texts[kind], chunk)
         if m := _LIMIT_RE.search(text):
-            add(f"Keep track of how much you use: the policy says it is {m.group(0).strip()}.", chunk)
+            add(texts["limit"].format(limit=m.group(0).strip()), chunk)
     return steps

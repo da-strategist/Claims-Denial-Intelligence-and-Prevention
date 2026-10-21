@@ -137,7 +137,7 @@ function SharePanel({ documentId }) {
                   className="border rounded px-2 py-1">
             <option value="">Choose a hospital…</option>
             {available.map((h) => (
-              <option key={h.org_id} value={h.org_id}>{h.name}</option>
+              <option key={h.org_id} value={h.org_id}>{h.name}{h.city ? ` — ${h.city}` : ""}</option>
             ))}
           </select>
           <button disabled={!choice} onClick={() => act(async () => {

@@ -12,7 +12,8 @@ import CoverageAssessment from "./pages/CoverageAssessment";
 import PriorAuth from "./pages/PriorAuth";
 import Patients from "./pages/Patients";
 import SharedWithUs from "./pages/SharedWithUs";
-import Staff from "./pages/Staff";
+import HospitalOverview from "./pages/HospitalOverview";
+import HospitalAdmin from "./pages/HospitalAdmin";
 import MyAccount from "./pages/MyAccount";
 import SharingAccess from "./pages/SharingAccess";
 import Settings from "./pages/Settings";
@@ -34,15 +35,17 @@ const NAV = {
     { path: "/settings", label: "Settings", icon: "⚙️" },
   ],
   hospital_staff: [
+    { path: "/", label: "Overview", icon: "📊" },
     { path: "/patients", label: "Patients", icon: "🏥" },
     { path: "/shared", label: "Shared with us", icon: "📨" },
     ...ASK,
   ],
   hospital_admin: [
+    { path: "/", label: "Overview", icon: "📊" },
     { path: "/patients", label: "Patients", icon: "🏥" },
     { path: "/shared", label: "Shared with us", icon: "📨" },
     ...ASK,
-    { path: "/staff", label: "Staff", icon: "👥" },
+    { path: "/hospital-admin", label: "Hospital admin", icon: "👥" },
   ],
   platform_admin: [
     { path: "/", label: "Dashboard", icon: "📊" },
@@ -113,18 +116,18 @@ export default function App() {
   const page = (() => {
     if (path.startsWith("/policies")) return <PolicyViewer />;
     if (path.startsWith("/chat")) return <ChatAssistant />;
-    if (path === "/coverage") return <CoverageAssessment />;
-    if (path === "/auth") return allowed("/auth") ? <PriorAuth /> : denied;
+    if (path.startsWith("/coverage")) return <CoverageAssessment />;
+    if (path.startsWith("/auth")) return allowed("/auth") ? <PriorAuth /> : denied;
     if (path === "/sharing") return allowed("/sharing") ? <SharingAccess /> : denied;
     if (path === "/settings") return allowed("/settings") ? <Settings /> : denied;
     if (path === "/account/password") return <ChangePassword />;
     if (path.startsWith("/patients")) return allowed("/patients") ? <Patients /> : denied;
     if (path === "/shared") return allowed("/shared") ? <SharedWithUs /> : denied;
-    if (path === "/staff") return allowed("/staff") ? <Staff /> : denied;
+    if (path === "/hospital-admin") return allowed("/hospital-admin") ? <HospitalAdmin /> : denied;
     if (path === "/admin") return allowed("/admin") ? <Admin /> : denied;
-    // hospital accounts start on their patient list; individuals on their account
-    if (!allowed("/")) return <Patients />;
+    // each kind of account has its own home page
     if (user.role === "individual") return <MyAccount />;
+    if (user.role === "hospital_staff" || user.role === "hospital_admin") return <HospitalOverview />;
     return <Dashboard />;
   })();
 

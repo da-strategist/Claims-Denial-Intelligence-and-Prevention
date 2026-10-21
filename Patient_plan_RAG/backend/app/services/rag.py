@@ -409,6 +409,7 @@ async def answer_question(
     mode: str | None = None,
     history: list[Turn] | None = None,
     allowed_ids: set[str] | None = None,
+    audience: str = suggestions.MEMBER,
 ) -> ChatResponse:
     """Retrieve context and generate a grounded answer.
 
@@ -422,7 +423,7 @@ async def answer_question(
 
     confidence = "supported" if retrieved else "insufficient_evidence"
     quoted = [(cid, text) for _, cid, text in _scored_paragraphs(query, retrieved)[:4]]
-    steps = suggestions.next_steps(_about_subject(query, quoted), retrieved)
+    steps = suggestions.next_steps(_about_subject(query, quoted), retrieved, audience)
     if effective_mode == "live" and retrieved:
         # Credentials are resolved by the SDK (API key, auth token, or an
         # `ant auth login` profile). Any failure degrades to the demo answer.
@@ -439,7 +440,7 @@ async def answer_question(
     else:
         answer_text, citations = _build_demo_answer(question, retrieved, query)
 
-    follow_ups = suggestions.follow_ups(question, retrieved) if retrieved else []
+    follow_ups = suggestions.follow_ups(question, retrieved, audience) if retrieved else []
 
     return ChatResponse(
         answer=answer_text,

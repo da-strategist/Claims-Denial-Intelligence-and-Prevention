@@ -28,11 +28,12 @@ Patient_plan_RAG/
 │       ├── App.jsx      # Hash-based routing, nav, disclaimer
 │       ├── auth/        # AuthContext (session state, 401 → sign-in)
 │       ├── components/  # ErrorBoundary (per-page + app-level)
-│       ├── hooks/       # usePolicyOptions (role-aware document pickers)
+│       ├── hooks/       # usePolicyOptions, usePolicyPicker (role-aware pickers)
 │       ├── pages/       # Dashboard, PolicyViewer, ChatAssistant,
 │       │                  CoverageAssessment, PriorAuth, SignIn (+ sign-up),
 │       │                  ChangePassword, Admin, Patients, SharedWithUs, Staff,
-│       │                  MyAccount, SharingAccess, Settings
+│       │                  MyAccount, SharingAccess, Settings,
+│       │                  HospitalOverview, HospitalAdmin
 │       └── services/api.js  # Fetch wrapper for all API calls
 ├── synthetic_data/      # Policy PDF generator: render.py + policies/*.py specs
 ├── data/                # Runtime data (gitignored except policies/)
@@ -134,8 +135,13 @@ accounts; sample policies only, never anyone's documents).
 - Platform admin: `GET/POST /api/admin/orgs` · `PATCH /api/admin/orgs/{id}` ·
   `GET /api/admin/users` · `PATCH /api/admin/users/{username}` ·
   `POST /api/admin/users/{username}/reset-password`
-- Hospital: `GET/POST /api/hospital/patients` · `GET /api/hospital/patients/{id}`
-  · `GET /api/hospital/shared` · `PATCH /api/hospital/shared/{share_id}` ·
+- Hospital: `GET/POST /api/hospital/patients` (`?include_archived=`) ·
+  `GET/PATCH/DELETE /api/hospital/patients/{id}` ·
+  `GET/POST /api/hospital/patients/{id}/checklists` ·
+  `PATCH/DELETE .../checklists/{checklist_id}` · `GET /api/hospital/overview` ·
+  `GET /api/hospital/profile` (PATCH: hospital admins) ·
+  `GET /api/hospital/access-log` (hospital admins) ·
+  `GET /api/hospital/shared` · `PATCH /api/hospital/shared/{share_id}` ·
   staff (hospital admins): `GET/POST /api/hospital/staff`,
   `PATCH /api/hospital/staff/{username}`, `POST .../reset-password`
 - Individuals: `GET /api/shares/hospitals` · `GET/POST /api/shares` ·
@@ -335,7 +341,7 @@ platform is for (user, 2026-10-20):
    end-to-end check across all four roles on a scratch backend. Existing
    `admin` accounts load as `platform_admin` (no file migration needed).
 
-### Phase G: Individual accounts — built, awaiting the user's review
+### Phase G: Individual accounts — done (reviewed 2026-10-21)
 Agreed with the user 2026-10-20; review together when done.
 1. [x] **G1 Backend** — profile (name, phone) on the account; personal
        providers (name, type, phone, notes); "my insurance" overview grouped
@@ -372,9 +378,36 @@ Agreed with the user 2026-10-20; review together when done.
    on policy pages, plan-at-a-glance + starter questions + next steps in
    chat. 293 backend + 60 frontend tests; end-to-end check as an individual.
 
-### Phase H: Hospital accounts (next, review with the user)
-Review the hospital workflow end to end (patients, uploads, shared
-policies, staff, chat per patient) and close the gaps found.
+### Phase H: Hospital accounts — done (reviewed 2026-10-21)
+Agreed with the user 2026-10-21 (all items); review together when done.
+1. [x] **H1 Patient records** — edit name/MRN/date of birth; archive
+       (hidden, kept) and restore; delete (record + its documents; shares
+       filed under it are unfiled, not deleted — they belong to the
+       individual); insurance summary per patient (insurer, plan, plan ID,
+       dates, active/ended).
+2. [x] **H2 Patient workflows** — Coverage Check and Prior Auth opened from
+       the patient page, scoped to that patient; prior-auth checklists saved
+       on the patient record with their ticked items.
+3. [x] **H3 Hospital operations** — overview page (patients, plans ended
+       or ending within 30 days, shares waiting to be filed); shared-policy
+       list shows the sharer's name and marks new/unfiled shares; hospital
+       profile (address, city, contact) set by the hospital admin and shown
+       to individuals when sharing; access log for hospital admins (their
+       hospital's audit entries, never question text).
+4. [x] **H4 Wording and verify** — next steps phrased for hospital staff
+       ("Request prior authorization before scheduling"); tests per feature;
+       end-to-end check as a hospital; review with the user.
+   Built: patient PATCH/DELETE + archive, `coverage_status` per document,
+   saved checklists (`records.checklists`), `/api/hospital/{overview,
+   profile, access-log}`, shared rows with sharer name + `is_new`,
+   audience-aware suggestions (`suggestions.MEMBER` / `STAFF`), hospital
+   directory with city/address. Frontend: `HospitalOverview` (landing),
+   `HospitalAdmin` (Staff · Hospital profile · Access log tabs), patient
+   page (insurance table, Ask / Coverage / Prior auth buttons, saved
+   checklists, edit/archive/delete), `usePolicyPicker` (patient-first
+   picker for Coverage and Prior Auth, `?patient=` links). Fixed: the
+   policy-options hook reloaded on every new user object (now keyed on
+   identity). 305 backend + 70 frontend tests; end-to-end as a hospital.
 
 ### Phase I: Platform admin (after H, review with the user)
 Review onboarding, account management, samples and oversight views.

@@ -31,6 +31,11 @@ class Org:
     org_id: str
     name: str
     disabled: bool = False
+    # Shown to individuals choosing whom to share with (set by the hospital admin)
+    address: str = ""
+    city: str = ""
+    phone: str = ""
+    contact_email: str = ""
     created_at: str = field(default_factory=_now)
 
 
@@ -41,6 +46,7 @@ class Patient:
     name: str
     reference: str = ""       # the hospital's own patient number (MRN)
     date_of_birth: str = ""   # ISO date, optional
+    archived: bool = False    # hidden from the patient list, kept
     created_by: str = ""
     created_at: str = field(default_factory=_now)
 
@@ -54,6 +60,22 @@ class Share:
     shared_by: str            # the individual's username
     patient_id: str | None = None  # set by the hospital to file it under a patient
     created_at: str = field(default_factory=_now)
+
+
+@dataclass
+class Checklist:
+    """A prior-authorization checklist saved on a hospital patient record."""
+    checklist_id: str
+    org_id: str
+    patient_id: str
+    document_id: str
+    service_name: str
+    service_code: str = ""
+    diagnosis_code: str = ""
+    items: list = field(default_factory=list)  # [{item_id, category, description, required, completed}]
+    created_by: str = ""
+    created_at: str = field(default_factory=_now)
+    updated_at: str = field(default_factory=_now)
 
 
 @dataclass
@@ -125,3 +147,5 @@ patients = JsonStore(Path(os.getenv("PATIENTS_FILE", str(DATA_DIR / "patients.js
 shares = JsonStore(Path(os.getenv("SHARES_FILE", str(DATA_DIR / "shares.json"))), Share, "share_id")
 providers = JsonStore(Path(os.getenv("PROVIDERS_FILE", str(DATA_DIR / "providers.json"))),
                       Provider, "provider_id")
+checklists = JsonStore(Path(os.getenv("CHECKLISTS_FILE", str(DATA_DIR / "checklists.json"))),
+                       Checklist, "checklist_id")

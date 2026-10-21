@@ -22,7 +22,8 @@ vi.mock("./pages/PriorAuth", () => ({ default: () => <p>auth page</p> }));
 vi.mock("./pages/Admin", () => ({ default: () => <p>admin page</p> }));
 vi.mock("./pages/Patients", () => ({ default: () => <p>patients page</p> }));
 vi.mock("./pages/SharedWithUs", () => ({ default: () => <p>shared page</p> }));
-vi.mock("./pages/Staff", () => ({ default: () => <p>staff page</p> }));
+vi.mock("./pages/HospitalOverview", () => ({ default: () => <p>hospital overview page</p> }));
+vi.mock("./pages/HospitalAdmin", () => ({ default: () => <p>hospital admin page</p> }));
 vi.mock("./pages/MyAccount", () => ({ default: () => <p>my account page</p> }));
 vi.mock("./pages/SharingAccess", () => ({ default: () => <p>sharing page</p> }));
 vi.mock("./pages/Settings", () => ({ default: () => <p>settings page</p> }));
@@ -154,8 +155,8 @@ test("sign out returns to the sign-in page", async () => {
 test("each kind of account gets its own navigation", async () => {
   const cases = [
     [MEMBER, ["My Account", "My Policies", "Ask a Question", "Coverage Check", "Sharing & Access", "Settings"]],
-    [STAFF, ["Patients", "Shared with us", "Ask a Question", "Coverage Check", "Prior Auth"]],
-    [HADMIN, ["Patients", "Shared with us", "Ask a Question", "Coverage Check", "Prior Auth", "Staff"]],
+    [STAFF, ["Overview", "Patients", "Shared with us", "Ask a Question", "Coverage Check", "Prior Auth"]],
+    [HADMIN, ["Overview", "Patients", "Shared with us", "Ask a Question", "Coverage Check", "Prior Auth", "Hospital admin"]],
     [ADMIN, ["Dashboard", "Hospitals & Accounts", "Sample Policies", "Ask a Question"]],
   ];
   for (const [user, expected] of cases) {
@@ -168,15 +169,15 @@ test("each kind of account gets its own navigation", async () => {
   }
 });
 
-test("hospital accounts start on the patient list", async () => {
+test("hospital accounts start on their overview", async () => {
   api.me.mockResolvedValue(STAFF);
   renderApp();
-  expect(await screen.findByText("patients page")).toBeInTheDocument();
+  expect(await screen.findByText("hospital overview page")).toBeInTheDocument();
 });
 
 test("pages outside your role are refused", async () => {
   for (const [user, path] of [[MEMBER, "/admin"], [MEMBER, "/patients"], [MEMBER, "/auth"],
-                              [STAFF, "/settings"], [STAFF, "/sharing"], [STAFF, "/staff"],
+                              [STAFF, "/settings"], [STAFF, "/sharing"], [STAFF, "/hospital-admin"],
                               [ADMIN, "/patients"], [STAFF, "/admin"]]) {
     api.me.mockResolvedValue(user);
     window.location.hash = path;
