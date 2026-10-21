@@ -28,6 +28,7 @@ vi.mock("./pages/HospitalAdmin", () => ({ default: () => <p>hospital admin page<
 vi.mock("./pages/MyAccount", () => ({ default: () => <p>my account page</p> }));
 vi.mock("./pages/SharingAccess", () => ({ default: () => <p>sharing page</p> }));
 vi.mock("./pages/Settings", () => ({ default: () => <p>settings page</p> }));
+vi.mock("./pages/Oversight", () => ({ default: () => <p>oversight page</p> }));
 
 const MEMBER = { username: "m@example.com", role: "individual", org_id: null, must_change_password: false };
 const ADMIN = { ...MEMBER, username: "a@example.com", role: "platform_admin" };
@@ -169,7 +170,7 @@ test("each kind of account gets its own navigation", async () => {
     [MEMBER, ["My Account", "My Policies", "Ask a Question", "Coverage Check", "Sharing & Access", "Settings"]],
     [STAFF, ["Overview", "Patients", "Shared with us", "Ask a Question", "Coverage Check", "Prior Auth"]],
     [HADMIN, ["Overview", "Patients", "Shared with us", "Ask a Question", "Coverage Check", "Prior Auth", "Provider admin"]],
-    [ADMIN, ["Dashboard", "Providers & Accounts", "Sample Policies", "Ask a Question"]],
+    [ADMIN, ["Dashboard", "Providers & Accounts", "Audit & Security", "Sample Policies", "Ask a Question"]],
   ];
   for (const [user, expected] of cases) {
     api.me.mockResolvedValue(user);
@@ -265,4 +266,24 @@ test("a pending provider sees only the approval page, and can check again", asyn
 test("individuals land on My Account, not the system dashboard", async () => {
   renderApp();
   expect(await screen.findByText("my account page")).toBeInTheDocument();
+});
+
+test("the platform admin sees how many provider sign-ups are waiting", async () => {
+  api.me.mockResolvedValue({ ...ADMIN, pending_providers: 2 });
+  window.location.hash = "/chat";
+  renderApp();
+  const nav = await screen.findByRole("button", { name: /Providers & Accounts/ });
+  expect(nav).toHaveTextContent("2");
+  expect(within(nav).getByTitle(/2 provider sign-up/)).toBeInTheDocument();
+});
+
+test("audit & security is for the platform admin only", async () => {
+  api.me.mockResolvedValue(ADMIN);
+  window.location.hash = "/oversight";
+  const { unmount } = renderApp();
+  expect(await screen.findByText("oversight page")).toBeInTheDocument();
+  unmount();
+  api.me.mockResolvedValue(STAFF);
+  renderApp();
+  expect(await screen.findByRole("alert")).toHaveTextContent("Not permitted");
 });

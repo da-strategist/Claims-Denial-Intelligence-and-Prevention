@@ -399,6 +399,71 @@ function ChunkList({ documentId }) {
   );
 }
 
+/** Platform admin: is each sample searchable, current and complete? */
+function SampleHealth({ onChanged }) {
+  const [rows, setRows] = useState([]);
+  const [busy, setBusy] = useState(null);
+  const [error, setError] = useState("");
+  const load = () => api.sampleHealth().then(setRows).catch((e) => setError(e.message.replace(/^\d+: /, "")));
+  useEffect(() => { load(); }, []);
+
+  const reprocess = async (id) => {
+    setBusy(id);
+    setError("");
+    try {
+      await api.reprocessSample(id);
+      await load();
+      onChanged();
+    } catch (e) {
+      setError(e.message.replace(/^\d+: /, ""));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  if (rows.length === 0 && !error) return null;
+  return (
+    <section className="bg-white rounded-lg shadow mb-4">
+      <h3 className="font-semibold p-4 border-b">Sample health</h3>
+      {error && <p role="alert" className="px-4 pt-3 text-sm text-red-600">{error}</p>}
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b text-left text-gray-500">
+            <th className="p-3">Sample</th><th>Pages</th><th>Chunks</th><th>Chunker</th><th>Plan details found</th><th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={r.document_id} className="border-b align-top">
+              <td className="p-3">
+                {r.name}
+                <span className={`ml-2 px-2 py-0.5 rounded text-xs ${r.healthy ? "bg-green-100 text-green-800" : "bg-amber-100 text-amber-800"}`}>
+                  {r.healthy ? "Healthy" : r.problems.join(", ")}
+                </span>
+              </td>
+              <td>{r.page_count}</td>
+              <td>{r.chunk_count}</td>
+              <td>v{r.chunker_version}{r.chunker_version < r.current_chunker_version && ` (current v${r.current_chunker_version})`}</td>
+              <td className="text-xs">
+                {r.metadata_found.length}/{r.metadata_found.length + r.metadata_missing.length}
+                {r.metadata_missing.length > 0 && (
+                  <span className="block text-gray-500">missing: {r.metadata_missing.join(", ").replaceAll("_", " ")}</span>
+                )}
+              </td>
+              <td className="pr-3">
+                <button onClick={() => reprocess(r.document_id)} disabled={busy !== null}
+                        aria-label={`Re-process ${r.name}`} className="text-xs text-blue-700 hover:underline disabled:opacity-50">
+                  {busy === r.document_id ? "Re-processing..." : "Re-process"}
+                </button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </section>
+  );
+}
+
 export default function PolicyViewer() {
   const path = useHashPath();
   const { user } = useAuth();
@@ -423,6 +488,7 @@ export default function PolicyViewer() {
       ) : (
         <UploadPanel onUploaded={load} />
       )}
+      {user?.role === "platform_admin" && <SampleHealth onChanged={load} />}
       <div className="bg-white rounded-lg shadow">
         {policies.length === 0 ? (
           <p className="p-5 text-gray-500">

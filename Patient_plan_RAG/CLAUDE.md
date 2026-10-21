@@ -143,8 +143,17 @@ providers the platform admin creates are `active` at once. Internal names
   · `GET /api/auth/me` (includes org_name/org_category/org_status) ·
   `POST /api/auth/password`
 - Platform admin: `GET/POST /api/admin/orgs` (pending first) ·
-  `PATCH /api/admin/orgs/{id}` · `POST /api/admin/orgs/{id}/approve` ·
+  `GET /api/admin/orgs/{id}` (read-only details + staff) ·
+  `PATCH /api/admin/orgs/{id}` (disable only — provider details are never
+  edited by the platform admin) · `DELETE /api/admin/orgs/{id}` (rejected
+  sign-ups only; body: confirm = name) · `POST /api/admin/orgs/{id}/approve` ·
   `POST /api/admin/orgs/{id}/reject` (body: note) ·
+  `GET /api/admin/users/{username}` (counts, never documents) ·
+  `DELETE /api/admin/users/{username}` (individuals only; body: confirm =
+  email) · oversight (`routers/oversight.py`): `GET /api/admin/stats` ·
+  `GET /api/admin/audit` (filters user/route/status/org_id/since/until,
+  paged) · `GET /api/admin/audit/verify` · `GET /api/admin/security?days=` ·
+  `GET /api/admin/samples` · `POST /api/admin/samples/{id}/reprocess` ·
   `GET /api/admin/users` · `PATCH /api/admin/users/{username}` ·
   `POST /api/admin/users/{username}/reset-password`
 - Hospital: `GET/POST /api/hospital/patients` (`?include_archived=`) ·
@@ -479,14 +488,32 @@ can also create a provider directly (active at once). "Hospital" became
       overview lists recent shares with a link to the record.
       `test_shared_patients.py` (11 tests); 342 backend + 83 frontend tests.
 
-### Phase I: Platform admin (review with the user)
+### Phase I: Platform admin — done (reviewed 2026-10-21)
 1. [x] **I1 Provider approval queue** — "Waiting for approval" on Providers
        & accounts: details (category, NPI, location, who signed up, when),
        note, approve / reject; rejected providers can be approved after all;
        the provider table shows category, city and status; "Add provider"
        takes a category and city.
-2. [ ] Review the rest with the user: onboarding, account management,
-       samples and oversight views.
+2. [x] **I2 Accounts** (user, 2026-10-21) — last sign-in recorded;
+       account search (email/name/provider) and filters (type, status);
+       account detail with counts only; delete a spam individual (typed
+       email; `services/accounts.py`, shared with "delete my account");
+       pending-approval badge on the navigation (`pending_providers` in
+       /api/auth/me).
+3. [x] **I3 Providers, view only** (user: "we can view but not tamper with
+       information provided by the provider" — HIPAA) — provider detail
+       panel (details as entered, staff, counts); renaming removed from
+       PATCH /api/admin/orgs (disable stays); delete rejected sign-ups only
+       (typed name; individuals' links become typed entries).
+4. [x] **I4 Oversight** — platform dashboard replaces the system dashboard
+       (accounts, providers by status/category, weekly sign-ups and
+       activity from the audit log — counts only); Audit & Security page
+       (filtered, paged audit log + integrity check; failed sign-ins,
+       lockouts, refused requests, rejected sign-ups grouped by account);
+       sample health on Sample Policies (pages, chunks, chunker version,
+       plan details found, re-process).
+   `test_platform_admin.py` (17 tests); 359 backend + 94 frontend tests;
+   end-to-end on a scratch backend.
 
 ### Open before real (non-synthetic) use
 - HTTPS + `COOKIE_SECURE=true`; sessions, rate limits and conversations are

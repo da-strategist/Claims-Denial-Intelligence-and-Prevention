@@ -11,7 +11,7 @@ from ..audit import audit_target
 from ..auth.sessions import SESSION_COOKIE, Permission, require, sessions, signed_in
 from ..auth.users import User, user_store
 from ..models.common import DISCLAIMER, DOCUMENT_ID_PATTERN
-from ..services import documents, records, registry
+from ..services import accounts, records, registry
 
 router = APIRouter(prefix="/api/me", tags=["me"])
 
@@ -250,15 +250,6 @@ async def delete_account(body: DeleteAccount, request: Request, response: Respon
     from . import policies  # paths are read at call time so tests can redirect them
 
     audit_target(request, user.username)
-    for entry in _own_documents(user):
-        documents.delete(entry, policies.CHUNK_DIR, policies.UPLOAD_DIR)
-    for s in records.shares.all():
-        if s.shared_by == user.username:
-            records.shares.remove(s.share_id)
-    for p in records.providers.all():
-        if p.owner == user.username:
-            records.providers.remove(p.provider_id)
-    sessions.end_all_for(user.username)
-    user_store.delete(user.username)
+    accounts.delete_individual(user.username, policies.CHUNK_DIR, policies.UPLOAD_DIR)
     response.delete_cookie(SESSION_COOKIE, path="/")
     return {"deleted": user.username}

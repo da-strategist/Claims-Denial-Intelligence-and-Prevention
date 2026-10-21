@@ -1,5 +1,7 @@
 """Sign in, sign out, current user, and password change."""
 
+from datetime import UTC, datetime
+
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
@@ -53,6 +55,8 @@ def account(user: User) -> dict:
     org = records.orgs.get(user.org_id) if user.org_id else None
     if org:
         data |= {"org_name": org.name, "org_category": org.category, "org_status": org.status}
+    if user.role is Role.PLATFORM_ADMIN:  # for the navigation badge
+        data["pending_providers"] = sum(1 for o in records.orgs.all() if o.status == records.PENDING)
     return data
 
 
@@ -81,6 +85,7 @@ async def login(body: LoginRequest, request: Request, response: Response) -> dic
         note = f" Reason: {org.review_note}" if org.review_note else ""
         raise HTTPException(403, "Your provider sign-up was not approved. Contact the "
                                  f"platform administrator.{note}")
+    user = user_store.update(user.username, last_sign_in=datetime.now(UTC).isoformat())
     _set_cookie(response, sessions.start(user.username))
     return account(user)
 

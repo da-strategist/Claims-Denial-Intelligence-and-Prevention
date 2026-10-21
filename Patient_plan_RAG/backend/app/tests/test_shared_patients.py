@@ -85,7 +85,7 @@ def test_stopping_sharing_empties_the_record_but_keeps_it(w):
 
 
 def test_sharing_again_restores_an_archived_record(w):
-    share = _share(w)
+    _share(w)
     pid = _alice_record(w)["patient_id"]
     w["staff"].patch(f"/api/hospital/patients/{pid}", json={"archived": True})
     _share(w, "summit")

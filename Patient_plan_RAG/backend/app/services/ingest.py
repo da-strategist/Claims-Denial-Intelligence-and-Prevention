@@ -46,6 +46,19 @@ def _find_source(filename: str, search_dirs: list[Path]) -> Path | None:
     return None
 
 
+def reprocess(entry: dict, search_dirs: list[Path], chunk_dir: Path) -> dict | None:
+    """Rebuild one document's chunks and metadata from its PDF, under the
+    same ID (ownership and other kept fields carried over). None if the PDF
+    can't be found."""
+    source = _find_source(entry["filename"], search_dirs)
+    if source is None:
+        log.warning("Cannot re-ingest %s: source %s not found", entry["document_id"], entry["filename"])
+        return None
+    kept = {k: entry[k] for k in _KEPT_FIELDS if entry.get(k) not in (None, "", {})}
+    doc, _ = process_document(source, chunk_dir, document_id=entry["document_id"], metadata=kept)
+    return doc.model_dump(mode="json")
+
+
 def sync_registry(policy_dir: Path, upload_dir: Path, chunk_dir: Path) -> SyncReport:
     report = SyncReport()
     registry_path = policy_dir / "_registry.json"
@@ -64,14 +77,11 @@ def sync_registry(policy_dir: Path, upload_dir: Path, chunk_dir: Path) -> SyncRe
         )
         if not (stale or chunks_missing):
             continue
-        source = _find_source(entry["filename"], [upload_dir, policy_dir])
-        if source is None:
-            log.warning("Cannot re-ingest %s: source %s not found", doc_id, entry["filename"])
+        rebuilt = reprocess(entry, [upload_dir, policy_dir], chunk_dir)
+        if rebuilt is None:
             report.missing_source.append(doc_id)
             continue
-        kept = {k: entry[k] for k in _KEPT_FIELDS if entry.get(k) not in (None, "", {})}
-        doc, _ = process_document(source, chunk_dir, document_id=doc_id, metadata=kept)
-        registry[i] = doc.model_dump(mode="json")
+        registry[i] = rebuilt
         report.reingested.append(doc_id)
         changed = True
 

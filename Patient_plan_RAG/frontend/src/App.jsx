@@ -20,6 +20,7 @@ import HospitalAdmin from "./pages/HospitalAdmin";
 import MyAccount from "./pages/MyAccount";
 import SharingAccess from "./pages/SharingAccess";
 import Settings from "./pages/Settings";
+import Oversight from "./pages/Oversight";
 
 const ASK = [
   { path: "/chat", label: "Ask a Question", icon: "💬" },
@@ -53,6 +54,7 @@ const NAV = {
   platform_admin: [
     { path: "/", label: "Dashboard", icon: "📊" },
     { path: "/admin", label: "Providers & Accounts", icon: "🏛️" },
+    { path: "/oversight", label: "Audit & Security", icon: "🛡️" },
     { path: "/policies", label: "Sample Policies", icon: "📋" },
     { path: "/chat", label: "Ask a Question", icon: "💬" },
   ],
@@ -154,6 +156,7 @@ export default function App() {
     if (path === "/shared") return allowed("/shared") ? <SharedWithUs /> : denied;
     if (path === "/provider-admin") return allowed("/provider-admin") ? <HospitalAdmin /> : denied;
     if (path === "/admin") return allowed("/admin") ? <Admin /> : denied;
+    if (path === "/oversight") return allowed("/oversight") ? <Oversight /> : denied;
     // each kind of account has its own home page
     if (user.role === "individual") return <MyAccount />;
     if (user.role === "hospital_staff" || user.role === "hospital_admin") return <HospitalOverview />;
@@ -183,6 +186,12 @@ export default function App() {
                 }`}
               >
                 {n.icon} {n.label}
+                {n.path === "/admin" && user.pending_providers > 0 && (
+                  <span className="ml-1 bg-amber-400 text-amber-950 rounded-full px-1.5 text-xs font-semibold"
+                        title={`${user.pending_providers} provider sign-up(s) waiting for approval`}>
+                    {user.pending_providers}
+                  </span>
+                )}
               </button>
             ))}
           </nav>

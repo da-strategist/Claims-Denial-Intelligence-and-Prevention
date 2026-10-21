@@ -69,6 +69,23 @@ export const api = {
     }),
   resetPassword: (username) =>
     post(`/admin/users/${encodeURIComponent(username)}/reset-password`),
+  userDetail: (username) => request(`/admin/users/${encodeURIComponent(username)}`),
+  deleteUser: (username, confirm) =>
+    request(`/admin/users/${encodeURIComponent(username)}`, { method: "DELETE", body: JSON.stringify({ confirm }) }),
+  orgDetail: (orgId) => request(`/admin/orgs/${orgId}`),
+  deleteOrg: (orgId, confirm) =>
+    request(`/admin/orgs/${orgId}`, { method: "DELETE", body: JSON.stringify({ confirm }) }),
+
+  // Platform admin: oversight
+  platformStats: () => request("/admin/stats"),
+  auditLog: (filters = {}) => {
+    const q = new URLSearchParams(Object.entries(filters).filter(([, v]) => v !== "" && v != null));
+    return request(`/admin/audit${q.toString() ? `?${q}` : ""}`);
+  },
+  verifyAudit: () => request("/admin/audit/verify"),
+  securityEvents: (days = 7) => request(`/admin/security?days=${days}`),
+  sampleHealth: () => request("/admin/samples"),
+  reprocessSample: (documentId) => post(`/admin/samples/${documentId}/reprocess`),
 
   // Hospital: staff (hospital admins), patients, shared policies
   listStaff: () => request("/hospital/staff"),

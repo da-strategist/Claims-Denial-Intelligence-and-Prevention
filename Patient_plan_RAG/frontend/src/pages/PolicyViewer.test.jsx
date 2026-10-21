@@ -7,7 +7,7 @@ vi.mock("../services/api", () => ({
   api: {
     listPolicies: vi.fn(), getPolicy: vi.fn(), getPolicySummary: vi.fn(), getPolicyChunks: vi.fn(),
     uploadPolicy: vi.fn(), hospitalDirectory: vi.fn(), myShares: vi.fn(), share: vi.fn(), unshare: vi.fn(),
-    renamePolicy: vi.fn(), deletePolicy: vi.fn(),
+    renamePolicy: vi.fn(), deletePolicy: vi.fn(), sampleHealth: vi.fn(), reprocessSample: vi.fn(),
   },
 }));
 let mockUser = { username: "alice@example.com", role: "individual" };
@@ -68,9 +68,29 @@ test("hospital staff upload from the patient page, not here", async () => {
 
 test("platform admin uploads samples, with a warning", async () => {
   mockUser = { username: "admin@example.com", role: "platform_admin" };
+  api.sampleHealth.mockResolvedValue([]);
   render(<PolicyViewer />);
   expect(await screen.findByRole("heading", { name: "Sample policies" })).toBeInTheDocument();
   await waitFor(() => expect(screen.getByText(/Never upload real member documents/)).toBeInTheDocument());
+});
+
+test("platform admin sees sample health and can re-process a sample", async () => {
+  mockUser = { username: "admin@example.com", role: "platform_admin" };
+  const base = { document_id: "s1", filename: "apex.pdf", name: "Gold PPO", page_count: 12, chunk_count: 40,
+                 current_chunker_version: 3, metadata_found: ["insurer_name", "plan_name"],
+                 metadata_missing: ["plan_id"] };
+  api.sampleHealth.mockResolvedValue([
+    { ...base, chunker_version: 2, healthy: false, problems: ["built with an older chunker"] },
+  ]);
+  api.reprocessSample.mockResolvedValue({});
+  render(<PolicyViewer />);
+  expect(await screen.findByText("built with an older chunker")).toBeInTheDocument();
+  expect(screen.getByText("v2 (current v3)")).toBeInTheDocument();
+  expect(screen.getByText("missing: plan id")).toBeInTheDocument();
+  api.sampleHealth.mockResolvedValue([{ ...base, chunker_version: 3, healthy: true, problems: [] }]);
+  await userEvent.click(screen.getByRole("button", { name: "Re-process Gold PPO" }));
+  expect(api.reprocessSample).toHaveBeenCalledWith("s1");
+  expect(await screen.findByText("Healthy")).toBeInTheDocument();
 });
 
 

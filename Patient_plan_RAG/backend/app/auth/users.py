@@ -78,6 +78,7 @@ class User:
     must_change_password: bool = False
     disabled: bool = False
     created_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
+    last_sign_in: str = ""
 
     def public(self) -> dict:
         """Safe to return from the API (no password hash)."""
@@ -89,6 +90,8 @@ class User:
             "phone": self.phone,
             "must_change_password": self.must_change_password,
             "disabled": self.disabled,
+            "created_at": self.created_at,
+            "last_sign_in": self.last_sign_in,
         }
 
 
@@ -162,7 +165,7 @@ class UserStore:
                 user.password_hash = hash_password(password)
             for key, value in changes.items():
                 if key not in {"role", "org_id", "full_name", "phone", "must_change_password",
-                               "disabled"}:
+                               "disabled", "last_sign_in"}:
                     raise ValueError(f"Cannot change {key}")
                 setattr(user, key, value)
             self._save(users)

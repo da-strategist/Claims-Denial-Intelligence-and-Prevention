@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from . import audit
 from .models.common import DISCLAIMER
 from .rate_limit import api_limiter, upload_limiter
-from .routers import admin, auth, chat, coverage, dashboard, hospital, me, policies, shares
+from .routers import admin, auth, chat, coverage, dashboard, hospital, me, oversight, policies, shares
 
 # ── Directories ──────────────────────────────────────────────────────
 
@@ -123,6 +123,7 @@ app.add_middleware(
 # Routers
 app.include_router(auth.router)
 app.include_router(admin.router)
+app.include_router(oversight.router)
 app.include_router(hospital.router)
 app.include_router(shares.router)
 app.include_router(me.router)
