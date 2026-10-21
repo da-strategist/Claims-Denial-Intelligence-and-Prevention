@@ -144,7 +144,11 @@ export default function App() {
   const allowed = (prefix) => nav.some((n) => n.path === prefix);
   const denied = <p role="alert">Not permitted.</p>;
 
+  // just signed in on a public page: render home now rather than mount the
+  // page twice (once here, again after the redirect to "/")
+  const pagePath = publicPath ? "/" : path;
   const page = (() => {
+    const path = pagePath;
     if (path.startsWith("/policies")) return <PolicyViewer />;
     if (path.startsWith("/chat")) return <ChatAssistant />;
     if (path.startsWith("/coverage")) return <CoverageAssessment />;
@@ -167,14 +171,17 @@ export default function App() {
     <div className="min-h-screen flex flex-col">
       <Disclaimer />
       <header className="bg-brand-800 text-white shadow-md">
-        <div className="max-w-7xl mx-auto px-4 py-3 flex flex-wrap items-center justify-between gap-3">
+        <div className="max-w-7xl mx-auto px-4 pt-3 pb-2 flex items-center justify-between gap-3">
           <h1
             className="text-lg font-bold cursor-pointer"
             onClick={() => navigate("/")}
           >
             Patient Plan RAG
           </h1>
-          <nav className="flex gap-1">
+          <UserMenu user={user} onSignOut={signOut} />
+        </div>
+        <div className="max-w-7xl mx-auto px-4 pb-2 overflow-x-auto">
+          <nav className="flex gap-1 whitespace-nowrap">
             {nav.map((n) => (
               <button
                 key={n.path}
@@ -195,12 +202,11 @@ export default function App() {
               </button>
             ))}
           </nav>
-          <UserMenu user={user} onSignOut={signOut} />
         </div>
       </header>
       <main className="flex-1 max-w-7xl mx-auto w-full px-4 py-6">
         {/* keyed on path: navigating away from a crashed page resets it */}
-        <ErrorBoundary key={path} onHome={() => navigate("/")}>
+        <ErrorBoundary key={pagePath} onHome={() => navigate("/")}>
           {page}
         </ErrorBoundary>
       </main>

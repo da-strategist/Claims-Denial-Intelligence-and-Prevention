@@ -272,8 +272,19 @@ Status as of 2026-10-18. Work top to bottom.
       backend tests.
 
 ### Next — Phase A: Hardening (safe to run and demo)
-1. [ ] **Visual UI check** — needs the user (browser automation cannot reach
-       localhost here).
+1. [x] **Visual UI check** (2026-10-21) — all four roles walked through in
+       Chrome against a scratch backend (port 8011, `API_TARGET` points a
+       second Vite on 5175 at it; add 5175 to CORS_ORIGINS there). Fixed:
+       prior-auth questions now find the approval section whatever the
+       policy calls it (`retrieval.adapt_vocabulary`: precertification,
+       advance approval...) and a plan named in the question narrows the
+       search to that plan without its name matching the title page
+       (`rag.focus_on_named_plan`); access log and audit log in plain words
+       (`audit.describe`) with routine page loads hidden unless asked for;
+       two-row header (no wrapping); suggested questions send on click;
+       home page no longer mounted twice after sign-in; sign-out audited
+       with the user; small wording fixes. Phone width not checked (window
+       did not resize below ~710px).
 
 ### Phase B: Data & evaluation — done (see Done above)
 

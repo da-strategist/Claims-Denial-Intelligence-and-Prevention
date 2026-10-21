@@ -106,3 +106,28 @@ def test_starters_use_plan_names_services_and_dates():
     assert any("Work plan" in q for q in qs)
     assert len(qs) <= suggestions.MAX_STARTERS and len(set(qs)) == len(qs)
     assert suggestions.starters([], {})  # generic starters with no documents
+
+
+# ── Starter questions are answered from the right section ────────────
+
+APPROVAL_SECTION = {"apex": "PRIOR AUTHORIZATION", "summit": "Advance Approval",
+                    "northwind": "PRECERTIFICATION", "riverbend": "approval first"}
+
+
+@pytest.mark.parametrize("policy", APPROVAL_SECTION)
+def test_prior_auth_question_finds_the_approval_section_whatever_its_name(chunks, policy):
+    """Each policy names the process differently (prior authorization,
+    advance approval, precertification, approval first)."""
+    from backend.app.services.retrieval import adapt_vocabulary
+
+    query = adapt_vocabulary("What needs prior authorization?", chunks[policy])
+    [(top, _)] = retrieve(query, chunks[policy], 1)
+    assert APPROVAL_SECTION[policy].lower() in top.section_heading.lower()
+
+
+def test_wording_is_kept_when_the_policy_uses_it(chunks):
+    from backend.app.services.retrieval import adapt_vocabulary
+
+    assert adapt_vocabulary("Does an MRI need prior auth?", chunks["northwind"]) == "does an mri need precertification?"
+    assert adapt_vocabulary("What needs prior authorization?", chunks["apex"]) == "What needs prior authorization?"
+    assert adapt_vocabulary("What is my deductible?", chunks["northwind"]) == "What is my deductible?"

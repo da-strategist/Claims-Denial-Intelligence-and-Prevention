@@ -14,6 +14,7 @@ when it isn't a path parameter (e.g. chat's policy_id in the request body).
 import hashlib
 import json
 import os
+import re
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
@@ -90,6 +91,76 @@ def read_entries(path: Path | None = None) -> list[dict]:
         except json.JSONDecodeError:
             continue
     return out
+
+
+# ── Plain-words descriptions ─────────────────────────────────────────
+
+# (method, route pattern, label). Checked in order; first match wins.
+_ACTIONS = [
+    ("POST", r"/api/auth/register/provider", "Provider signed up"),
+    ("POST", r"/api/auth/register", "Signed up"),
+    ("POST", r"/api/auth/logout", "Signed out"),
+    ("POST", r"/api/auth/password", "Changed password"),
+    ("GET", r"/api/hospital/patients/\{patient_id\}", "Opened patient record"),
+    ("POST", r"/api/hospital/patients", "Added a patient"),
+    ("PATCH", r"/api/hospital/patients/\{patient_id\}", "Changed patient record"),
+    ("DELETE", r"/api/hospital/patients/\{patient_id\}", "Deleted patient record"),
+    ("POST", r"/api/hospital/patients/\{patient_id\}/merge", "Merged patient records"),
+    ("POST", r".*/checklists", "Saved a prior-auth checklist"),
+    ("PATCH", r".*/checklists/.*", "Updated a prior-auth checklist"),
+    ("DELETE", r".*/checklists/.*", "Deleted a prior-auth checklist"),
+    ("PATCH", r"/api/hospital/shared/.*", "Filed a shared policy"),
+    ("PATCH", r"/api/hospital/connections/.*", "Attached a person to a patient record"),
+    ("POST", r"/api/hospital/staff", "Added staff"),
+    ("PATCH", r"/api/hospital/staff/.*", "Changed a staff account"),
+    ("POST", r"/api/hospital/staff/.*/reset-password", "Reset a staff password"),
+    ("PATCH", r"/api/hospital/profile", "Updated the organisation profile"),
+    ("GET", r"/api/policies/\{document_id\}", "Viewed a policy"),
+    ("GET", r"/api/policies/\{document_id\}/summary", "Viewed a policy summary"),
+    ("GET", r"/api/policies/\{document_id\}/chunks", "Read a policy's text"),
+    ("POST", r"/api/policies/upload", "Uploaded a policy"),
+    ("PATCH", r"/api/policies/\{document_id\}", "Renamed a policy"),
+    ("DELETE", r"/api/policies/\{document_id\}", "Deleted a policy"),
+    ("POST", r"/api/chat", "Asked a question"),
+    ("POST", r"/api/coverage/assess", "Ran a coverage check"),
+    ("POST", r"/api/coverage/auth-checklist", "Generated a prior-auth checklist"),
+    ("POST", r"/api/shares", "Shared a policy"),
+    ("DELETE", r"/api/shares/.*", "Stopped sharing a policy"),
+    ("DELETE", r"/api/me/sharing/.*", "Removed a provider's access"),
+    ("POST", r"/api/me/providers", "Added a provider"),
+    ("PATCH", r"/api/me/providers/.*", "Changed a provider"),
+    ("DELETE", r"/api/me/providers/.*", "Removed a provider"),
+    ("PATCH", r"/api/me/profile", "Updated their profile"),
+    ("GET", r"/api/me/export", "Downloaded their data"),
+    ("POST", r"/api/me/sign-out-everywhere", "Signed out everywhere"),
+    ("DELETE", r"/api/me", "Deleted their account"),
+    ("POST", r"/api/admin/orgs", "Added a provider"),
+    ("POST", r"/api/admin/orgs/.*/approve", "Approved a provider"),
+    ("POST", r"/api/admin/orgs/.*/reject", "Rejected a provider"),
+    ("PATCH", r"/api/admin/orgs/.*", "Changed a provider's access"),
+    ("DELETE", r"/api/admin/orgs/.*", "Deleted a rejected provider"),
+    ("PATCH", r"/api/admin/users/.*", "Changed an account's access"),
+    ("POST", r"/api/admin/users/.*/reset-password", "Reset a password"),
+    ("DELETE", r"/api/admin/users/.*", "Deleted an account"),
+    ("POST", r"/api/admin/samples/.*/reprocess", "Re-processed a sample"),
+    ("GET", r"/api/admin/audit/verify", "Checked audit integrity"),
+]
+_ACTION_RES = [(m, re.compile(f"^{r}$"), label) for m, r, label in _ACTIONS]
+
+
+def describe(entry: dict) -> tuple[str, bool]:
+    """(plain-words label, routine). Routine entries are the successful reads
+    a page makes when it loads (lists, overviews, the signed-in user);
+    everything a person deliberately did, and anything refused, is not."""
+    method, route, status = entry.get("method"), entry.get("route") or "", entry.get("status")
+    if (method, route) == ("POST", "/api/auth/login"):
+        return {401: "Failed sign-in", 429: "Sign-in locked out"}.get(status, "Signed in"), False
+    for m, pattern, label in _ACTION_RES:
+        if m == method and pattern.match(route):
+            return label, False
+    if method == "GET":  # a refused load is worth seeing, a successful one is routine
+        return f"Loaded {route.removeprefix('/api/')}", (status or 0) < 400
+    return f"{method} {route}", False
 
 
 def audit_document(request: Request, document_id: str | None) -> None:

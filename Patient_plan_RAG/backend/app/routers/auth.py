@@ -136,6 +136,8 @@ async def register_provider(body: ProviderRegistration, request: Request,
 @router.post("/logout")
 async def logout(request: Request, response: Response) -> dict:
     if token := request.cookies.get(SESSION_COOKIE):
+        if session := sessions.touch(token):
+            request.state.audit_username = session.username  # who signed out
         sessions.end(token)
     response.delete_cookie(SESSION_COOKIE, path="/")
     return {"signed_out": True}

@@ -263,6 +263,10 @@ export default function Admin() {
       </section>
 
       <form onSubmit={createOrg} className="bg-white rounded-lg shadow p-5 flex flex-wrap gap-3 items-end">
+        <div className="w-full">
+          <h3 className="font-semibold">Add a provider directly</h3>
+          <p className="text-xs text-gray-500">Active at once, no approval step. Its admin gets a temporary password.</p>
+        </div>
         <label className="text-sm">
           <span className="block text-gray-700">Provider name</span>
           <input required maxLength={200} value={form.name}

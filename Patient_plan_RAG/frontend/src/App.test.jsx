@@ -1,4 +1,4 @@
-import { act, render, screen, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import App from "./App";
 import { AuthProvider } from "./auth/AuthContext";
@@ -23,7 +23,16 @@ vi.mock("./pages/PriorAuth", () => ({ default: () => <p>auth page</p> }));
 vi.mock("./pages/Admin", () => ({ default: () => <p>admin page</p> }));
 vi.mock("./pages/Patients", () => ({ default: () => <p>patients page</p> }));
 vi.mock("./pages/SharedWithUs", () => ({ default: () => <p>shared page</p> }));
-vi.mock("./pages/HospitalOverview", () => ({ default: () => <p>hospital overview page</p> }));
+const mounts = vi.hoisted(() => ({ overview: 0 }));
+vi.mock("./pages/HospitalOverview", async () => {
+  const { useEffect } = await import("react");
+  return {
+    default: function Overview() {
+      useEffect(() => { mounts.overview += 1; }, []);
+      return <p>hospital overview page</p>;
+    },
+  };
+});
 vi.mock("./pages/HospitalAdmin", () => ({ default: () => <p>hospital admin page</p> }));
 vi.mock("./pages/MyAccount", () => ({ default: () => <p>my account page</p> }));
 vi.mock("./pages/SharingAccess", () => ({ default: () => <p>sharing page</p> }));
@@ -286,4 +295,18 @@ test("audit & security is for the platform admin only", async () => {
   api.me.mockResolvedValue(STAFF);
   renderApp();
   expect(await screen.findByRole("alert")).toHaveTextContent("Not permitted");
+});
+
+test("signing in on the sign-in page mounts the home page once", async () => {
+  api.me.mockRejectedValue(new Error("401: Sign in required"));
+  api.login.mockResolvedValue(STAFF);
+  window.location.hash = "/signin";
+  mounts.overview = 0;
+  renderApp();
+  await userEvent.type(await screen.findByLabelText("Email"), "s@h.example");
+  await userEvent.type(screen.getByLabelText("Password"), "a long passphrase");
+  await userEvent.click(within(screen.getByRole("main")).getByRole("button", { name: "Sign in" }));
+  expect(await screen.findByText("hospital overview page")).toBeInTheDocument();
+  await waitFor(() => expect(window.location.hash).toBe("#/"));
+  expect(mounts.overview).toBe(1);
 });

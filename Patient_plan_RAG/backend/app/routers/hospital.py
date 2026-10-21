@@ -482,15 +482,25 @@ async def update_profile(body: OrgProfile, admin: User = Depends(_staff_admin)) 
 
 @router.get("/access-log")
 async def access_log(limit: int = Query(200, ge=1, le=1000),
+                     include_routine: bool = Query(False),
                      admin: User = Depends(_staff_admin)) -> list[dict]:
-    """This hospital's staff activity from the audit log, newest first:
-    who opened which patient or document, when. Never question text (the
-    audit log doesn't hold it). Staff membership is as of now."""
+    """This provider's staff activity from the audit log, newest first, in
+    plain words: who opened which patient or document, asked, uploaded...
+    Routine page loads are left out unless asked for. Never question text
+    (the audit log doesn't hold it). Staff membership is as of now."""
     staff = {u.username for u in user_store.all() if u.org_id == admin.org_id}
     names = {p.patient_id: p.name for p in records.patients.all() if p.org_id == admin.org_id}
-    rows = [
-        {k: e.get(k) for k in ("ts", "user", "method", "route", "document_id", "patient_id", "status")}
-        | {"patient_name": names.get(e.get("patient_id"))}
-        for e in audit.read_entries() if e.get("user") in staff
-    ]
-    return rows[::-1][:limit]
+    rows = []
+    for e in reversed(audit.read_entries()):
+        if e.get("user") not in staff:
+            continue
+        label, routine = audit.describe(e)
+        if routine and not include_routine:
+            continue
+        rows.append({k: e.get(k) for k in ("ts", "user", "method", "route", "document_id",
+                                            "patient_id", "status")}
+                    | {"patient_name": names.get(e.get("patient_id")), "label": label,
+                       "routine": routine})
+        if len(rows) >= limit:
+            break
+    return rows

@@ -107,10 +107,13 @@ async def audit_log(
     until: str = Query("", pattern=r"^(\d{4}-\d{2}-\d{2})?$"),
     limit: int = Query(200, ge=1, le=1000),
     offset: int = Query(0, ge=0),
+    include_routine: bool = Query(False),
     _: User = Depends(_oversee),
 ) -> dict:
-    """The audit log, newest first, filtered. Entries hold who, what route,
-    which document/patient/account, status and client — never content."""
+    """The audit log, newest first, filtered, with a plain-words label per
+    entry. Routine page loads are left out unless `include_routine`.
+    Entries hold who, what route, which document/patient/account, status and
+    client — never content."""
     staff = {u.username for u in user_store.all() if u.org_id == org_id} if org_id else None
 
     def keep(e: dict) -> bool:
@@ -122,11 +125,16 @@ async def audit_log(
                 and (not since or e.get("ts", "") >= since)
                 and (not until or e.get("ts", "")[:10] <= until))
 
-    rows = [e for e in reversed(audit.read_entries()) if keep(e)]
+    rows = []
+    for e in reversed(audit.read_entries()):
+        label, routine = audit.describe(e)
+        if keep(e) and (include_routine or not routine):
+            rows.append((e, label, routine))
     fields = ("ts", "user", "role", "method", "route", "document_id", "patient_id", "target",
               "status", "client")
     return {"total": len(rows),
-            "entries": [{k: e.get(k) for k in fields} for e in rows[offset:offset + limit]]}
+            "entries": [{k: e.get(k) for k in fields} | {"label": label, "routine": routine}
+                        for e, label, routine in rows[offset:offset + limit]]}
 
 
 @router.get("/audit/verify")

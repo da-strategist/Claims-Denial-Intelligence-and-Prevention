@@ -151,7 +151,8 @@ def test_refusal_returns_safe_message(monkeypatch):
 
 def _ask(monkeypatch, client, retrieved=RETRIEVED, history=None):
     monkeypatch.setattr(rag, "_client", lambda: client)
-    monkeypatch.setattr(rag, "retrieve_for_policy", lambda *a, **k: retrieved)
+    monkeypatch.setattr(rag, "load_chunks", lambda *a, **k: [])
+    monkeypatch.setattr(rag, "retrieve", lambda *a, **k: retrieved)
     return asyncio.run(rag.answer_question("Does an MRI need approval?", chunk_dir=None,
                                            mode="live", history=history))
 

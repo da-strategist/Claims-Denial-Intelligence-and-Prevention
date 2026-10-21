@@ -57,17 +57,20 @@ test("access log lists staff activity in plain words and filters", async () => {
   api.listStaff.mockResolvedValue([]);
   api.accessLog.mockResolvedValue([
     { ts: "2026-10-21T10:00:00Z", user: "gs@h.example", method: "GET", route: "/api/hospital/patients/{patient_id}",
-      patient_id: "p1", patient_name: "Pat One", status: 200 },
+      patient_id: "p1", patient_name: "Pat One", status: 200, label: "Opened patient record", routine: false },
     { ts: "2026-10-21T09:00:00Z", user: "nurse@h.example", method: "POST", route: "/api/chat",
-      patient_id: "p2", patient_name: "Bea Two", status: 404 },
+      patient_id: "p2", patient_name: "Bea Two", status: 404, label: "Asked a question", routine: false },
   ]);
   render(<HospitalAdmin />);
   await userEvent.click(screen.getByRole("tab", { name: "Access log" }));
   expect(await screen.findByText("Opened patient record")).toBeInTheDocument();
   expect(screen.getByText("Asked a question")).toBeInTheDocument();
   expect(screen.getByText("Refused (404)")).toBeInTheDocument();
+  expect(api.accessLog).toHaveBeenLastCalledWith(false);
   await userEvent.type(screen.getByPlaceholderText(/Filter/), "pat one");
   expect(screen.queryByText("Bea Two")).toBeNull();
+  await userEvent.click(screen.getByLabelText("Show page loads"));
+  await waitFor(() => expect(api.accessLog).toHaveBeenLastCalledWith(true));
 });
 
 test("prior auth: pick the patient, generate, and save to their record", async () => {
@@ -89,4 +92,12 @@ test("prior auth: pick the patient, generate, and save to their record", async (
     items: [{ item_id: "proc-1", category: "procedure", description: "CPT code", required: true, completed: false }],
   });
   expect(await screen.findByRole("status")).toHaveTextContent("Saved to Pat One's record");
+});
+
+test("prior auth asks for a patient before listing policies", async () => {
+  window.location.hash = "/auth";
+  api.listPolicies.mockResolvedValue([]);
+  api.listPatients.mockResolvedValue([{ patient_id: "p1", name: "Pat One", reference: "", documents: [] }]);
+  render(<PriorAuth />);
+  expect(await screen.findByRole("option", { name: "Choose a patient first" })).toBeInTheDocument();
 });

@@ -36,7 +36,7 @@ test("dashboard shows accounts, providers, sign-ups and activity as counts", asy
 
 const ENTRY = { ts: "2026-10-21T10:00:00+00:00", user: "alice@example.com", role: "individual", method: "GET",
                 route: "/api/hospital/patients", document_id: null, patient_id: null, target: null,
-                status: 403, client: "127.0.0.1" };
+                status: 403, client: "127.0.0.1", label: "Loaded hospital/patients", routine: false };
 
 test("audit log: filter, page and check integrity", async () => {
   api.listOrgs.mockResolvedValue([{ org_id: "o1", name: "General Hospital" }]);
@@ -49,7 +49,8 @@ test("audit log: filter, page and check integrity", async () => {
   await userEvent.selectOptions(screen.getByLabelText("Provider staff"), "o1");
   await userEvent.click(screen.getByRole("button", { name: "Filter" }));
   expect(api.auditLog).toHaveBeenLastCalledWith({ user: "alice", route: "", status: "4xx", org_id: "o1",
-                                                   since: "", until: "", limit: 100, offset: 0 });
+                                                   since: "", until: "", include_routine: false,
+                                                   limit: 100, offset: 0 });
   await userEvent.click(screen.getByRole("button", { name: "Load more" }));
   expect(api.auditLog).toHaveBeenLastCalledWith(expect.objectContaining({ user: "alice", offset: 100 }));
   await userEvent.click(screen.getByRole("button", { name: "Check integrity" }));

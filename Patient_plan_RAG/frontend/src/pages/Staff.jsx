@@ -37,7 +37,6 @@ export default function Staff() {
 
   return (
     <div className="space-y-6">
-      <h2 className="text-2xl font-bold">Staff</h2>
       {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
       {temp && <TemporaryPassword {...temp} onDismiss={() => setTemp(null)} />}
 

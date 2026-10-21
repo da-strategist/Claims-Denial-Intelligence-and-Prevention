@@ -118,7 +118,8 @@ export const api = {
   getHospitalProfile: () => request("/hospital/profile"),
   updateHospitalProfile: (profile) =>
     request("/hospital/profile", { method: "PATCH", body: JSON.stringify(profile) }),
-  accessLog: () => request("/hospital/access-log"),
+  accessLog: (includeRoutine = false) =>
+    request(`/hospital/access-log${includeRoutine ? "?include_routine=true" : ""}`),
   listConnections: () => request("/hospital/connections"),
   fileConnection: (connectionId, patientId) =>
     request(`/hospital/connections/${connectionId}`, {

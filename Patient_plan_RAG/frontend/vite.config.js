@@ -12,7 +12,8 @@ export default defineConfig({
     port: 5174,
     proxy: {
       "/api": {
-        target: "http://localhost:8001",
+        // API_TARGET points a second dev server at another backend (e.g. a scratch copy)
+        target: process.env.API_TARGET || "http://localhost:8001",
         changeOrigin: true,
       },
     },

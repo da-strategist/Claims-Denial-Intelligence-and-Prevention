@@ -123,10 +123,11 @@ test("a patient link preselects the patient", async () => {
 });
 
 
-test("starter questions fill the question box", async () => {
+test("clicking a starter question asks it straight away", async () => {
   render(<ChatAssistant />);
   await userEvent.click(await screen.findByRole("button", { name: "What are my copays?" }));
-  expect(screen.getByPlaceholderText(/ask/i)).toHaveValue("What are my copays?");
+  await waitFor(() => expect(api.chat).toHaveBeenCalledWith("What are my copays?", expect.anything(), null, undefined));
+  expect(screen.getByPlaceholderText(/ask/i)).toHaveValue("");
   expect(api.chatSuggestions).toHaveBeenCalled();
 });
 

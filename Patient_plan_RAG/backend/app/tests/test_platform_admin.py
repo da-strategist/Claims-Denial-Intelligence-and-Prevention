@@ -145,11 +145,18 @@ def test_audit_log_filters_and_verify(w):
     assert log["total"] >= 1 and all("alice" in e["user"] for e in log["entries"])
     refused = w["admin"].get("/api/admin/audit", params={"status": "403"}).json()["entries"]
     assert [(e["user"], e["route"]) for e in refused] == [("alice@example.com", "/api/hospital/patients")]
-    by_org = w["admin"].get("/api/admin/audit", params={"org_id": w["general"]}).json()["entries"]
+    by_org = w["admin"].get("/api/admin/audit", params={"org_id": w["general"], "include_routine": True}).json()["entries"]
     assert by_org and {e["user"] for e in by_org} == {"gs@general.example"}
     assert all(set(e) == {"ts", "user", "role", "method", "route", "document_id", "patient_id",
-                          "target", "status", "client"} for e in by_org)
-    page = w["admin"].get("/api/admin/audit", params={"limit": 2}).json()
+                          "target", "status", "client", "label", "routine"} for e in by_org)
+    # plain words; routine page loads only on request
+    entries = w["admin"].get("/api/admin/audit").json()["entries"]
+    assert not any(e["routine"] for e in entries)
+    assert "Uploaded a policy" in {e["label"] for e in entries}
+    assert "Loaded hospital/patients" not in {e["label"] for e in entries if e["status"] == 200}
+    everything = w["admin"].get("/api/admin/audit", params={"include_routine": True}).json()
+    assert any(e["routine"] for e in everything["entries"])
+    page = w["admin"].get("/api/admin/audit", params={"limit": 2, "include_routine": True}).json()
     assert len(page["entries"]) == 2 and page["total"] > 2
     assert w["admin"].get("/api/admin/audit/verify").json()["ok"] is True
     # a tampered line is reported

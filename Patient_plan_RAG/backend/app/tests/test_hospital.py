@@ -182,6 +182,14 @@ def test_access_log_shows_own_staff_activity_without_question_text(world):
     assert "diabetes" not in str(log)
     assert log == sorted(log, key=lambda r: r["ts"], reverse=True)
     assert w["gstaff"].get("/api/hospital/access-log").status_code == 403
+    # plain words, routine page loads hidden unless asked for
+    assert chat["label"] == "Asked a question"
+    assert next(r for r in log if r["patient_id"] == w["p1"] and r["method"] == "GET")["label"] == "Opened patient record"
+    assert not any(r["routine"] for r in log)
+    w["gstaff"].get("/api/hospital/overview")
+    assert not any(r["route"] == "/api/hospital/overview" for r in w["gadmin"].get("/api/hospital/access-log").json())
+    full = w["gadmin"].get("/api/hospital/access-log", params={"include_routine": True}).json()
+    assert any(r["routine"] and r["label"] == "Loaded hospital/overview" for r in full)
 
 
 # ── H4 wording for hospital staff ────────────────────────────────────

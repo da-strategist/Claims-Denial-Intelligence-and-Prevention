@@ -52,7 +52,7 @@ export function usePolicyPicker() {
                 disabled={hospital && !patientId}
                 className="w-full border rounded px-3 py-2 text-sm">
           {choices.length === 0 && (
-            <option value="">{hospital && patientId ? "No policies for this patient" : "No policies"}</option>
+            <option value="">{!hospital ? "No policies" : patientId ? "No policies for this patient" : "Choose a patient first"}</option>
           )}
           {choices.map((o) => (
             <option key={o.id} value={o.id}>{o.label}</option>

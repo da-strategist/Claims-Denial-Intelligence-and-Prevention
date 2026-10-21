@@ -150,9 +150,10 @@ export default function ChatAssistant() {
     setMessages([]);
   };
 
-  const handleAsk = async () => {
-    if (!question.trim() || !canAsk) return;
-    const q = question.trim();
+  /** Ask the typed question, or `text` (a suggested question, sent as is). */
+  const handleAsk = async (text) => {
+    const q = (typeof text === "string" ? text : question).trim();
+    if (!q || !canAsk || loading) return;
     setQuestion("");
     setMessages((prev) => [...prev, { role: "user", content: q }]);
     setLoading(true);
@@ -251,7 +252,7 @@ export default function ChatAssistant() {
             {starters.length > 0 && (
               <div className="mt-4 flex flex-wrap justify-center gap-2 max-w-2xl mx-auto" aria-label="Suggested questions">
                 {starters.map((q) => (
-                  <button key={q} onClick={() => setQuestion(q)}
+                  <button key={q} onClick={() => handleAsk(q)}
                           className="text-sm bg-blue-50 text-blue-800 px-3 py-1.5 rounded-full border border-blue-200 hover:bg-blue-100">
                     {q}
                   </button>
@@ -289,7 +290,7 @@ export default function ChatAssistant() {
                   {m.followUps.map((f, j) => (
                     <button
                       key={j}
-                      onClick={() => setQuestion(f)}
+                      onClick={() => handleAsk(f)}
                       className="text-xs bg-white/80 text-blue-700 px-2 py-1 rounded border border-blue-200 hover:bg-blue-50"
                     >
                       {f}
@@ -324,7 +325,7 @@ export default function ChatAssistant() {
           disabled={loading}
         />
         <button
-          onClick={handleAsk}
+          onClick={() => handleAsk()}
           disabled={loading || !question.trim() || !canAsk}
           className="bg-blue-600 text-white px-5 py-2 rounded-lg text-sm hover:bg-blue-700 disabled:opacity-50"
         >

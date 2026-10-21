@@ -15,10 +15,10 @@ from pathlib import Path
 
 from ..models.coverage import ChatResponse, NextStep, SourceCitation
 from ..models.policy import DocumentChunk
-from . import suggestions
+from . import registry, suggestions
 from .conversations import Turn
 from .policy_summarizer import _paragraphs
-from .retrieval import _tokenize, retrieve_for_policy
+from .retrieval import _tokenize, adapt_vocabulary, load_chunks, retrieve
 
 log = logging.getLogger(__name__)
 
@@ -401,6 +401,23 @@ def retrieval_query(question: str, history: list[Turn] | None) -> str:
     return question
 
 
+def focus_on_named_plan(query: str, document_id: str | None,
+                        allowed_ids: set[str] | None) -> tuple[str, str | None]:
+    """A question naming one of the plans in scope ("…under Bronze HDHP
+    7000?") is about that plan: search only it, and drop its name from the
+    search terms (it matches the title page, not the answer)."""
+    scope = [e for e in registry.load()
+             if (e["document_id"] == document_id if document_id
+                 else allowed_ids is not None and e["document_id"] in allowed_ids)]
+    lowered = query.lower()
+    for e in scope:
+        for name in {e.get("display_name"), e.get("plan_name")} - {None, ""}:
+            if len(name) >= 4 and name.lower() in lowered:
+                start = lowered.index(name.lower())
+                return query[:start] + query[start + len(name):], e["document_id"]
+    return query, document_id
+
+
 async def answer_question(
     question: str,
     chunk_dir: Path,
@@ -418,8 +435,11 @@ async def answer_question(
     `allowed_ids` limits a search with no document_id to the user's documents.
     """
     effective_mode = mode or os.getenv("APP_MODE", "demo")
-    query = retrieval_query(question, history)
-    retrieved = retrieve_for_policy(query, chunk_dir, document_id, top_k, allowed_ids)
+    query, document_id = focus_on_named_plan(retrieval_query(question, history),
+                                             document_id, allowed_ids)
+    chunks = load_chunks(chunk_dir, document_id, allowed_ids=allowed_ids)
+    query = adapt_vocabulary(query, chunks)
+    retrieved = retrieve(query, chunks, top_k)
 
     confidence = "supported" if retrieved else "insufficient_evidence"
     quoted = [(cid, text) for _, cid, text in _scored_paragraphs(query, retrieved)[:4]]

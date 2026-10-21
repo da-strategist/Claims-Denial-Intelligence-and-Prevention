@@ -51,40 +51,27 @@ function Profile() {
   );
 }
 
-const ACTIONS = [
-  [/^GET \/api\/hospital\/patients\/\{patient_id\}$/, "Opened patient record"],
-  [/^GET \/api\/policies\/\{document_id\}/, "Viewed policy"],
-  [/^POST \/api\/chat$/, "Asked a question"],
-  [/^POST \/api\/coverage\//, "Ran a coverage check"],
-  [/^POST \/api\/policies\/upload$/, "Uploaded a policy"],
-  [/^(PATCH|DELETE) \/api\/hospital\/patients\/\{patient_id\}$/, "Changed patient record"],
-  [/checklists/, "Prior auth checklist"],
-  [/\/api\/hospital\/shared/, "Shared policies"],
-  [/\/api\/hospital\/staff/, "Staff management"],
-  [/^POST \/api\/auth\/login$/, "Signed in"],
-];
-
-const describe = (r) => {
-  const key = `${r.method} ${r.route}`;
-  return (ACTIONS.find(([re]) => re.test(key)) || [null, key])[1];
-};
-
 function AccessLog() {
   const [rows, setRows] = useState(null);
   const [filter, setFilter] = useState("");
+  const [routine, setRoutine] = useState(false);
   const [error, setError] = useState("");
   useEffect(() => {
-    api.accessLog().then(setRows).catch((e) => setError(clean(e.message)));
-  }, []);
+    api.accessLog(routine).then(setRows).catch((e) => setError(clean(e.message)));
+  }, [routine]);
   if (error) return <p role="alert" className="text-sm text-red-600">{error}</p>;
   if (!rows) return <p className="text-gray-500">Loading...</p>;
   const q = filter.trim().toLowerCase();
-  const shown = rows.filter((r) => !q || [r.user, r.patient_name, describe(r)].some((v) => v?.toLowerCase().includes(q)));
+  const shown = rows.filter((r) => !q || [r.user, r.patient_name, r.label].some((v) => v?.toLowerCase().includes(q)));
   return (
     <div className="bg-white rounded-lg shadow">
       <div className="p-3 border-b flex items-center gap-3">
         <input placeholder="Filter by staff, patient or action" value={filter}
                onChange={(e) => setFilter(e.target.value)} className="border rounded px-3 py-1.5 text-sm w-72" />
+        <label className="text-sm flex items-center gap-1">
+          <input type="checkbox" checked={routine} onChange={(e) => setRoutine(e.target.checked)} />
+          Show page loads
+        </label>
         <span className="text-xs text-gray-500">Your staff's activity, newest first. Question text is never recorded.</span>
       </div>
       <table className="w-full text-sm">
@@ -102,7 +89,7 @@ function AccessLog() {
             <tr key={i} className="border-b">
               <td className="p-3 whitespace-nowrap">{new Date(r.ts).toLocaleString()}</td>
               <td>{r.user}</td>
-              <td>{describe(r)}</td>
+              <td className={r.routine ? "text-gray-500" : ""}>{r.label}</td>
               <td>{r.patient_name || "—"}</td>
               <td className={r.status >= 400 ? "text-red-700" : ""}>{r.status >= 400 ? `Refused (${r.status})` : "OK"}</td>
             </tr>

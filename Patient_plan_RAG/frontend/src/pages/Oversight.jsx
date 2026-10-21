@@ -4,7 +4,7 @@ import { api } from "../services/api";
 const clean = (msg) => msg.replace(/^\d+: /, "");
 const when = (iso) => (iso ? new Date(iso).toLocaleString() : "");
 const PAGE = 100;
-const EMPTY_FILTERS = { user: "", route: "", status: "", org_id: "", since: "", until: "" };
+const EMPTY_FILTERS = { user: "", route: "", status: "", org_id: "", since: "", until: "", include_routine: false };
 
 function AuditLog() {
   const [filters, setFilters] = useState(EMPTY_FILTERS);
@@ -76,6 +76,11 @@ function AuditLog() {
           <span className="block text-gray-700">To</span>
           <input type="date" value={filters.until} onChange={set("until")} className="border rounded px-2 py-1" />
         </label>
+        <label className="flex items-center gap-1 self-center">
+          <input type="checkbox" checked={filters.include_routine}
+                 onChange={(e) => setFilters({ ...filters, include_routine: e.target.checked })} />
+          Show page loads
+        </label>
         <button type="submit" className="bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-700">Filter</button>
         <button type="button" onClick={() => { setFilters(EMPTY_FILTERS); setApplied(EMPTY_FILTERS); load(EMPTY_FILTERS); }}
                 className="text-gray-600 hover:underline">Clear</button>
@@ -97,7 +102,7 @@ function AuditLog() {
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b text-left text-gray-500">
-              <th className="p-2">When</th><th>User</th><th>Request</th><th>Concerning</th><th>Result</th><th>Client</th>
+              <th className="p-2">When</th><th>User</th><th>Action</th><th>Concerning</th><th>Result</th><th className="pr-2">Client</th>
             </tr>
           </thead>
           <tbody>
@@ -105,13 +110,16 @@ function AuditLog() {
               <tr key={`${e.ts}-${i}`} className="border-b align-top">
                 <td className="p-2 whitespace-nowrap">{when(e.ts)}</td>
                 <td>{e.user || "—"}{e.role && <span className="block text-xs text-gray-500">{e.role}</span>}</td>
-                <td className="font-mono text-xs">{e.method} {e.route}</td>
+                <td className={e.routine ? "text-gray-500" : ""}>
+                  {e.label}
+                  <span className="block font-mono text-[11px] text-gray-400">{e.method} {e.route}</span>
+                </td>
                 <td className="text-xs text-gray-600">
                   {[e.document_id && `document ${e.document_id}`, e.patient_id && `patient ${e.patient_id}`,
                     e.target && `account ${e.target}`].filter(Boolean).join(" · ") || "—"}
                 </td>
                 <td className={e.status >= 400 ? "text-red-700" : ""}>{e.status}</td>
-                <td className="text-xs text-gray-500">{e.client}</td>
+                <td className="text-xs text-gray-500 whitespace-nowrap pr-2">{e.client}</td>
               </tr>
             ))}
           </tbody>

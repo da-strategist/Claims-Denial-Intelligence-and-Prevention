@@ -47,6 +47,37 @@ _WORD_FAMILIES = {
 }
 _FAMILY_OF = {word: canon for canon, words in _WORD_FAMILIES.items() for word in words}
 
+# Different policies name the same process differently. Rather than folding
+# these words together in the policy text (see above), a question using one
+# name is rewritten to the name the policy in scope actually uses — only when
+# the question's own wording is absent from it.
+_CONCEPTS = [
+    ("prior authorization", "prior authorisation", "preauthorization", "pre-authorization",
+     "precertification", "pre-certification", "advance approval", "prior approval"),
+]
+_PRIOR_AUTH_SHORT = re.compile(r"\bprior[- ]auth\b", re.I)
+
+
+def adapt_vocabulary(query: str, chunks: list[DocumentChunk]) -> str:
+    """Rewrite a concept in the query to the wording the chunks use."""
+    text = query.lower()
+    if _PRIOR_AUTH_SHORT.search(text):
+        text = _PRIOR_AUTH_SHORT.sub("prior authorization", text)
+    for variants in _CONCEPTS:
+        used = next((v for v in variants if v in text), None)
+        if used is None:
+            continue
+        # headings count three times: a section named after the process is the answer
+        presence = {v: sum(3 * c.section_heading.lower().count(v)
+                           + (c.content_lower or c.content.lower()).count(v) for c in chunks)
+                    for v in variants}
+        if presence[used]:
+            return query
+        best = max(variants, key=lambda v: presence[v])
+        if presence[best]:
+            return text.replace(used, best)
+    return query
+
 
 def _stem(token: str) -> str:
     """Word families, then minimal plural folding ('visits' → 'visit',
