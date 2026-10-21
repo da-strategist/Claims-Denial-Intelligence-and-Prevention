@@ -26,6 +26,12 @@ function Citation({ citation, index }) {
       >
         {citation.confidence}
       </span>
+      {citation.from_scan && (
+        <span className="ml-1 text-xs px-1 rounded bg-orange-100 text-orange-800"
+              title="This passage was read from a scanned page by text recognition, which can misread characters.">
+          From a scanned page — check the original
+        </span>
+      )}
     </div>
   );
 }
@@ -81,7 +87,7 @@ function PlanAtAGlance({ option }) {
 function NextSteps({ steps }) {
   return (
     <div className="mt-3 bg-white/70 border border-blue-100 rounded p-2">
-      <p className="text-xs font-semibold text-gray-600 mb-1">Suggested next steps</p>
+      <p className="text-xs font-semibold text-gray-600 mb-1">What to check</p>
       <ul className="space-y-1">
         {steps.map((s, i) => (
           <li key={i} className="text-xs text-gray-700">
@@ -90,6 +96,61 @@ function NextSteps({ steps }) {
           </li>
         ))}
       </ul>
+    </div>
+  );
+}
+
+// the headline amount of a policy line ("Individual In-Network: $1,500 per ..." → "$1,500")
+const headline = (value) => (value.match(/\$[\d,]+(?:\.\d+)?|\d+(?:\.\d+)?\s*%/) || [value])[0];
+
+/** Plans whose amounts differ for what was asked (full wording is in the quotes below). */
+function Differences({ items }) {
+  return (
+    <div role="note" aria-label="Plans differ" className="mt-2 bg-amber-50 border border-amber-200 rounded p-2 text-xs">
+      <p className="font-semibold text-amber-900 mb-1">Your plans differ on this</p>
+      {items.map((d) => (
+        <p key={d.topic}>
+          <span className="font-medium">{d.topic}:</span>{" "}
+          {d.values.map((v) => `${v.document_name}: ${headline(v.value)}`).join(" · ")}
+        </p>
+      ))}
+    </div>
+  );
+}
+
+/** "What your policy says": verbatim passages, grouped by plan. */
+function PolicySays({ quotes, whose }) {
+  const plans = [...new Set(quotes.map((q) => q.document_id))];
+  return (
+    <div className="mt-2 space-y-2">
+      {plans.map((id) => {
+        const mine = quotes.filter((q) => q.document_id === id);
+        return (
+          <section key={id} aria-label={`What ${mine[0].document_name || "the policy"} says`}>
+            <p className="text-xs font-semibold text-gray-600">
+              What {plans.length > 1 ? mine[0].document_name || "this plan" : `${whose} policy`} says
+            </p>
+            {mine.map((q, i) => (
+              <blockquote key={i} className="border-l-2 border-blue-300 pl-2 my-1 text-sm">
+                “{q.quote}”
+                <span className="block text-xs text-gray-500">
+                  {q.document_name ? `${q.document_name} · ` : ""}page {q.page_number || "?"} · {q.section}
+                  {q.from_scan && <span className="ml-1 text-orange-800">· from a scanned page, check the original</span>}
+                </span>
+              </blockquote>
+            ))}
+          </section>
+        );
+      })}
+    </div>
+  );
+}
+
+function KeepInMind({ text }) {
+  return (
+    <div role="note" aria-label="Keep in mind" className="mt-3 bg-white/70 border border-gray-200 rounded p-2 text-xs text-gray-600">
+      <p className="font-semibold text-gray-700 mb-0.5">Keep in mind</p>
+      {text}
     </div>
   );
 }
@@ -167,6 +228,10 @@ export default function ChatAssistant() {
         {
           role: "assistant",
           content: resp.answer,
+          lead: resp.lead || "",
+          policySays: resp.policy_says || [],
+          differences: resp.differences || [],
+          keepInMind: resp.keep_in_mind || "",
           citations: resp.citations,
           followUps: resp.follow_up_suggestions,
           nextSteps: resp.next_steps || [],
@@ -273,18 +338,32 @@ export default function ChatAssistant() {
                   : "bg-gray-100 text-gray-800"
               }`}
             >
-              <p className="whitespace-pre-line text-sm">{m.content}</p>
-              {m.citations?.length > 0 && (
-                <div className="mt-3 space-y-2">
-                  <p className="text-xs font-semibold text-gray-600">
-                    Sources:
+              {m.policySays?.length > 0 ? (
+                <>
+                  {/* live answers are written explanations; demo answers lead into the quotes */}
+                  <p className="whitespace-pre-line text-sm">
+                    {mode === "live" ? m.content.replace(m.keepInMind, "").replace(/\u26a0\ufe0f\s*$/, "").trim() : m.lead}
                   </p>
-                  {m.citations.map((c, j) => (
-                    <Citation key={j} citation={c} index={j} />
-                  ))}
-                </div>
+                  {m.differences?.length > 0 && <Differences items={m.differences} />}
+                  <PolicySays quotes={m.policySays} whose={hospital ? "the patient's" : "your"} />
+                </>
+              ) : (
+                <p className="whitespace-pre-line text-sm">{m.content}</p>
               )}
               {m.nextSteps?.length > 0 && <NextSteps steps={m.nextSteps} />}
+              {m.keepInMind && <KeepInMind text={m.keepInMind} />}
+              {m.citations?.length > 0 && (
+                <details className="mt-3">
+                  <summary className="text-xs font-semibold text-gray-600 cursor-pointer">
+                    All sources ({m.citations.length})
+                  </summary>
+                  <div className="mt-2 space-y-2">
+                    {m.citations.map((c, j) => (
+                      <Citation key={j} citation={c} index={j} />
+                    ))}
+                  </div>
+                </details>
+              )}
               {m.followUps?.length > 0 && (
                 <div className="mt-3 flex flex-wrap gap-1">
                   {m.followUps.map((f, j) => (

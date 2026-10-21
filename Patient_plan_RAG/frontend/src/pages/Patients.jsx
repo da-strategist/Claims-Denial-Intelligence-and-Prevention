@@ -196,8 +196,8 @@ function PatientDetail({ patientId }) {
     setUploading(true);
     setMsg("");
     try {
-      await api.uploadPolicy(file, patientId);
-      setMsg("Policy uploaded.");
+      const result = await api.uploadPolicy(file, patientId);
+      setMsg(`Policy uploaded. ${result.message || ""}`.trim());
       if (fileRef.current) fileRef.current.value = "";
       load();
     } catch (e) {

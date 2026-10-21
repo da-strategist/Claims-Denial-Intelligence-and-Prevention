@@ -11,8 +11,8 @@ from backend.app.services import records
 from backend.app.tests.conftest import POLICY_PDF, sign_in
 
 
-def _upload(client, **form):
-    with POLICY_PDF.open("rb") as f:
+def _upload(client, path=POLICY_PDF, **form):
+    with path.open("rb") as f:
         r = client.post("/api/policies/upload", data=form, files={"file": ("p.pdf", f, "application/pdf")})
     assert r.status_code == 200, r.text
     return r.json()["document_id"]
@@ -94,7 +94,7 @@ def test_attaching_to_a_patient_files_shares_now_and_later(w):
     row = w["staff"].get("/api/hospital/connections").json()[0]
     assert (row["patient_name"], row["shared_count"], row["is_new"]) == ("Alice Smith", 1, False)
     # a policy shared later goes straight under the patient
-    second_doc = _upload(w["alice"])
+    second_doc = _upload(w["alice"], POLICY_PDF.parent / "summit_care_silver_hmo_2026.pdf")
     second = w["alice"].post("/api/shares", json={"document_id": second_doc, "org_id": w["general"]}).json()
     assert records.shares.get(second["share_id"]).patient_id == pid
     patient = w["staff"].get(f"/api/hospital/patients/{pid}").json()

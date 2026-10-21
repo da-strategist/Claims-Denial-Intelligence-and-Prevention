@@ -99,6 +99,7 @@ async def generate_auth_checklist(
             document_id=chunk.document_id,
             page_number=chunk.page_number,
             section=chunk.section_heading,
+            from_scan=bool(chunk.metadata.get("from_scan")),
             excerpt=chunk.content[:250],
             confidence="supported" if score > 0.3 else "interpreted",
         ))

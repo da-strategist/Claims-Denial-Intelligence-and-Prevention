@@ -24,6 +24,7 @@ log = logging.getLogger(__name__)
 _KEPT_FIELDS = (
     "insurer_name", "plan_name", "plan_id", "effective_date", "expiration_date",
     "document_type", "is_synthetic", "metadata", "owner", "org_id", "patient_id", "display_name",
+    "content_hash",
 )
 
 

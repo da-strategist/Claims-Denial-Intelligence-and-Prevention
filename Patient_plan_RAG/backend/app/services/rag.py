@@ -13,9 +13,9 @@ import os
 import re
 from pathlib import Path
 
-from ..models.coverage import ChatResponse, NextStep, SourceCitation
+from ..models.coverage import ChatResponse, NextStep, PlanDifference, PolicyQuote, SourceCitation
 from ..models.policy import DocumentChunk
-from . import registry, suggestions
+from . import answer_layout, registry, suggestions
 from .conversations import Turn
 from .policy_summarizer import _paragraphs
 from .retrieval import _tokenize, adapt_vocabulary, load_chunks, retrieve
@@ -26,19 +26,6 @@ log = logging.getLogger(__name__)
 # ── Demo answer templates ─────────────────────────────────────────────
 
 _TEMPLATES = {
-    "coverage": (
-        "Based on the policy evidence retrieved, {service} appears to be "
-        "{classification}. {details}\n\n"
-        "⚠️ This is an AI-generated interpretation of policy language, not a "
-        "coverage determination. Confirm with your insurer before relying on "
-        "this assessment."
-    ),
-    "general": (
-        "According to the policy document, {answer}\n\n"
-        "⚠️ This interpretation is based on the specific passages cited below. "
-        "Policy language may contain additional conditions or exceptions not "
-        "captured here. Verify with the plan administrator."
-    ),
     "no_evidence": (
         "I could not find sufficient evidence in the uploaded policy "
         "document(s) to answer this question. The policy may not address this "
@@ -53,7 +40,6 @@ _TEMPLATES = {
 
 
 _QUOTE_MAX_CHARS = 400
-_QUOTES_PER_ANSWER = 2
 
 
 def _trim(text: str, query_tokens: set[str]) -> str:
@@ -77,12 +63,15 @@ def _scored_paragraphs(
     query_tokens = set(_tokenize(query))
     candidates = []
     for rank, (chunk, _) in enumerate(retrieved):
+        # a line under a heading that names the subject ("DEDUCTIBLE" over
+        # "Individual In-Network: $1,500") is about it even without the word
+        heading = set(_tokenize(chunk.section_heading)) & query_tokens
         for para in _paragraphs(chunk.content.split("\n")):
             if (para == chunk.section_heading or (para.isupper() and ":" not in para)
                     or para.endswith(":")):
                 continue  # headings and lead-in lines ("...covered under this plan:")
             para = para.lstrip("• ").strip()
-            candidates.append((rank, chunk.chunk_id, para, set(_tokenize(para))))
+            candidates.append((rank, chunk.chunk_id, para, set(_tokenize(para)) | heading))
     df: dict[str, int] = {}
     for *_, tokens in candidates:
         for t in tokens & query_tokens:
@@ -131,16 +120,28 @@ def _about_subject(query: str, quoted: list[tuple[str, str]]) -> list[tuple[str,
     return out
 
 
+def _quotes(scored: list[tuple[float, str, str]],
+            retrieved: list[tuple[DocumentChunk, float]]) -> list[dict]:
+    """Passages to show (see answer_layout.select_quotes); when no paragraph
+    matched, the top chunk trimmed to its start."""
+    if not scored and retrieved:
+        chunk = retrieved[0][0]
+        scored = [(0.0, chunk.chunk_id, _trim(chunk.content, set()))]
+    return answer_layout.select_quotes(scored, retrieved)
+
+
 def _build_demo_answer(
     question: str,
     retrieved: list[tuple[DocumentChunk, float]],
     query: str | None = None,
+    audience: str = suggestions.MEMBER,
 ) -> tuple[str, list[SourceCitation]]:
     """Build a grounded answer from retrieved chunks without an LLM.
 
-    Quotes the best-matching paragraph(s) verbatim with page and section,
-    rather than the start of each chunk. `query` (default: the question) is
-    what the paragraphs are matched against, e.g. a follow-up with context.
+    Quotes the best-matching paragraph(s) verbatim with page and section
+    (the best of each plan when several match), then the fixed note.
+    `query` (default: the question) is what the paragraphs are matched
+    against, e.g. a follow-up with context.
     """
     if not retrieved:
         return _TEMPLATES["no_evidence"], []
@@ -154,35 +155,19 @@ def _build_demo_answer(
             document_id=chunk.document_id,
             page_number=chunk.page_number,
             section=chunk.section_heading,
+            from_scan=bool(chunk.metadata.get("from_scan")),
             excerpt=best.get(chunk.chunk_id, chunk.content[:300]),
             confidence="supported" if score > 0.3 else "interpreted",
         )
         for chunk, score in retrieved
     ]
-
-    by_id = {chunk.chunk_id: chunk for chunk, _ in retrieved}
-    top = [(cid, text) for _, cid, text in scored[:_QUOTES_PER_ANSWER]]
-    if not top:  # nothing matched at paragraph level: fall back to the top chunk
-        chunk = retrieved[0][0]
-        top = [(chunk.chunk_id, _trim(chunk.content, set()))]
-    quotes = "\n\n".join(
-        f"\u201c{text}\u201d\n\u2014 page {by_id[cid].page_number or '?'}, "
-        f"{by_id[cid].section_heading or 'General'}"
-        for cid, text in top
-    )
-
-    q_lower = question.lower()
-    if any(kw in q_lower for kw in ["cover", "included", "eligible", "benefit"]):
-        intro = "the following policy language is relevant to your question about coverage"
-    elif any(kw in q_lower for kw in ["cost", "copay", "deductible", "coinsurance",
-                                       "out of pocket", "premium"]):
-        intro = "the following cost-sharing provisions were found"
-    elif any(kw in q_lower for kw in ["prior auth", "pre-cert", "precertification",
-                                       "authorization"]):
-        intro = "the following prior authorization provisions were found"
-    else:
-        intro = "the following relevant passages were found"
-    answer = _TEMPLATES["general"].format(answer=f"{intro}:\n\n{quotes}")
+    quotes = _quotes(scored, retrieved)
+    plans = len({q["document_id"] for q in quotes})
+    body = "\n\n".join(
+        f"\u201c{q['quote']}\u201d\n\u2014 page {q['page_number'] or '?'}, {q['section']}"
+        for q in quotes)
+    answer = (f"{answer_layout.lead(question, plans, audience)}\n\n{body}\n\n"
+              f"\u26a0\ufe0f {answer_layout.KEEP_IN_MIND[audience]}")
     return answer, citations
 
 
@@ -310,6 +295,7 @@ def _verified_citations(
             document_id=chunk.document_id,
             page_number=chunk.page_number,
             section=chunk.section_heading,
+            from_scan=bool(chunk.metadata.get("from_scan")),
             excerpt=quote,
             confidence="supported",
         ))
@@ -442,7 +428,8 @@ async def answer_question(
     retrieved = retrieve(query, chunks, top_k)
 
     confidence = "supported" if retrieved else "insufficient_evidence"
-    quoted = [(cid, text) for _, cid, text in _scored_paragraphs(query, retrieved)[:4]]
+    scored = _scored_paragraphs(query, retrieved)
+    quoted = [(cid, text) for _, cid, text in scored[:4]]
     steps = suggestions.next_steps(_about_subject(query, quoted), retrieved, audience)
     if effective_mode == "live" and retrieved:
         # Credentials are resolved by the SDK (API key, auth token, or an
@@ -455,15 +442,28 @@ async def answer_question(
             # type and status only: error details can echo request content
             log.warning("Live answer failed (%s %s), using demo answer",
                         type(exc).__name__, getattr(exc, "status_code", ""))
-            answer_text, citations = _build_demo_answer(question, retrieved, query)
+            answer_text, citations = _build_demo_answer(question, retrieved, query, audience)
             answer_text += "\n\n(Live AI answer unavailable; showing matching policy passages.)"
     else:
-        answer_text, citations = _build_demo_answer(question, retrieved, query)
+        answer_text, citations = _build_demo_answer(question, retrieved, query, audience)
+
+    # layout: quotes grouped by plan, differing amounts, fixed note
+    names = {e["document_id"]: (e.get("display_name") or e.get("plan_name") or e["filename"])
+             for e in registry.load()}
+    quotes = _quotes(scored, retrieved) if retrieved else []
+    plan_ids = list(dict.fromkeys(q["document_id"] for q in quotes))
+    chunks_by_doc = {d: [c for c in chunks if c.document_id == d] for d in plan_ids}
+    diffs = answer_layout.differences(question, plan_ids, chunks_by_doc, names)
+    quotes = answer_layout.quotes_for_differences(quotes, diffs)
 
     follow_ups = suggestions.follow_ups(question, retrieved, audience) if retrieved else []
 
     return ChatResponse(
         answer=answer_text,
+        lead=answer_layout.lead(question, len(plan_ids), audience) if quotes else "",
+        policy_says=[PolicyQuote(**q, document_name=names.get(q["document_id"], "")) for q in quotes],
+        differences=[PlanDifference(**d) for d in diffs],
+        keep_in_mind=answer_layout.KEEP_IN_MIND[audience],
         citations=citations,
         follow_up_suggestions=follow_ups,
         next_steps=[NextStep(**s) for s in steps],

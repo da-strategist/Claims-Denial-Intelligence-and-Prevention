@@ -22,6 +22,7 @@ from ..models.policy import (
 )
 from ..services import documents, registry
 from ..services.document_processor import process_document
+from ..services.ingest import content_id
 from ..services.policy_summarizer import summarize_policy
 from ..services.retrieval import load_chunks
 
@@ -102,7 +103,20 @@ async def upload_policy(
         dest.unlink(missing_ok=True)
         raise
 
-    doc, chunks = process_document(dest, CHUNK_DIR, metadata=ownership)
+    content_hash = content_id(dest)
+    same_place = ("owner", "org_id", "patient_id")
+    for e in registry.load():
+        if e.get("content_hash") == content_hash and all(e.get(k) == ownership.get(k) for k in same_place):
+            dest.unlink(missing_ok=True)
+            name = e.get("display_name") or e.get("plan_name") or e["filename"]
+            raise HTTPException(409, f"This file is already uploaded here, as \u201c{name}\u201d.")
+
+    doc, chunks = process_document(dest, CHUNK_DIR, metadata={**ownership, "content_hash": content_hash})
+    if doc.status == DocumentStatus.FAILED:
+        # nothing usable: keep neither the file nor an empty registry entry
+        dest.unlink(missing_ok=True)
+        (CHUNK_DIR / f"{doc.document_id}.json").unlink(missing_ok=True)
+        raise HTTPException(422, doc.error_message or "This PDF could not be processed")
 
     entries = registry.load()
     entries.append(doc.model_dump(mode="json"))
@@ -115,8 +129,23 @@ async def upload_policy(
         filename=doc.filename,
         status=doc.status,
         page_count=doc.page_count,
-        message=f"Processed {doc.chunk_count} text chunks from {doc.page_count} pages",
+        message=_upload_message(doc),
+        ocr_pages=doc.ocr_pages,
+        unreadable_pages=doc.unreadable_pages,
     )
+
+
+def _upload_message(doc) -> str:
+    parts = [f"Processed {doc.page_count} page{'s' if doc.page_count != 1 else ''}."]
+    if doc.ocr_pages:
+        parts.append(f"Page {', '.join(map(str, doc.ocr_pages))} looked scanned and "
+                     "{was} read by text recognition: check amounts against the original."
+                     .format(was="were" if len(doc.ocr_pages) > 1 else "was"))
+    if doc.unreadable_pages:
+        parts.append(f"Page {', '.join(map(str, doc.unreadable_pages))} could not be read, "
+                     "so questions about {it} can't be answered.".format(
+                         it="them" if len(doc.unreadable_pages) > 1 else "it"))
+    return " ".join(parts)
 
 
 @router.get("/{document_id}/summary")

@@ -148,6 +148,47 @@ test("answers show suggested next steps with their source", async () => {
   render(<ChatAssistant />);
   await waitFor(() => expect(screen.getByLabelText("Policy")).toHaveValue("pol1"));
   await userEvent.type(screen.getByPlaceholderText(/ask/i), "Is MRI covered?{Enter}");
-  expect(await screen.findByText("Suggested next steps")).toBeInTheDocument();
+  expect(await screen.findByText("What to check")).toBeInTheDocument();
   expect(screen.getByText(/based on page 3, PRIOR AUTHORIZATION/)).toBeInTheDocument();
+});
+
+test("citations from scanned pages say to check the original", async () => {
+  api.chat.mockResolvedValueOnce({
+    answer: "Up to 20 visits.", follow_up_suggestions: [], conversation_id: "c1",
+    citations: [
+      { document_id: "pol1", page_number: 2, section: "BENEFITS", excerpt: "20 visits", confidence: "supported", from_scan: true },
+      { document_id: "pol1", page_number: 1, section: "SUMMARY", excerpt: "PPO", confidence: "supported", from_scan: false },
+    ],
+  });
+  render(<ChatAssistant />);
+  await waitFor(() => expect(screen.getByLabelText("Policy")).toHaveValue("pol1"));
+  await userEvent.type(screen.getByPlaceholderText(/ask/i), "How many visits?{Enter}");
+  expect(await screen.findAllByText("From a scanned page — check the original")).toHaveLength(1);
+});
+
+test("answers are laid out: lead, plan differences, quotes per plan, keep in mind", async () => {
+  api.chat.mockResolvedValueOnce({
+    answer: "full plain text", follow_up_suggestions: [], conversation_id: "c1",
+    lead: "Your question matches 2 of your plans, so each is shown separately.",
+    policy_says: [
+      { document_id: "a", document_name: "Gold PPO Plan", page_number: 1, section: "COSTS", quote: "Deductible: $1,500" },
+      { document_id: "b", document_name: "Bronze HDHP 7000", page_number: 2, section: "SUMMARY", quote: "Deductible: $7,000", from_scan: true },
+    ],
+    differences: [{ topic: "Deductible", values: [
+      { document_id: "a", document_name: "Gold PPO Plan", value: "$1,500 individual" },
+      { document_id: "b", document_name: "Bronze HDHP 7000", value: "$7,000 individual" }] }],
+    keep_in_mind: "This explains your policy document. It is not a coverage decision.",
+    citations: [{ document_id: "a", page_number: 1, section: "COSTS", excerpt: "x", confidence: "supported" }],
+  });
+  render(<ChatAssistant />);
+  await waitFor(() => expect(screen.getByLabelText("Policy")).toHaveValue("pol1"));
+  await userEvent.type(screen.getByPlaceholderText(/ask/i), "What is my deductible?{Enter}");
+  expect(await screen.findByText(/matches 2 of your plans/)).toBeInTheDocument();
+  expect(screen.queryByText("full plain text")).toBeNull();
+  const diff = screen.getByRole("note", { name: "Plans differ" });
+  expect(diff).toHaveTextContent("Deductible: Gold PPO Plan: $1,500 · Bronze HDHP 7000: $7,000");
+  expect(screen.getByRole("region", { name: "What Gold PPO Plan says" })).toHaveTextContent("Deductible: $1,500");
+  expect(screen.getByRole("region", { name: "What Bronze HDHP 7000 says" })).toHaveTextContent("from a scanned page");
+  expect(screen.getByRole("note", { name: "Keep in mind" })).toHaveTextContent("not a coverage decision");
+  expect(screen.getByText("All sources (1)")).toBeInTheDocument();
 });

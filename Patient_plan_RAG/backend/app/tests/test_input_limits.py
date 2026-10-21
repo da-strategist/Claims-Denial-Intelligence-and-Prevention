@@ -123,7 +123,7 @@ def test_upload_has_its_own_stricter_limit(client, monkeypatch):
     monkeypatch.setattr(rate_limit.upload_limiter, "limit", 1)
     upload = lambda: client.post("/api/policies/upload",  # noqa: E731
                                  files={"file": ("x.pdf", b"%PDF-1.4 x", "application/pdf")})
-    assert upload().status_code == 200
+    assert upload().status_code != 429  # (refused as unreadable, but not rate limited)
     assert upload().status_code == 429
     assert client.get("/api/dashboard").status_code == 200
 

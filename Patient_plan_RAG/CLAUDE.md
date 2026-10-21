@@ -286,6 +286,37 @@ Status as of 2026-10-18. Work top to bottom.
        with the user; small wording fixes. Phone width not checked (window
        did not resize below ~710px).
 
+### Toward live testing (agreed with the user 2026-10-21, after the product audit)
+Audit results: `PRODUCT_AUDIT_RESULTS.md`. Plan: realistic synthetic data is
+acceptable for testing; live AI mode deferred (no API credits); hosting and
+testers deferred until production-ready. Pass marks agreed: cited section,
+answer text and correct abstention ≥ 95%; plan details 100%; zero invented
+amounts; zero wrong-plan amounts.
+1. [x] **Unreadable / scanned PDFs** — pages with no text layer are read by
+       OCR (`services/ocr.py`, Tesseract via pytesseract; off when the
+       program is missing or OCR_ENABLED=false); no readable text at all →
+       upload refused (422) with a plain explanation and nothing stored;
+       partly readable → `partial` with `unreadable_pages`; OCR pages listed
+       in `ocr_pages`, their chunks and citations carry `from_scan` ("from a
+       scanned page, check the original"). `test_scanned_pdfs.py`.
+2. [x] **Answer layout** — chat responses carry `lead`, `policy_says`
+       (verbatim quotes grouped by plan), `differences`, `keep_in_mind`
+       (fixed note: not a coverage decision; prior-auth requirement ≠
+       approval ≠ payment; eligibility/network not checked), rendered as
+       What your policy says → What to check → Keep in mind; all sources
+       folded away. `answer` keeps the full plain text (API clients, eval).
+3. [x] **Several plans** — a question matching more than one plan (none
+       named) shows the best passage of each; amounts the question is about
+       that differ (deductible, out-of-pocket max, coinsurance, named
+       copays) are flagged, and each plan's quote is its own wording of that
+       amount (`services/answer_layout.py`). The same file uploaded twice to
+       the same place is refused (409, `content_hash`). Paragraph scoring now
+       counts the section heading (eval answer text 37 → 38/38).
+   `test_answer_layout.py`; 388 backend + 98 frontend tests.
+4. [ ] Realistic synthetic test set (insurer nuances, scanned copies,
+       two-plan users, conflicts) with questions/answers for the user's review.
+5. [ ] Run it against the pass marks and report.
+
 ### Phase B: Data & evaluation — done (see Done above)
 
 ### Phase C: Chat & live mode — done (see Done above)
@@ -554,9 +585,8 @@ can also create a provider directly (active at once). "Hospital" became
    member scoping, admin-only routes, cross-site refusal, sign-out).
 
 ### Known retrieval gaps
-- Multi-policy eval misses (1/38 each): Summit "How much is a specialist
-  visit?" ranks the referral section first; Summit "How long does an
-  approval request take?" — answer text quotes the wrong paragraph. The eval
+- Multi-policy eval miss (1/38): Summit "How much is a specialist
+  visit?" ranks the referral section first. The eval
   is small and written by the same author as the fixes — treat scores as
   regression guards, not accuracy claims.
 - "What does coinsurance mean?" (Apex) ranks the definition 2nd, behind

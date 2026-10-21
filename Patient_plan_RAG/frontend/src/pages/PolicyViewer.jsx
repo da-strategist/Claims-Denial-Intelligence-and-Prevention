@@ -172,7 +172,7 @@ function UploadPanel({ onUploaded }) {
       setMsg(`Uploaded: ${result.message}`);
       onUploaded?.();
     } catch (e) {
-      setMsg(`Error: ${e.message}`);
+      setMsg(`Error: ${e.message.replace(/^\d+: /, "")}`);
     } finally {
       setUploading(false);
     }

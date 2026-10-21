@@ -9,6 +9,7 @@ from datetime import date, datetime
 from pathlib import Path
 
 from ..models.policy import DocumentChunk, DocumentStatus, PolicyDocument
+from . import ocr
 
 
 # Bump whenever chunking or metadata extraction changes: documents ingested
@@ -256,6 +257,50 @@ def chunk_text(
     return chunks
 
 
+# A page with fewer non-space characters than this has no usable text layer:
+# it is a scanned or photographed page (or blank).
+MIN_PAGE_TEXT_CHARS = 25
+
+UNREADABLE_NO_OCR = (
+    "We couldn't find any text in this PDF. It looks like a scanned or photographed "
+    "document, and scanned documents can't be read on this server yet. Please upload a "
+    "PDF with selectable text, for example one downloaded from your insurer's website.")
+UNREADABLE_AFTER_OCR = (
+    "We couldn't read this PDF. It looks like a scanned document, but the scan was too "
+    "unclear to read. Try a clearer scan, or a PDF downloaded from your insurer's website.")
+CANNOT_OPEN = "We couldn't open this PDF. It may be damaged or password-protected."
+
+
+class UnreadableDocument(Exception):
+    """No page of the document has readable text."""
+
+
+def _has_text(text: str) -> bool:
+    return len(re.sub(r"\s", "", text)) >= MIN_PAGE_TEXT_CHARS
+
+
+def read_scanned_pages(pdf_path: Path, pages: list[dict]) -> tuple[list[int], list[int]]:
+    """Fill pages that have no text layer using OCR, when available.
+
+    Returns (pages read by OCR, pages still unreadable); raises
+    UnreadableDocument when no page has readable text at all.
+    """
+    use_ocr = ocr.available()
+    read, unreadable = [], []
+    for page in pages:
+        if _has_text(page["text"]):
+            continue
+        text = ocr.read_page(pdf_path, page["page_number"]) if use_ocr else ""
+        if _has_text(text):
+            page.update(text=text, headings=[], ocr=True)
+            read.append(page["page_number"])
+        else:
+            unreadable.append(page["page_number"])
+    if pages and len(unreadable) == len(pages):
+        raise UnreadableDocument(UNREADABLE_AFTER_OCR if use_ocr else UNREADABLE_NO_OCR)
+    return read, unreadable
+
+
 def process_document(
     pdf_path: Path,
     chunk_dir: Path,
@@ -277,8 +322,12 @@ def process_document(
     doc.chunker_version = CHUNKER_VERSION
 
     try:
-        pages = extract_text_from_pdf(pdf_path)
+        try:
+            pages = extract_text_from_pdf(pdf_path)
+        except RuntimeError as exc:
+            raise UnreadableDocument(CANNOT_OPEN) from exc
         doc.page_count = len(pages)
+        doc.ocr_pages, doc.unreadable_pages = read_scanned_pages(pdf_path, pages)
 
         # Fill metadata stated in the document, without overriding caller values
         for key, value in extract_policy_metadata(pages).items():
@@ -286,6 +335,9 @@ def process_document(
                 setattr(doc, key, value)
 
         chunks = chunk_text(pages, document_id, chunk_size, chunk_overlap)
+        for c in chunks:
+            if c.page_number in doc.ocr_pages:
+                c.metadata["from_scan"] = True
         doc.chunk_count = len(chunks)
 
         # Persist chunks
@@ -295,7 +347,16 @@ def process_document(
             json.dumps([c.model_dump() for c in chunks], indent=2, default=str)
         )
 
-        doc.status = DocumentStatus.COMPLETED
+        if doc.unreadable_pages:
+            doc.status = DocumentStatus.PARTIAL
+            doc.error_message = (f"Some pages could not be read (page "
+                                 f"{', '.join(map(str, doc.unreadable_pages))}).")
+        else:
+            doc.status = DocumentStatus.COMPLETED
+    except UnreadableDocument as exc:
+        doc.status = DocumentStatus.FAILED
+        doc.error_message = str(exc)
+        chunks = []
     except Exception as exc:
         doc.status = DocumentStatus.FAILED
         doc.error_message = str(exc)
