@@ -15,7 +15,7 @@ from pathlib import Path
 
 from ..models.coverage import ChatResponse, NextStep, PlanDifference, PolicyQuote, SourceCitation
 from ..models.policy import DocumentChunk
-from . import answer_layout, registry, suggestions
+from . import answer_layout, plan_status, registry, suggestions
 from .conversations import Turn
 from .policy_summarizer import _paragraphs
 from .retrieval import _tokenize, adapt_vocabulary, load_chunks, retrieve
@@ -404,6 +404,24 @@ def focus_on_named_plan(query: str, document_id: str | None,
     return query, document_id
 
 
+def _status_response(status: dict, names: dict[str, str], audience: str) -> ChatResponse:
+    """"Is this plan still active?": the stated plan dates against today
+    (services/plan_status.py), the same way in demo and live mode."""
+    keep = answer_layout.KEEP_IN_MIND[audience]
+    return ChatResponse(
+        answer=f"{status['text']}\n\n\u26a0\ufe0f {keep}",
+        lead=status["lead"],
+        policy_says=[PolicyQuote(**q, document_name=names.get(q["document_id"], ""))
+                     for q in status["quotes"]],
+        keep_in_mind=keep,
+        citations=[SourceCitation(
+            document_id=c.document_id, document_name=names.get(c.document_id, ""),
+            page_number=c.page_number, section=c.section_heading, excerpt=q["quote"],
+            from_scan=q["from_scan"]) for c, q in zip(status["chunks"], status["quotes"])],
+        confidence="supported",
+    )
+
+
 async def answer_question(
     question: str,
     chunk_dir: Path,
@@ -424,6 +442,11 @@ async def answer_question(
     query, document_id = focus_on_named_plan(retrieval_query(question, history),
                                              document_id, allowed_ids)
     chunks = load_chunks(chunk_dir, document_id, allowed_ids=allowed_ids)
+    names = {e["document_id"]: (e.get("display_name") or e.get("plan_name") or e["filename"])
+             for e in registry.load()}
+    if plan_status.is_status_question(question) and (
+            status := plan_status.answer(chunks, names, audience)):
+        return _status_response(status, names, audience)
     query = adapt_vocabulary(query, chunks)
     retrieved = retrieve(query, chunks, top_k)
 
@@ -448,8 +471,6 @@ async def answer_question(
         answer_text, citations = _build_demo_answer(question, retrieved, query, audience)
 
     # layout: quotes grouped by plan, differing amounts, fixed note
-    names = {e["document_id"]: (e.get("display_name") or e.get("plan_name") or e["filename"])
-             for e in registry.load()}
     quotes = _quotes(scored, retrieved) if retrieved else []
     plan_ids = list(dict.fromkeys(q["document_id"] for q in quotes))
     chunks_by_doc = {d: [c for c in chunks if c.document_id == d] for d in plan_ids}
