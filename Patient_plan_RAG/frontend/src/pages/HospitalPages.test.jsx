@@ -51,6 +51,7 @@ test("patient list with search", async () => {
 
 test("adding a patient opens their record", async () => {
   api.createPatient.mockResolvedValue({ ...P2, patient_id: "p9", name: "New Person" });
+  api.getPatient.mockResolvedValue({ ...P2, patient_id: "p9", name: "New Person" });  // the record it opens
   render(<Patients />);
   await screen.findByText("Pat One");
   await userEvent.type(screen.getByLabelText("Name"), "New Person");

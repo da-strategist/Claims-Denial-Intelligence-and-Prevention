@@ -12,6 +12,7 @@ from ..auth.sessions import SESSION_COOKIE, Permission, require, sessions, signe
 from ..auth.users import User, user_store
 from ..models.common import DISCLAIMER, DOCUMENT_ID_PATTERN
 from ..services import accounts, records, registry
+from ..services import sharing as sharing_service
 
 router = APIRouter(prefix="/api/me", tags=["me"])
 
@@ -98,8 +99,10 @@ class ProfileChanges(BaseModel):
 
 @router.patch("/profile")
 async def update_profile(body: ProfileChanges, user: User = Depends(signed_in)) -> dict:
-    return user_store.update(user.username, full_name=body.full_name.strip(),
-                             phone=body.phone.strip()).public()
+    updated = user_store.update(user.username, full_name=body.full_name.strip(),
+                                phone=body.phone.strip())
+    sharing_service.refresh_names(user.username)  # provider records still named after the email
+    return updated.public()
 
 
 @router.post("/sign-out-everywhere")

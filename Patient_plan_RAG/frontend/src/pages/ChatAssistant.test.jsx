@@ -113,6 +113,56 @@ test("hospital staff must pick a patient; questions carry the patient", async ()
   expect(api.chat.mock.calls[0].slice(1)).toEqual([undefined, null, "p1"]);
 });
 
+test("hospital staff can search patients by name", async () => {
+  mockUser = { username: "s@h.example", role: "hospital_staff", org_id: "org1" };
+  api.listPolicies.mockResolvedValue([]);
+  api.listPatients.mockResolvedValue([
+    { patient_id: "p1", name: "Maria Lopez", reference: "MRN-1", documents: [] },
+    { patient_id: "p2", name: "Mark Chen", reference: "", documents: [] },
+    { patient_id: "p3", name: "Ann Lopez-Hart", reference: "", documents: [] },
+  ]);
+  render(<ChatAssistant />);
+  const names = () => [...screen.getByLabelText("Patient").options].slice(1).map((o) => o.value);
+  await waitFor(() => expect(names()).toEqual(["p1", "p2", "p3"]));
+  // optional: nothing to type until the search is opened
+  expect(screen.queryByLabelText("Search patients by name")).not.toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: "Search patients" }));
+  const box = screen.getByLabelText("Search patients by name");
+  await userEvent.type(box, "lopez");
+  expect(names()).toEqual(["p1", "p3"]);
+  expect(screen.getByText("2 matches")).toBeInTheDocument();
+  await userEvent.type(box, " ann");
+  expect(names()).toEqual(["p3"]);
+  await userEvent.type(box, "{Enter}");
+  expect(screen.getByLabelText("Patient")).toHaveValue("p3");
+  // the chosen patient stays listed while the search changes
+  await userEvent.clear(box);
+  await userEvent.type(box, "zzz");
+  expect(screen.getByText("No patients match")).toBeInTheDocument();
+  expect(names()).toEqual(["p3"]);
+  await userEvent.click(screen.getByRole("button", { name: "Close search" }));
+  expect(names()).toEqual(["p1", "p2", "p3"]);
+});
+
+test("patient search also matches the email of a patient who shared", async () => {
+  mockUser = { username: "s@h.example", role: "hospital_staff", org_id: "org1" };
+  api.listPolicies.mockResolvedValue([]);
+  api.listPatients.mockResolvedValue([
+    { patient_id: "p1", name: "Maria Lopez", reference: "", documents: [] },
+    { patient_id: "p2", name: "J. Doe", linked_username: "jubril@example.com", reference: "", documents: [] },
+  ]);
+  render(<ChatAssistant />);
+  await userEvent.click(await screen.findByRole("button", { name: "Search patients" }));
+  await userEvent.type(screen.getByLabelText("Search patients by name"), "Jubril");
+  expect([...screen.getByLabelText("Patient").options].slice(1).map((o) => o.value)).toEqual(["p2"]);
+});
+
+test("individuals have no patient search", async () => {
+  render(<ChatAssistant />);
+  await screen.findByLabelText("Policy");
+  expect(screen.queryByRole("button", { name: "Search patients" })).not.toBeInTheDocument();
+});
+
 test("a patient link preselects the patient", async () => {
   mockUser = { username: "s@h.example", role: "hospital_staff", org_id: "org1" };
   window.location.hash = "/chat?patient=p2";

@@ -45,6 +45,24 @@ def patient_record_for(owner: str, org: records.Org) -> records.Patient:
     return patient
 
 
+def refresh_names(username: str | None = None) -> int:
+    """Records created before the person gave their name are named after
+    their email; give them the profile name once there is one (run at startup
+    and when a profile changes). Records staff have renamed are left alone.
+    Returns the number renamed."""
+    renamed = 0
+    for patient in records.patients.all():
+        if not patient.linked_username or patient.name != patient.linked_username:
+            continue
+        if username and patient.linked_username != username:
+            continue
+        person = user_store.get(patient.linked_username)
+        if person and person.full_name:
+            records.patients.update(patient.patient_id, name=person.full_name)
+            renamed += 1
+    return renamed
+
+
 def backfill() -> int:
     """Give shares made before automatic records one (run at startup).
 

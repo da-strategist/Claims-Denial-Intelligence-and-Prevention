@@ -35,6 +35,7 @@ async def lifespan(app: FastAPI):
 
     sync_registry(POLICY_DIR, UPLOAD_DIR, CHUNK_DIR)
     sharing.backfill()  # patient records for shares made before they were automatic
+    sharing.refresh_names()  # records named after an email before the person gave a name
     yield
 
 

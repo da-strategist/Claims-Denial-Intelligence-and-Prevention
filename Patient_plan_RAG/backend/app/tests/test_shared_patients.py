@@ -171,3 +171,25 @@ def test_sharing_links_a_typed_entry_with_the_same_name(w):
     [entry] = w["alice"].get("/api/me/providers").json()
     assert (entry["provider_id"], entry["name"], entry["on_platform"], entry["phone"]) == (
         typed["provider_id"], "General Hospital", True, "555 1")
+
+
+def test_a_record_named_after_the_email_takes_the_name_given_later(w):
+    w["alice"].patch("/api/me/profile", json={"full_name": ""})
+    _share(w)
+    assert _alice_record(w)["name"] == "alice@example.com"  # no name to use yet
+    w["alice"].patch("/api/me/profile", json={"full_name": "Alice Smith"})
+    assert _alice_record(w)["name"] == "Alice Smith"
+    # a name staff typed is theirs: later profile changes leave it alone
+    pid = _alice_record(w)["patient_id"]
+    w["staff"].patch(f"/api/hospital/patients/{pid}", json={"name": "Alice M. Smith"})
+    w["alice"].patch("/api/me/profile", json={"full_name": "Ali"})
+    assert _alice_record(w)["name"] == "Alice M. Smith"
+
+
+def test_startup_renames_records_left_with_an_email(w):
+    _share(w)
+    pid = _alice_record(w)["patient_id"]
+    records.patients.update(pid, name="alice@example.com")  # made before the profile had a name
+    assert sharing.refresh_names() == 1
+    assert _alice_record(w)["name"] == "Alice Smith"
+    assert sharing.refresh_names() == 0

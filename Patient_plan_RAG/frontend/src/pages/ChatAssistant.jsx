@@ -211,6 +211,25 @@ export default function ChatAssistant() {
     setMessages([]);
   };
 
+  // Optional name search for hospital staff: narrows the patient list (every
+  // typed word must appear in the name, or the email of a patient who shared);
+  // the chosen patient always stays listed
+  const [searching, setSearching] = useState(false);
+  const [patientSearch, setPatientSearch] = useState("");
+  const words = patientSearch.toLowerCase().split(/\s+/).filter(Boolean);
+  const matches = patients.filter((p) => {
+    const text = `${p.name} ${p.linked_username || ""}`.toLowerCase();
+    return words.every((w) => text.includes(w));
+  });
+  const patientChoices = words.length === 0 ? patients
+    : patients.filter((p) => p.patient_id === selectedPatient || matches.includes(p));
+  const choosePatient = (id) => {
+    // a conversation is about one patient
+    setSelectedPatient(id);
+    setSelectedPolicy("");
+    startNewConversation();
+  };
+
   /** Ask the typed question, or `text` (a suggested question, sent as is). */
   const handleAsk = async (text) => {
     const q = (typeof text === "string" ? text : question).trim();
@@ -252,24 +271,55 @@ export default function ChatAssistant() {
       <div className="flex items-center gap-3 mb-4">
         <h2 className="text-2xl font-bold">Ask a Question</h2>
         {hospital && (
-          <select
-            aria-label="Patient"
-            value={selectedPatient}
-            onChange={(e) => {
-              // a conversation is about one patient
-              setSelectedPatient(e.target.value);
-              setSelectedPolicy("");
-              startNewConversation();
-            }}
-            className="border rounded px-3 py-1.5 text-sm"
-          >
-            <option value="">Choose a patient…</option>
-            {patients.map((p) => (
-              <option key={p.patient_id} value={p.patient_id}>
-                {p.name}{p.reference ? ` (${p.reference})` : ""}
-              </option>
-            ))}
-          </select>
+          <>
+            <button
+              type="button"
+              onClick={() => { setSearching(!searching); setPatientSearch(""); }}
+              aria-expanded={searching}
+              className="border rounded px-2.5 py-1.5 text-sm hover:bg-gray-50"
+            >
+              {searching ? "Close search" : "Search patients"}
+            </button>
+            {searching && (
+              <div className="flex flex-col">
+                <input
+                  type="search"
+                  aria-label="Search patients by name"
+                  placeholder="Patient name…"
+                  value={patientSearch}
+                  maxLength={100}
+                  autoFocus
+                  onChange={(e) => setPatientSearch(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && words.length && matches.length) {
+                      e.preventDefault();
+                      if (matches[0].patient_id !== selectedPatient) choosePatient(matches[0].patient_id);
+                    }
+                  }}
+                  className="border rounded px-3 py-1.5 text-sm w-44"
+                />
+                {words.length > 0 && (
+                  <span className="text-xs text-gray-500 mt-0.5" aria-live="polite">
+                    {matches.length === 0 ? "No patients match"
+                      : `${matches.length} match${matches.length === 1 ? "" : "es"}`}
+                  </span>
+                )}
+              </div>
+            )}
+            <select
+              aria-label="Patient"
+              value={selectedPatient}
+              onChange={(e) => choosePatient(e.target.value)}
+              className="border rounded px-3 py-1.5 text-sm"
+            >
+              <option value="">Choose a patient…</option>
+              {patientChoices.map((p) => (
+                <option key={p.patient_id} value={p.patient_id}>
+                  {p.name}{p.reference ? ` (${p.reference})` : ""}
+                </option>
+              ))}
+            </select>
+          </>
         )}
         <select
           aria-label="Policy"
