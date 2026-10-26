@@ -123,11 +123,14 @@ def test_upload_rejects_non_pdf_filename(client, data_dirs):
     assert list(data_dirs["uploads"].iterdir()) == []
 
 
-def test_upload_unreadable_pdf_is_registered_as_failed(client):
+def test_upload_unreadable_pdf_is_refused_and_not_kept(client, data_dirs):
+    before = client.get("/api/policies").json()
     resp = client.post("/api/policies/upload",
                        files={"file": ("broken.pdf", b"%PDF-1.4 truncated garbage", "application/pdf")})
-    assert resp.status_code == 200
-    assert resp.json()["status"] == "failed"
+    assert resp.status_code == 422
+    assert "couldn't open this PDF" in resp.json()["detail"]
+    assert client.get("/api/policies").json() == before
+    assert not list(data_dirs["uploads"].glob("*broken*"))
 
 
 # ── Chat ─────────────────────────────────────────────────────────────

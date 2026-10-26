@@ -6,7 +6,7 @@ export const isHospital = (user) =>
   user?.role === "hospital_staff" || user?.role === "hospital_admin";
 
 const isSample = (p) => !p.owner && !p.org_id;
-const name = (p) => p.plan_name || p.filename;
+const name = (p) => p.display_name || p.plan_name || p.filename;
 
 /**
  * The documents this user may pick, labelled for their role and ordered:
@@ -19,6 +19,9 @@ export function usePolicyOptions() {
   const [patients, setPatients] = useState([]);
   const [error, setError] = useState("");
 
+  // Depend on who the user is, not on the user object: it is replaced on
+  // every refresh, and reloading on each new object would loop.
+  const identity = `${user?.username}|${user?.role}|${user?.org_id}`;
   const load = useCallback(async () => {
     setError("");
     try {
@@ -42,7 +45,7 @@ export function usePolicyOptions() {
     } catch (e) {
       setError(e.message);
     }
-  }, [user]);
+  }, [identity]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { load(); }, [load]);
 

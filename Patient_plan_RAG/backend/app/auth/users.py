@@ -73,9 +73,12 @@ class User:
     role: Role
     password_hash: str = ""
     org_id: str | None = None  # hospital organisation (hospital roles only)
+    full_name: str = ""
+    phone: str = ""
     must_change_password: bool = False
     disabled: bool = False
     created_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
+    last_sign_in: str = ""
 
     def public(self) -> dict:
         """Safe to return from the API (no password hash)."""
@@ -83,8 +86,12 @@ class User:
             "username": self.username,
             "role": self.role.value,
             "org_id": self.org_id,
+            "full_name": self.full_name,
+            "phone": self.phone,
             "must_change_password": self.must_change_password,
             "disabled": self.disabled,
+            "created_at": self.created_at,
+            "last_sign_in": self.last_sign_in,
         }
 
 
@@ -137,8 +144,9 @@ class UserStore:
             if username in users:
                 raise ValueError(f"An account for {username} already exists.")
             if (role in HOSPITAL_ROLES) != bool(org_id):
-                raise ValueError("Hospital accounts need an organisation; others must not have one.")
-            user = User(username, role, hash_password(password), org_id, must_change_password)
+                raise ValueError("Provider accounts need an organisation; others must not have one.")
+            user = User(username, role, password_hash=hash_password(password), org_id=org_id,
+                        must_change_password=must_change_password)
             users[username] = user
             self._save(users)
         return user
@@ -156,11 +164,19 @@ class UserStore:
                     raise ValueError(problem)
                 user.password_hash = hash_password(password)
             for key, value in changes.items():
-                if key not in {"role", "org_id", "must_change_password", "disabled"}:
+                if key not in {"role", "org_id", "full_name", "phone", "must_change_password",
+                               "disabled", "last_sign_in"}:
                     raise ValueError(f"Cannot change {key}")
                 setattr(user, key, value)
             self._save(users)
         return user
+
+
+    def delete(self, username: str) -> None:
+        with self._lock:
+            users = self._load()
+            users.pop(username.strip().lower(), None)
+            self._save(users)
 
 
 user_store = UserStore()

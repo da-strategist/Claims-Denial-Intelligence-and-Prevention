@@ -3,18 +3,25 @@ import { api } from "../services/api";
 import { navigate, useHashPath } from "../utils/route";
 
 const clean = (msg) => msg.replace(/^\d+: /, "");
+const fmt = (iso) => (iso ? new Date(`${iso}T00:00:00`).toLocaleDateString() : "—");
+const docName = (d) => d.display_name || d.plan_name || d.filename;
 
-function NewPatientForm({ onCreated }) {
-  const [form, setForm] = useState({ name: "", reference: "", date_of_birth: "" });
+const STATUS = {
+  active: "bg-green-100 text-green-800",
+  ended: "bg-amber-100 text-amber-800",
+  upcoming: "bg-blue-100 text-blue-800",
+  unknown: "bg-gray-100 text-gray-600",
+};
+
+function PatientForm({ initial, submitLabel, onSubmit, onCancel }) {
+  const [form, setForm] = useState(initial);
   const [error, setError] = useState("");
 
   const submit = async (e) => {
     e.preventDefault();
     setError("");
     try {
-      const p = await api.createPatient({ ...form, name: form.name.trim() });
-      setForm({ name: "", reference: "", date_of_birth: "" });
-      onCreated(p);
+      await onSubmit({ ...form, name: form.name.trim() });
     } catch (err) {
       setError(clean(err.message));
     }
@@ -23,28 +30,150 @@ function NewPatientForm({ onCreated }) {
   const field = (label, key, props = {}) => (
     <label className="text-sm">
       <span className="block text-gray-700">{label}</span>
-      <input
-        value={form[key]}
-        onChange={(e) => setForm({ ...form, [key]: e.target.value })}
-        className="border rounded px-3 py-1.5"
-        {...props}
-      />
+      <input value={form[key]} onChange={(e) => setForm({ ...form, [key]: e.target.value })}
+             className="border rounded px-3 py-1.5" {...props} />
     </label>
   );
 
   return (
-    <form onSubmit={submit} className="bg-white rounded-lg shadow p-5 space-y-3">
-      <h3 className="font-semibold">Add a patient</h3>
+    <form onSubmit={submit} className="space-y-3">
       <div className="flex flex-wrap gap-3 items-end">
         {field("Name", "name", { required: true, maxLength: 200 })}
-        {field("Hospital number (MRN)", "reference", { maxLength: 50 })}
+        {field("Patient number (MRN)", "reference", { maxLength: 50 })}
         {field("Date of birth", "date_of_birth", { type: "date" })}
         <button type="submit" className="bg-blue-600 text-white px-4 py-1.5 rounded text-sm hover:bg-blue-700">
-          Add patient
+          {submitLabel}
         </button>
+        {onCancel && (
+          <button type="button" onClick={onCancel} className="text-sm text-gray-500 hover:underline">Cancel</button>
+        )}
       </div>
       {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
     </form>
+  );
+}
+
+function Insurance({ documents, onOpen }) {
+  if (documents.length === 0)
+    return <p className="text-sm text-gray-500">No policy documents yet. Upload one below.</p>;
+  return (
+    <table className="w-full text-sm">
+      <thead>
+        <tr className="border-b text-left text-gray-500">
+          <th className="py-2">Insurer</th>
+          <th>Plan</th>
+          <th>Plan ID</th>
+          <th>Coverage</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {documents.map((d) => (
+          <tr key={d.document_id} className="border-b">
+            <td className="py-2">{d.insurer_name || "—"}</td>
+            <td>
+              <button onClick={() => onOpen(d.document_id)} className="text-blue-700 hover:underline">{docName(d)}</button>
+              {d.shared_by && <span className="text-gray-500 text-xs"> · shared by {d.shared_by}</span>}
+            </td>
+            <td>{d.plan_id || "—"}</td>
+            <td>{d.effective_date || d.expiration_date ? `${fmt(d.effective_date)} – ${fmt(d.expiration_date)}` : "—"}</td>
+            <td>
+              <span className={`px-2 py-0.5 rounded text-xs capitalize ${STATUS[d.coverage_status] || STATUS.unknown}`}>
+                {d.coverage_status === "unknown" ? "Dates not stated" : d.coverage_status}
+              </span>
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+function SavedChecklists({ patientId }) {
+  const [lists, setLists] = useState([]);
+  const [error, setError] = useState("");
+  const load = () => api.listChecklists(patientId).then(setLists).catch((e) => setError(clean(e.message)));
+  useEffect(() => { load(); }, [patientId]);
+
+  const toggle = async (list, idx) => {
+    const items = list.items.map((it, i) => (i === idx ? { ...it, completed: !it.completed } : it));
+    setLists((prev) => prev.map((l) => (l.checklist_id === list.checklist_id ? { ...l, items } : l)));
+    try {
+      await api.updateChecklist(patientId, list.checklist_id, items);
+    } catch (e) {
+      setError(clean(e.message));
+      load();
+    }
+  };
+
+  if (lists.length === 0) return <p className="text-sm text-gray-500">No saved checklists yet.</p>;
+  return (
+    <div className="space-y-4">
+      {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
+      {lists.map((l) => {
+        const done = l.items.filter((i) => i.completed).length;
+        return (
+          <div key={l.checklist_id} className="border rounded p-3 text-sm">
+            <div className="flex justify-between mb-2">
+              <strong>{l.service_name}{l.service_code && ` (${l.service_code})`}</strong>
+              <span className="text-gray-500">
+                {done}/{l.items.length} done · saved by {l.created_by} ·{" "}
+                <button onClick={async () => { await api.deleteChecklist(patientId, l.checklist_id); load(); }}
+                        className="text-red-700 hover:underline">Delete</button>
+              </span>
+            </div>
+            <ul className="space-y-1">
+              {l.items.map((it, i) => (
+                <li key={it.item_id + i}>
+                  <label className="flex gap-2 items-start">
+                    <input type="checkbox" checked={Boolean(it.completed)} onChange={() => toggle(l, i)} />
+                    <span className={it.completed ? "line-through text-gray-400" : ""}>
+                      {it.description}{it.required ? "" : " (if applicable)"}
+                    </span>
+                  </label>
+                </li>
+              ))}
+            </ul>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+const SharedBadge = ({ email }) => (
+  <span title={`Created when ${email} shared a policy with you. Details are as they entered them.`}
+        className="ml-2 bg-purple-100 text-purple-800 px-2 py-0.5 rounded text-xs">Shared by patient</span>
+);
+
+/** Move this record's policies, checklists and account link into another record. */
+function MergePanel({ patient, onMerged, onCancel, act }) {
+  const [others, setOthers] = useState([]);
+  const [into, setInto] = useState("");
+  useEffect(() => {
+    api.listPatients(true).then((all) => setOthers(all.filter((p) => p.patient_id !== patient.patient_id)));
+  }, [patient.patient_id]);
+  return (
+    <div className="border rounded p-3 bg-gray-50 text-sm space-y-2">
+      <p>
+        Merge <strong>{patient.name}</strong> into another record. Its policies, uploads and saved
+        checklists move there{patient.linked_username ? ", and future shares from this person go there too" : ""}.
+        This record is then deleted.
+      </p>
+      <div className="flex flex-wrap gap-2 items-center">
+        <select aria-label="Merge into" value={into} onChange={(e) => setInto(e.target.value)} className="border rounded px-2 py-1">
+          <option value="">Choose a record…</option>
+          {others.map((p) => (
+            <option key={p.patient_id} value={p.patient_id}>
+              {p.name}{p.reference ? ` (${p.reference})` : ""}{p.date_of_birth ? ` · ${p.date_of_birth}` : ""}
+            </option>
+          ))}
+        </select>
+        <button disabled={!into} onClick={() => act(async () => onMerged(await api.mergePatient(patient.patient_id, into)))}
+                className="bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-700 disabled:opacity-50">Merge</button>
+        <button onClick={onCancel} className="text-gray-500 hover:underline">Cancel</button>
+      </div>
+    </div>
   );
 }
 
@@ -53,6 +182,9 @@ function PatientDetail({ patientId }) {
   const [error, setError] = useState("");
   const [msg, setMsg] = useState("");
   const [uploading, setUploading] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [merging, setMerging] = useState(false);
   const fileRef = useRef();
 
   const load = () => api.getPatient(patientId).then(setPatient).catch((e) => setError(clean(e.message)));
@@ -64,8 +196,8 @@ function PatientDetail({ patientId }) {
     setUploading(true);
     setMsg("");
     try {
-      await api.uploadPolicy(file, patientId);
-      setMsg("Policy uploaded.");
+      const result = await api.uploadPolicy(file, patientId);
+      setMsg(`Policy uploaded. ${result.message || ""}`.trim());
       if (fileRef.current) fileRef.current.value = "";
       load();
     } catch (e) {
@@ -75,58 +207,107 @@ function PatientDetail({ patientId }) {
     }
   };
 
+  const act = async (fn) => {
+    setMsg("");
+    try {
+      await fn();
+    } catch (e) {
+      setMsg(`Error: ${clean(e.message)}`);
+    }
+  };
+
   if (error) return <p role="alert" className="text-red-600 text-sm">Couldn't load this patient: {error}</p>;
   if (!patient) return <p className="text-gray-500">Loading...</p>;
+  const hasDocs = patient.documents.length > 0;
 
   return (
     <div className="space-y-4">
       <button onClick={() => navigate("/patients")} className="text-blue-600 text-sm hover:underline">
         ← All patients
       </button>
-      <div className="bg-white rounded-lg shadow p-5">
-        <h2 className="text-xl font-bold">{patient.name}</h2>
-        <p className="text-sm text-gray-500">
-          {patient.reference && <>MRN {patient.reference} · </>}
-          {patient.date_of_birth && <>Born {patient.date_of_birth} · </>}
-          {patient.documents.length} policy document(s)
-        </p>
-        <button
-          onClick={() => navigate(`/chat?patient=${patient.patient_id}`)}
-          disabled={patient.documents.length === 0}
-          className="mt-3 bg-blue-600 text-white px-4 py-1.5 rounded text-sm hover:bg-blue-700 disabled:opacity-50"
-        >
-          Ask about this patient's coverage
-        </button>
+      <div className="bg-white rounded-lg shadow p-5 space-y-3">
+        {editing ? (
+          <PatientForm
+            initial={{ name: patient.name, reference: patient.reference, date_of_birth: patient.date_of_birth }}
+            submitLabel="Save"
+            onSubmit={async (changes) => { setPatient(await api.updatePatient(patientId, changes)); setEditing(false); }}
+            onCancel={() => setEditing(false)}
+          />
+        ) : (
+          <div>
+            <h2 className="text-xl font-bold">
+              {patient.name}
+              {patient.archived && <span className="ml-2 bg-gray-100 text-gray-600 px-2 py-0.5 rounded text-xs">Archived</span>}
+              {patient.linked_username && <SharedBadge email={patient.linked_username} />}
+            </h2>
+            <p className="text-sm text-gray-500">
+              {patient.linked_username && <>{patient.linked_username} · </>}
+              {patient.reference && <>MRN {patient.reference} · </>}
+              {patient.date_of_birth && <>Born {patient.date_of_birth} · </>}
+              {patient.documents.length} policy document(s)
+            </p>
+          </div>
+        )}
+        <div className="flex flex-wrap gap-2">
+          <button onClick={() => navigate(`/chat?patient=${patientId}`)} disabled={!hasDocs}
+                  className="bg-blue-600 text-white px-4 py-1.5 rounded text-sm hover:bg-blue-700 disabled:opacity-50">
+            Ask about coverage
+          </button>
+          <button onClick={() => navigate(`/coverage?patient=${patientId}`)} disabled={!hasDocs}
+                  className="border px-4 py-1.5 rounded text-sm hover:bg-gray-50 disabled:opacity-50">
+            Check coverage for a service
+          </button>
+          <button onClick={() => navigate(`/auth?patient=${patientId}`)} disabled={!hasDocs}
+                  className="border px-4 py-1.5 rounded text-sm hover:bg-gray-50 disabled:opacity-50">
+            Prior auth checklist
+          </button>
+        </div>
+        <div className="flex flex-wrap gap-4 text-xs">
+          {!editing && <button onClick={() => setEditing(true)} className="text-blue-700 hover:underline">Edit details</button>}
+          <button onClick={() => act(async () => setPatient(await api.updatePatient(patientId, { archived: !patient.archived })))}
+                  className="text-blue-700 hover:underline">
+            {patient.archived ? "Restore" : "Archive"}
+          </button>
+          <button onClick={() => setMerging(true)} className="text-blue-700 hover:underline">
+            Merge into existing record
+          </button>
+          {confirmDelete ? (
+            <span className="flex gap-2 items-center">
+              Delete this patient and the policies your organisation uploaded for them? Policies the
+              patient shared stay theirs.
+              <button onClick={() => act(async () => { await api.deletePatient(patientId); navigate("/patients"); })}
+                      className="bg-red-600 text-white px-2 py-0.5 rounded">Delete</button>
+              <button onClick={() => setConfirmDelete(false)} className="text-gray-500 hover:underline">Cancel</button>
+            </span>
+          ) : (
+            <button onClick={() => setConfirmDelete(true)} className="text-red-700 hover:underline">Delete patient</button>
+          )}
+        </div>
+        {merging && (
+          <MergePanel patient={patient} act={act} onCancel={() => setMerging(false)}
+                      onMerged={(target) => { setMerging(false); navigate(`/patients/${target.patient_id}`); }} />
+        )}
+        {patient.linked_username && !hasDocs && (
+          <p className="text-sm text-gray-500">No policies shared. The patient may have stopped sharing.</p>
+        )}
+        {msg && <p className="text-sm text-gray-600">{msg}</p>}
       </div>
 
       <div className="bg-white rounded-lg shadow p-5">
-        <h3 className="font-semibold mb-2">Policy documents</h3>
-        {patient.documents.length === 0 ? (
-          <p className="text-sm text-gray-500">No policy documents yet. Upload one below.</p>
-        ) : (
-          <ul className="text-sm space-y-1 mb-4">
-            {patient.documents.map((d) => (
-              <li key={d.document_id}>
-                <button onClick={() => navigate(`/policies/${d.document_id}`)} className="text-blue-700 hover:underline">
-                  {d.plan_name || d.filename}
-                </button>
-                {d.insurer_name && <span className="text-gray-500"> · {d.insurer_name}</span>}
-                {d.shared_by && <span className="text-gray-500"> · shared by {d.shared_by}</span>}
-              </li>
-            ))}
-          </ul>
-        )}
-        <div className="flex items-center gap-3">
+        <h3 className="font-semibold mb-2">Insurance</h3>
+        <Insurance documents={patient.documents} onOpen={(id) => navigate(`/policies/${id}`)} />
+        <div className="flex items-center gap-3 mt-4">
           <input ref={fileRef} type="file" accept=".pdf" className="text-sm" aria-label="Policy PDF" />
-          <button
-            onClick={upload}
-            disabled={uploading}
-            className="border px-4 py-1.5 rounded text-sm hover:bg-gray-50 disabled:opacity-50"
-          >
+          <button onClick={upload} disabled={uploading}
+                  className="border px-4 py-1.5 rounded text-sm hover:bg-gray-50 disabled:opacity-50">
             {uploading ? "Processing..." : "Upload policy for this patient"}
           </button>
         </div>
-        {msg && <p className="text-sm mt-2 text-gray-600">{msg}</p>}
+      </div>
+
+      <div className="bg-white rounded-lg shadow p-5">
+        <h3 className="font-semibold mb-2">Prior authorization checklists</h3>
+        <SavedChecklists patientId={patientId} />
       </div>
     </div>
   );
@@ -136,10 +317,11 @@ export default function Patients() {
   const path = useHashPath();
   const [patients, setPatients] = useState([]);
   const [filter, setFilter] = useState("");
+  const [showArchived, setShowArchived] = useState(false);
   const [error, setError] = useState("");
 
-  const load = () => api.listPatients().then(setPatients).catch((e) => setError(clean(e.message)));
-  useEffect(() => { load(); }, []);
+  const load = () => api.listPatients(showArchived).then(setPatients).catch((e) => setError(clean(e.message)));
+  useEffect(() => { load(); }, [showArchived]);
 
   const match = path.match(/^\/patients\/([A-Za-z0-9_-]+)$/);
   if (match) return <PatientDetail patientId={match[1]} />;
@@ -150,16 +332,20 @@ export default function Patients() {
   return (
     <div className="space-y-6">
       <h2 className="text-2xl font-bold">Patients</h2>
-      <NewPatientForm onCreated={(p) => navigate(`/patients/${p.patient_id}`)} />
+      <section className="bg-white rounded-lg shadow p-5">
+        <h3 className="font-semibold mb-3">Add a patient</h3>
+        <PatientForm initial={{ name: "", reference: "", date_of_birth: "" }} submitLabel="Add patient"
+                     onSubmit={async (p) => { const created = await api.createPatient(p); navigate(`/patients/${created.patient_id}`); }} />
+      </section>
       {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
       <div className="bg-white rounded-lg shadow">
-        <div className="p-3 border-b">
-          <input
-            placeholder="Search by name or MRN"
-            value={filter}
-            onChange={(e) => setFilter(e.target.value)}
-            className="border rounded px-3 py-1.5 text-sm w-64"
-          />
+        <div className="p-3 border-b flex items-center gap-4">
+          <input placeholder="Search by name or MRN" value={filter} onChange={(e) => setFilter(e.target.value)}
+                 className="border rounded px-3 py-1.5 text-sm w-64" />
+          <label className="text-sm flex items-center gap-1">
+            <input type="checkbox" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} />
+            Show archived
+          </label>
         </div>
         {shown.length === 0 ? (
           <p className="p-5 text-gray-500 text-sm">
@@ -172,17 +358,27 @@ export default function Patients() {
                 <th className="p-3">Name</th>
                 <th>MRN</th>
                 <th>Date of birth</th>
-                <th>Policies</th>
+                <th>Insurance</th>
               </tr>
             </thead>
             <tbody>
               {shown.map((p) => (
                 <tr key={p.patient_id} className="border-b hover:bg-gray-50 cursor-pointer"
                     onClick={() => navigate(`/patients/${p.patient_id}`)}>
-                  <td className="p-3 font-medium">{p.name}</td>
+                  <td className="p-3 font-medium">
+                    {p.name}
+                    {p.archived && <span className="ml-2 text-xs text-gray-500">(archived)</span>}
+                    {p.linked_username && <SharedBadge email={p.linked_username} />}
+                  </td>
                   <td>{p.reference || "—"}</td>
                   <td>{p.date_of_birth || "—"}</td>
-                  <td>{p.documents.length}</td>
+                  <td>
+                    {p.documents.length === 0 ? "—" : p.documents.map((d) => (
+                      <span key={d.document_id} className={`mr-1 px-2 py-0.5 rounded text-xs ${STATUS[d.coverage_status] || STATUS.unknown}`}>
+                        {d.insurer_name || docName(d)}
+                      </span>
+                    ))}
+                  </td>
                 </tr>
               ))}
             </tbody>

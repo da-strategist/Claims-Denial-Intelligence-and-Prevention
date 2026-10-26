@@ -95,7 +95,7 @@ def test_history_is_sent_before_the_new_question(fake):
 # ── Citation verification ────────────────────────────────────────────
 
 def test_verified_citation_takes_page_and_section_from_the_chunk(fake):
-    answer, citations, confidence = _live()
+    answer, citations, confidence, _ = _live()
     assert confidence == "supported"
     [c] = citations
     assert (c.document_id, c.page_number, c.section) == ("doc1", 3, "PRIOR AUTHORIZATION REQUIREMENTS")
@@ -114,7 +114,7 @@ def test_fabricated_or_out_of_range_citations_are_dropped(monkeypatch):
         "confidence": "supported",
     }))
     monkeypatch.setattr(rag, "_client", lambda: client)
-    answer, citations, confidence = _live("Is acupuncture covered?")
+    answer, citations, confidence, _ = _live("Is acupuncture covered?")
     assert [c.excerpt for c in citations] == ["acupuncture,   naturopathy"]
     assert "2 citation(s) could not be verified" in answer
     assert confidence == "supported"
@@ -127,7 +127,7 @@ def test_no_verifiable_citation_downgrades_confidence(monkeypatch):
         "confidence": "supported",
     }))
     monkeypatch.setattr(rag, "_client", lambda: client)
-    _, citations, confidence = _live()
+    _, citations, confidence, _ = _live()
     assert citations == [] and confidence == "interpreted"
 
 
@@ -142,7 +142,7 @@ def test_model_reported_insufficient_evidence_is_kept(monkeypatch):
 def test_refusal_returns_safe_message(monkeypatch):
     client = FakeClient(_response(stop_reason="refusal"))
     monkeypatch.setattr(rag, "_client", lambda: client)
-    answer, citations, confidence = _live()
+    answer, citations, confidence, _ = _live()
     assert answer.startswith("I can't help with that request")
     assert citations == [] and confidence == "insufficient_evidence"
 
@@ -151,7 +151,8 @@ def test_refusal_returns_safe_message(monkeypatch):
 
 def _ask(monkeypatch, client, retrieved=RETRIEVED, history=None):
     monkeypatch.setattr(rag, "_client", lambda: client)
-    monkeypatch.setattr(rag, "retrieve_for_policy", lambda *a, **k: retrieved)
+    monkeypatch.setattr(rag, "load_chunks", lambda *a, **k: [])
+    monkeypatch.setattr(rag, "retrieve", lambda *a, **k: retrieved)
     return asyncio.run(rag.answer_question("Does an MRI need approval?", chunk_dir=None,
                                            mode="live", history=history))
 
@@ -207,3 +208,28 @@ def test_identifiers_are_redacted_from_question_and_history(fake):
     sent = json.dumps(fake.calls[0]["messages"])
     assert "W123456789" not in sent and "jane@mail.com" not in sent
     assert "is an MRI covered?" in sent
+
+
+# ── Next steps from the model are tied to passages that were sent ────
+
+def test_live_next_steps_are_kept_only_for_sent_passages(monkeypatch):
+    client = FakeClient(_response({
+        "answer": "MRI needs prior authorization.",
+        "citations": [{"passage_id": 1, "quote": "Advanced diagnostic imaging (MRI, CT scan, PET scan)"}],
+        "confidence": "supported",
+        "next_steps": [
+            {"text": "Ask your provider to request prior authorization.", "passage_id": 1},
+            {"text": "Made-up step", "passage_id": 9},
+            {"text": "", "passage_id": 2},
+        ],
+    }))
+    monkeypatch.setattr(rag, "_client", lambda: client)
+    *_, steps = _live()
+    assert steps == [{"text": "Ask your provider to request prior authorization.",
+                      "document_id": "doc1", "page_number": 3,
+                      "section": "PRIOR AUTHORIZATION REQUIREMENTS"}]
+    assert "next_steps" in fake_schema(client)
+
+
+def fake_schema(client):
+    return client.calls[0]["output_config"]["format"]["schema"]["properties"]

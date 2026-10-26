@@ -26,6 +26,12 @@ function Citation({ citation, index }) {
       >
         {citation.confidence}
       </span>
+      {citation.from_scan && (
+        <span className="ml-1 text-xs px-1 rounded bg-orange-100 text-orange-800"
+              title="This passage was read from a scanned page by text recognition, which can misread characters.">
+          From a scanned page — check the original
+        </span>
+      )}
     </div>
   );
 }
@@ -40,6 +46,112 @@ function PrivacyNotice({ mode }) {
         : "Answers are put together on this server from your plan documents; your questions are not sent to any outside service."}{" "}
       Conversations are kept for up to an hour so you can ask follow-up questions, then discarded.
     </p>
+  );
+}
+
+const fmtDate = (iso) => (iso ? new Date(`${iso}T00:00:00`).toLocaleDateString() : "");
+
+/** Key numbers of the selected plan, from its summary (verbatim policy text). */
+function PlanAtAGlance({ option }) {
+  const [summary, setSummary] = useState(null);
+  useEffect(() => {
+    setSummary(null);
+    if (option) api.getPolicySummary(option.id).then(setSummary).catch(() => setSummary(null));
+  }, [option?.id]);
+  if (!option || !summary) return null;
+  const doc = option.doc;
+  const rows = [
+    ["Coverage", doc.effective_date || doc.expiration_date
+      ? `${fmtDate(doc.effective_date)} – ${fmtDate(doc.expiration_date)}` : ""],
+    ["Deductible", summary.deductible?.description],
+    ["Out-of-pocket max", summary.out_of_pocket_max?.description],
+    ...summary.copayments.filter((c) => c.service !== "Note").slice(0, 4).map((c) => [c.service, c.amount]),
+  ].filter(([, v]) => v);
+  if (rows.length === 0) return null;
+  return (
+    <aside aria-label="Plan at a glance" className="bg-white rounded-lg shadow p-4 text-sm mb-3">
+      <p className="font-semibold mb-2">{option.label} at a glance</p>
+      <dl className="grid grid-cols-[max-content_1fr] gap-x-3 gap-y-1">
+        {rows.map(([k, v]) => (
+          <React.Fragment key={k}>
+            <dt className="text-gray-500">{k}</dt>
+            <dd className="text-gray-800">{v}</dd>
+          </React.Fragment>
+        ))}
+      </dl>
+      <p className="text-xs text-gray-400 mt-2">Quoted from your policy document; ask for details below.</p>
+    </aside>
+  );
+}
+
+function NextSteps({ steps }) {
+  return (
+    <div className="mt-3 bg-white/70 border border-blue-100 rounded p-2">
+      <p className="text-xs font-semibold text-gray-600 mb-1">What to check</p>
+      <ul className="space-y-1">
+        {steps.map((s, i) => (
+          <li key={i} className="text-xs text-gray-700">
+            {s.text}{" "}
+            <span className="text-gray-400">(based on page {s.page_number || "?"}, {s.section || "policy"})</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+// the headline amount of a policy line ("Individual In-Network: $1,500 per ..." → "$1,500")
+const headline = (value) => (value.match(/\$[\d,]+(?:\.\d+)?|\d+(?:\.\d+)?\s*%/) || [value])[0];
+
+/** Plans whose amounts differ for what was asked (full wording is in the quotes below). */
+function Differences({ items }) {
+  return (
+    <div role="note" aria-label="Plans differ" className="mt-2 bg-amber-50 border border-amber-200 rounded p-2 text-xs">
+      <p className="font-semibold text-amber-900 mb-1">Your plans differ on this</p>
+      {items.map((d) => (
+        <p key={d.topic}>
+          <span className="font-medium">{d.topic}:</span>{" "}
+          {d.values.map((v) => `${v.document_name}: ${headline(v.value)}`).join(" · ")}
+        </p>
+      ))}
+    </div>
+  );
+}
+
+/** "What your policy says": verbatim passages, grouped by plan. */
+function PolicySays({ quotes, whose }) {
+  const plans = [...new Set(quotes.map((q) => q.document_id))];
+  return (
+    <div className="mt-2 space-y-2">
+      {plans.map((id) => {
+        const mine = quotes.filter((q) => q.document_id === id);
+        return (
+          <section key={id} aria-label={`What ${mine[0].document_name || "the policy"} says`}>
+            <p className="text-xs font-semibold text-gray-600">
+              What {plans.length > 1 ? mine[0].document_name || "this plan" : `${whose} policy`} says
+            </p>
+            {mine.map((q, i) => (
+              <blockquote key={i} className="border-l-2 border-blue-300 pl-2 my-1 text-sm">
+                “{q.quote}”
+                <span className="block text-xs text-gray-500">
+                  {q.document_name ? `${q.document_name} · ` : ""}page {q.page_number || "?"} · {q.section}
+                  {q.from_scan && <span className="ml-1 text-orange-800">· from a scanned page, check the original</span>}
+                </span>
+              </blockquote>
+            ))}
+          </section>
+        );
+      })}
+    </div>
+  );
+}
+
+function KeepInMind({ text }) {
+  return (
+    <div role="note" aria-label="Keep in mind" className="mt-3 bg-white/70 border border-gray-200 rounded p-2 text-xs text-gray-600">
+      <p className="font-semibold text-gray-700 mb-0.5">Keep in mind</p>
+      {text}
+    </div>
   );
 }
 
@@ -78,6 +190,16 @@ export default function ChatAssistant() {
     return patient?.documents.some((d) => d.document_id === o.id);
   });
   const policyChoices = hospital ? patientDocs : options;
+  const selectedOption = options.find((o) => o.id === selectedPolicy);
+
+  // Starter questions built from the documents in scope
+  const [starters, setStarters] = useState([]);
+  useEffect(() => {
+    if (hospital && !selectedPatient) return setStarters([]);
+    api.chatSuggestions(selectedPolicy || undefined, hospital ? selectedPatient : undefined)
+      .then((r) => setStarters(r.questions))
+      .catch(() => setStarters([]));
+  }, [hospital, selectedPolicy, selectedPatient]);
   const canAsk = hospital ? Boolean(selectedPatient) : Boolean(selectedPolicy) || user?.role === "individual";
 
   useEffect(() => {
@@ -89,9 +211,29 @@ export default function ChatAssistant() {
     setMessages([]);
   };
 
-  const handleAsk = async () => {
-    if (!question.trim() || !canAsk) return;
-    const q = question.trim();
+  // Optional name search for hospital staff: narrows the patient list (every
+  // typed word must appear in the name, or the email of a patient who shared);
+  // the chosen patient always stays listed
+  const [searching, setSearching] = useState(false);
+  const [patientSearch, setPatientSearch] = useState("");
+  const words = patientSearch.toLowerCase().split(/\s+/).filter(Boolean);
+  const matches = patients.filter((p) => {
+    const text = `${p.name} ${p.linked_username || ""}`.toLowerCase();
+    return words.every((w) => text.includes(w));
+  });
+  const patientChoices = words.length === 0 ? patients
+    : patients.filter((p) => p.patient_id === selectedPatient || matches.includes(p));
+  const choosePatient = (id) => {
+    // a conversation is about one patient
+    setSelectedPatient(id);
+    setSelectedPolicy("");
+    startNewConversation();
+  };
+
+  /** Ask the typed question, or `text` (a suggested question, sent as is). */
+  const handleAsk = async (text) => {
+    const q = (typeof text === "string" ? text : question).trim();
+    if (!q || !canAsk || loading) return;
     setQuestion("");
     setMessages((prev) => [...prev, { role: "user", content: q }]);
     setLoading(true);
@@ -105,8 +247,13 @@ export default function ChatAssistant() {
         {
           role: "assistant",
           content: resp.answer,
+          lead: resp.lead || "",
+          policySays: resp.policy_says || [],
+          differences: resp.differences || [],
+          keepInMind: resp.keep_in_mind || "",
           citations: resp.citations,
           followUps: resp.follow_up_suggestions,
+          nextSteps: resp.next_steps || [],
         },
       ]);
     } catch (e) {
@@ -124,24 +271,55 @@ export default function ChatAssistant() {
       <div className="flex items-center gap-3 mb-4">
         <h2 className="text-2xl font-bold">Ask a Question</h2>
         {hospital && (
-          <select
-            aria-label="Patient"
-            value={selectedPatient}
-            onChange={(e) => {
-              // a conversation is about one patient
-              setSelectedPatient(e.target.value);
-              setSelectedPolicy("");
-              startNewConversation();
-            }}
-            className="border rounded px-3 py-1.5 text-sm"
-          >
-            <option value="">Choose a patient…</option>
-            {patients.map((p) => (
-              <option key={p.patient_id} value={p.patient_id}>
-                {p.name}{p.reference ? ` (${p.reference})` : ""}
-              </option>
-            ))}
-          </select>
+          <>
+            <button
+              type="button"
+              onClick={() => { setSearching(!searching); setPatientSearch(""); }}
+              aria-expanded={searching}
+              className="border rounded px-2.5 py-1.5 text-sm hover:bg-gray-50"
+            >
+              {searching ? "Close search" : "Search patients"}
+            </button>
+            {searching && (
+              <div className="flex flex-col">
+                <input
+                  type="search"
+                  aria-label="Search patients by name"
+                  placeholder="Patient name…"
+                  value={patientSearch}
+                  maxLength={100}
+                  autoFocus
+                  onChange={(e) => setPatientSearch(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && words.length && matches.length) {
+                      e.preventDefault();
+                      if (matches[0].patient_id !== selectedPatient) choosePatient(matches[0].patient_id);
+                    }
+                  }}
+                  className="border rounded px-3 py-1.5 text-sm w-44"
+                />
+                {words.length > 0 && (
+                  <span className="text-xs text-gray-500 mt-0.5" aria-live="polite">
+                    {matches.length === 0 ? "No patients match"
+                      : `${matches.length} match${matches.length === 1 ? "" : "es"}`}
+                  </span>
+                )}
+              </div>
+            )}
+            <select
+              aria-label="Patient"
+              value={selectedPatient}
+              onChange={(e) => choosePatient(e.target.value)}
+              className="border rounded px-3 py-1.5 text-sm"
+            >
+              <option value="">Choose a patient…</option>
+              {patientChoices.map((p) => (
+                <option key={p.patient_id} value={p.patient_id}>
+                  {p.name}{p.reference ? ` (${p.reference})` : ""}
+                </option>
+              ))}
+            </select>
+          </>
         )}
         <select
           aria-label="Policy"
@@ -174,6 +352,7 @@ export default function ChatAssistant() {
         </button>
       </div>
 
+      <PlanAtAGlance option={selectedOption} />
       <div className="flex-1 overflow-y-auto bg-white rounded-lg shadow p-4 space-y-4">
         {hospital && !selectedPatient && (
           <p className="text-sm text-gray-500">
@@ -182,13 +361,19 @@ export default function ChatAssistant() {
           </p>
         )}
         {messages.length === 0 && (!hospital || selectedPatient) && (
-          <div className="text-gray-400 text-center py-12">
+          <div className="text-center py-8">
             <p className="text-4xl mb-3">💬</p>
-            <p>Ask a question about your insurance policy.</p>
-            <p className="text-sm mt-1">
-              For example: "Does this plan cover MRI scans?" or "What is my
-              deductible?"
-            </p>
+            <p className="text-gray-500">Ask a question about {hospital ? "this patient's" : "your"} insurance policy.</p>
+            {starters.length > 0 && (
+              <div className="mt-4 flex flex-wrap justify-center gap-2 max-w-2xl mx-auto" aria-label="Suggested questions">
+                {starters.map((q) => (
+                  <button key={q} onClick={() => handleAsk(q)}
+                          className="text-sm bg-blue-50 text-blue-800 px-3 py-1.5 rounded-full border border-blue-200 hover:bg-blue-100">
+                    {q}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         )}
         {messages.map((m, i) => (
@@ -203,23 +388,38 @@ export default function ChatAssistant() {
                   : "bg-gray-100 text-gray-800"
               }`}
             >
-              <p className="whitespace-pre-line text-sm">{m.content}</p>
-              {m.citations?.length > 0 && (
-                <div className="mt-3 space-y-2">
-                  <p className="text-xs font-semibold text-gray-600">
-                    Sources:
+              {m.policySays?.length > 0 ? (
+                <>
+                  {/* live answers are written explanations; demo answers lead into the quotes */}
+                  <p className="whitespace-pre-line text-sm">
+                    {mode === "live" ? m.content.replace(m.keepInMind, "").replace(/\u26a0\ufe0f\s*$/, "").trim() : m.lead}
                   </p>
-                  {m.citations.map((c, j) => (
-                    <Citation key={j} citation={c} index={j} />
-                  ))}
-                </div>
+                  {m.differences?.length > 0 && <Differences items={m.differences} />}
+                  <PolicySays quotes={m.policySays} whose={hospital ? "the patient's" : "your"} />
+                </>
+              ) : (
+                <p className="whitespace-pre-line text-sm">{m.content}</p>
+              )}
+              {m.nextSteps?.length > 0 && <NextSteps steps={m.nextSteps} />}
+              {m.keepInMind && <KeepInMind text={m.keepInMind} />}
+              {m.citations?.length > 0 && (
+                <details className="mt-3">
+                  <summary className="text-xs font-semibold text-gray-600 cursor-pointer">
+                    All sources ({m.citations.length})
+                  </summary>
+                  <div className="mt-2 space-y-2">
+                    {m.citations.map((c, j) => (
+                      <Citation key={j} citation={c} index={j} />
+                    ))}
+                  </div>
+                </details>
               )}
               {m.followUps?.length > 0 && (
                 <div className="mt-3 flex flex-wrap gap-1">
                   {m.followUps.map((f, j) => (
                     <button
                       key={j}
-                      onClick={() => setQuestion(f)}
+                      onClick={() => handleAsk(f)}
                       className="text-xs bg-white/80 text-blue-700 px-2 py-1 rounded border border-blue-200 hover:bg-blue-50"
                     >
                       {f}
@@ -254,7 +454,7 @@ export default function ChatAssistant() {
           disabled={loading}
         />
         <button
-          onClick={handleAsk}
+          onClick={() => handleAsk()}
           disabled={loading || !question.trim() || !canAsk}
           className="bg-blue-600 text-white px-5 py-2 rounded-lg text-sm hover:bg-blue-700 disabled:opacity-50"
         >

@@ -14,7 +14,7 @@ METRICS = ("metadata", "retrieval_top1", "retrieval_top3", "section_top1", "answ
 
 THRESHOLDS = {
     "apex_health_gold_ppo_2025.pdf":              (5, 8, 8, 8, 8, 3, 6),
-    "summit_care_silver_hmo_2026.pdf":            (5, 9, 10, 9, 9, 4, 6),
+    "summit_care_silver_hmo_2026.pdf":            (5, 9, 10, 9, 10, 4, 6),
     "northwind_bronze_hdhp_2026.pdf":             (5, 10, 10, 10, 10, 4, 5),
     "riverbend_community_care_medicaid_2025.pdf": (5, 10, 10, 10, 10, 4, 5),
 }

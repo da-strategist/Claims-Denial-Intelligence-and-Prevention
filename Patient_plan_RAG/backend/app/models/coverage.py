@@ -35,6 +35,7 @@ class SourceCitation(BaseModel):
     section: str = ""
     excerpt: str = ""
     confidence: str = "supported"  # supported, interpreted, suggested
+    from_scan: bool = False  # the passage was read from a scanned page by OCR
 
 
 class CoverageAssessment(BaseModel):
@@ -96,10 +97,49 @@ class ChatRequest(DomainModel):
     conversation_id: DocumentId | None = None
 
 
+class NextStep(BaseModel):
+    """A suggested action, tied to the policy passage that prompted it."""
+    text: str
+    document_id: str
+    page_number: int | None = None
+    section: str = ""
+
+
+class PolicyQuote(BaseModel):
+    """A passage shown under "What your policy says"."""
+    document_id: str
+    document_name: str = ""
+    page_number: int | None = None
+    section: str = ""
+    quote: str
+    from_scan: bool = False
+
+
+class PlanValue(BaseModel):
+    document_id: str
+    document_name: str = ""
+    value: str
+    page_number: int | None = None
+    section: str = ""
+
+
+class PlanDifference(BaseModel):
+    """An amount the question is about that differs between the plans shown."""
+    topic: str
+    values: list[PlanValue]
+
+
 class ChatResponse(BaseModel):
+    # The whole answer as plain text (for API clients); the fields below lay
+    # it out: lead line, quotes grouped by plan, differences, fixed note.
     answer: str
+    lead: str = ""
+    policy_says: list[PolicyQuote] = Field(default_factory=list)
+    differences: list[PlanDifference] = Field(default_factory=list)
+    keep_in_mind: str = ""
     citations: list[SourceCitation] = Field(default_factory=list)
     follow_up_suggestions: list[str] = Field(default_factory=list)
+    next_steps: list[NextStep] = Field(default_factory=list)
     confidence: str = "supported"
     conversation_id: str = ""
     disclaimer: str = DISCLAIMER

@@ -9,11 +9,12 @@ from datetime import date, datetime
 from pathlib import Path
 
 from ..models.policy import DocumentChunk, DocumentStatus, PolicyDocument
+from . import ocr
 
 
 # Bump whenever chunking or metadata extraction changes: documents ingested
 # with an older version are re-ingested at startup (services/ingest.py).
-CHUNKER_VERSION = 3  # 2: font-based headings; 3: "Issued by"/"Program"/org title-line metadata
+CHUNKER_VERSION = 4  # 2: font-based headings; 3: "Issued by"/"Program"/org title-line metadata; 4: plan period ranges
 
 
 def _generate_chunk_id(document_id: str, index: int) -> str:
@@ -130,7 +131,7 @@ def _overlap_lines(lines: list[str], chunk_overlap: int) -> list[str]:
     return kept if size <= chunk_overlap * 2 else []
 
 
-_DATE_FORMATS = ("%B %d, %Y", "%b %d, %Y", "%m/%d/%Y", "%Y-%m-%d")
+_DATE_FORMATS = ("%B %d, %Y", "%b %d, %Y", "%m/%d/%Y", "%Y-%m-%d", "%d %B %Y")
 
 
 def _parse_date(text: str) -> date | None:
@@ -140,6 +141,49 @@ def _parse_date(text: str) -> date | None:
         except ValueError:
             continue
     return None
+
+
+# Plan period stated as a range: "Coverage Period: 01/01/2026 - 12/31/2026",
+# "Plan year: January 1, 2026 through December 31, 2026", "Plan effective
+# 2026-01-01 through 2026-12-31", or the Medicare form "January 1 – December
+# 31, 2026" (one year for both ends)
+_DATE = r"(?:[A-Z][a-z]{2,8}\.?\s+\d{1,2},?\s+\d{4}|\d{1,2}/\d{1,2}/\d{4}|\d{4}-\d{2}-\d{2}|\d{1,2}\s+[A-Z][a-z]{2,8}\s+\d{4})"
+_RANGE_SEP = r"\s*(?:[-–—]|\bto\b|\bthrough\b|\bthru\b)\s*"
+_PERIOD_LABEL = (r"(?:Coverage|Policy|Plan|Benefit|Contract|Membership)\s+(?:Period|Year|Dates?|Term)"
+                 r"|Plan\s+effective|Coverage\s+effective|Period\s+of\s+coverage|Dates\s+of\s+coverage")
+_LABELLED_RANGE_RE = re.compile(
+    rf"(?im)^.*?\b(?:{_PERIOD_LABEL})\b\s*[:#]?\s*(?P<start>{_DATE}){_RANGE_SEP}(?P<end>{_DATE})")
+_SHARED_YEAR_RANGE_RE = re.compile(
+    r"(?m)^\s*(?P<m1>[A-Z][a-z]{2,8})\s+(?P<d1>\d{1,2})" + _RANGE_SEP
+    + r"(?P<m2>[A-Z][a-z]{2,8})\s+(?P<d2>\d{1,2}),?\s+(?P<year>\d{4})\s*$")
+
+
+def find_plan_period(text: str) -> tuple[date | None, date | None, str]:
+    """Plan start and end dates stated in `text`, with the line they come
+    from (verbatim). Labelled dates ("Effective Date: …") win over ranges.
+    Nothing is guessed: missing ends are None."""
+    def labelled(*labels: str) -> tuple[date | None, str]:
+        for label in labels:
+            m = re.search(rf"(?im)^.*?\b{label}\s*[:#]\s*(.+?)\s*$", text)
+            if m and (parsed := _parse_date(m.group(1))):
+                return parsed, m.group(0).strip()
+        return None, ""
+
+    start, start_line = labelled(r"Effective\s+Date", r"Start\s+Date")
+    end, end_line = labelled(r"Expiration\s+Date", r"Termination\s+Date", r"End\s+Date")
+    if start or end:
+        return start, end, "\n".join(line for line in (start_line, end_line) if line)
+    if m := _LABELLED_RANGE_RE.search(text):
+        start, end = _parse_date(m.group("start")), _parse_date(m.group("end"))
+        if start and end:
+            return start, end, m.group(0).strip()
+    if m := _SHARED_YEAR_RANGE_RE.search(text):
+        year = m.group("year")
+        start = _parse_date(f"{m.group('m1')} {m.group('d1')}, {year}")
+        end = _parse_date(f"{m.group('m2')} {m.group('d2')}, {year}")
+        if start and end and start <= end:
+            return start, end, m.group(0).strip()
+    return None, None, ""
 
 
 def _labelled_value(text: str, *labels: str) -> str:
@@ -182,13 +226,11 @@ def extract_policy_metadata(pages: list[dict]) -> dict:
     if plan_name:
         meta["plan_name"] = plan_name
 
-    for key, labels in [
-        ("effective_date", (r"Effective\s+Date",)),
-        ("expiration_date", (r"Expiration\s+Date", r"Termination\s+Date", r"End\s+Date")),
-    ]:
-        parsed = _parse_date(_labelled_value(text, *labels))
-        if parsed:
-            meta[key] = parsed
+    start, end, _ = find_plan_period(text)
+    if start:
+        meta["effective_date"] = start
+    if end:
+        meta["expiration_date"] = end
     return meta
 
 
@@ -256,6 +298,50 @@ def chunk_text(
     return chunks
 
 
+# A page with fewer non-space characters than this has no usable text layer:
+# it is a scanned or photographed page (or blank).
+MIN_PAGE_TEXT_CHARS = 25
+
+UNREADABLE_NO_OCR = (
+    "We couldn't find any text in this PDF. It looks like a scanned or photographed "
+    "document, and scanned documents can't be read on this server yet. Please upload a "
+    "PDF with selectable text, for example one downloaded from your insurer's website.")
+UNREADABLE_AFTER_OCR = (
+    "We couldn't read this PDF. It looks like a scanned document, but the scan was too "
+    "unclear to read. Try a clearer scan, or a PDF downloaded from your insurer's website.")
+CANNOT_OPEN = "We couldn't open this PDF. It may be damaged or password-protected."
+
+
+class UnreadableDocument(Exception):
+    """No page of the document has readable text."""
+
+
+def _has_text(text: str) -> bool:
+    return len(re.sub(r"\s", "", text)) >= MIN_PAGE_TEXT_CHARS
+
+
+def read_scanned_pages(pdf_path: Path, pages: list[dict]) -> tuple[list[int], list[int]]:
+    """Fill pages that have no text layer using OCR, when available.
+
+    Returns (pages read by OCR, pages still unreadable); raises
+    UnreadableDocument when no page has readable text at all.
+    """
+    use_ocr = ocr.available()
+    read, unreadable = [], []
+    for page in pages:
+        if _has_text(page["text"]):
+            continue
+        text = ocr.read_page(pdf_path, page["page_number"]) if use_ocr else ""
+        if _has_text(text):
+            page.update(text=text, headings=[], ocr=True)
+            read.append(page["page_number"])
+        else:
+            unreadable.append(page["page_number"])
+    if pages and len(unreadable) == len(pages):
+        raise UnreadableDocument(UNREADABLE_AFTER_OCR if use_ocr else UNREADABLE_NO_OCR)
+    return read, unreadable
+
+
 def process_document(
     pdf_path: Path,
     chunk_dir: Path,
@@ -277,8 +363,12 @@ def process_document(
     doc.chunker_version = CHUNKER_VERSION
 
     try:
-        pages = extract_text_from_pdf(pdf_path)
+        try:
+            pages = extract_text_from_pdf(pdf_path)
+        except RuntimeError as exc:
+            raise UnreadableDocument(CANNOT_OPEN) from exc
         doc.page_count = len(pages)
+        doc.ocr_pages, doc.unreadable_pages = read_scanned_pages(pdf_path, pages)
 
         # Fill metadata stated in the document, without overriding caller values
         for key, value in extract_policy_metadata(pages).items():
@@ -286,6 +376,9 @@ def process_document(
                 setattr(doc, key, value)
 
         chunks = chunk_text(pages, document_id, chunk_size, chunk_overlap)
+        for c in chunks:
+            if c.page_number in doc.ocr_pages:
+                c.metadata["from_scan"] = True
         doc.chunk_count = len(chunks)
 
         # Persist chunks
@@ -295,7 +388,16 @@ def process_document(
             json.dumps([c.model_dump() for c in chunks], indent=2, default=str)
         )
 
-        doc.status = DocumentStatus.COMPLETED
+        if doc.unreadable_pages:
+            doc.status = DocumentStatus.PARTIAL
+            doc.error_message = (f"Some pages could not be read (page "
+                                 f"{', '.join(map(str, doc.unreadable_pages))}).")
+        else:
+            doc.status = DocumentStatus.COMPLETED
+    except UnreadableDocument as exc:
+        doc.status = DocumentStatus.FAILED
+        doc.error_message = str(exc)
+        chunks = []
     except Exception as exc:
         doc.status = DocumentStatus.FAILED
         doc.error_message = str(exc)

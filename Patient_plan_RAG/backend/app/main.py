@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from . import audit
 from .models.common import DISCLAIMER
 from .rate_limit import api_limiter, upload_limiter
-from .routers import admin, auth, chat, coverage, dashboard, hospital, policies, shares
+from .routers import admin, auth, chat, coverage, dashboard, hospital, me, oversight, policies, shares
 
 # ── Directories ──────────────────────────────────────────────────────
 
@@ -30,9 +30,12 @@ for d in (UPLOAD_DIR, POLICY_DIR, CHUNK_DIR):
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Ingest new PDFs and re-ingest stale documents before serving."""
+    from .services import sharing
     from .services.ingest import sync_registry
 
     sync_registry(POLICY_DIR, UPLOAD_DIR, CHUNK_DIR)
+    sharing.backfill()  # patient records for shares made before they were automatic
+    sharing.refresh_names()  # records named after an email before the person gave a name
     yield
 
 
@@ -56,7 +59,7 @@ async def rate_limit(request: Request, call_next):
     path = request.url.path
     if path.startswith("/api") and path != "/api/health":
         client = request.client.host if request.client else "unknown"
-        strict = path in ("/api/policies/upload", "/api/auth/register")
+        strict = path in ("/api/policies/upload", "/api/auth/register", "/api/auth/register/provider")
         limiter = upload_limiter if strict else api_limiter
         wait = limiter.check(client)
         if wait is not None:
@@ -121,8 +124,10 @@ app.add_middleware(
 # Routers
 app.include_router(auth.router)
 app.include_router(admin.router)
+app.include_router(oversight.router)
 app.include_router(hospital.router)
 app.include_router(shares.router)
+app.include_router(me.router)
 app.include_router(policies.router)
 app.include_router(chat.router)
 app.include_router(coverage.router)

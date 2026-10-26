@@ -1,5 +1,7 @@
 """Sign in, sign out, current user, and password change."""
 
+from datetime import UTC, datetime
+
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
@@ -13,6 +15,7 @@ from ..auth.sessions import (
     signed_in,
 )
 from ..auth.users import Role, User, user_store
+from ..services import records
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -27,9 +30,34 @@ class Registration(BaseModel):
     password: str = Field(min_length=1, max_length=256)
 
 
+class ProviderRegistration(BaseModel):
+    """A provider organisation signs itself up; the person signing up becomes
+    its first provider admin. The organisation starts pending approval."""
+    org_name: str = Field(min_length=2, max_length=200)
+    category: str = Field(max_length=40)
+    npi: str = Field("", pattern=r"^(\d{10})?$")
+    address: str = Field("", max_length=300)
+    city: str = Field(min_length=1, max_length=100)
+    phone: str = Field("", max_length=40)
+    full_name: str = Field(min_length=1, max_length=200)
+    username: str = Field(min_length=3, max_length=254)
+    password: str = Field(min_length=1, max_length=256)
+
+
 class PasswordChange(BaseModel):
     current_password: str = Field(min_length=1, max_length=256)
     new_password: str = Field(min_length=1, max_length=256)
+
+
+def account(user: User) -> dict:
+    """The signed-in user plus their provider's name and approval status."""
+    data = user.public()
+    org = records.orgs.get(user.org_id) if user.org_id else None
+    if org:
+        data |= {"org_name": org.name, "org_category": org.category, "org_status": org.status}
+    if user.role is Role.PLATFORM_ADMIN:  # for the navigation badge
+        data["pending_providers"] = sum(1 for o in records.orgs.all() if o.status == records.PENDING)
+    return data
 
 
 def _set_cookie(response: Response, token: str) -> None:
@@ -52,14 +80,20 @@ async def login(body: LoginRequest, request: Request, response: Response) -> dic
         # same message for unknown user and wrong password
         raise HTTPException(401, "Incorrect email or password")
     login_throttle.succeeded(username)
+    org = records.orgs.get(user.org_id) if user.org_id else None
+    if org and org.status == records.REJECTED:
+        note = f" Reason: {org.review_note}" if org.review_note else ""
+        raise HTTPException(403, "Your provider sign-up was not approved. Contact the "
+                                 f"platform administrator.{note}")
+    user = user_store.update(user.username, last_sign_in=datetime.now(UTC).isoformat())
     _set_cookie(response, sessions.start(user.username))
-    return user.public()
+    return account(user)
 
 
 @router.post("/register")
 async def register(body: Registration, request: Request, response: Response) -> dict:
-    """Self sign-up for individuals (hospital accounts are created by their
-    hospital admin). Signs the new user in."""
+    """Self sign-up for individuals (provider staff are added by their
+    provider admin). Signs the new user in."""
     username = body.username.strip().lower()
     request.state.audit_username = username
     try:
@@ -68,12 +102,42 @@ async def register(body: Registration, request: Request, response: Response) -> 
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
     _set_cookie(response, sessions.start(user.username))
-    return user.public()
+    return account(user)
+
+
+@router.post("/register/provider")
+async def register_provider(body: ProviderRegistration, request: Request,
+                            response: Response) -> dict:
+    """Self sign-up for a provider organisation. It stays pending (not listed
+    for sharing, no uploads or patient records) until the platform admin
+    approves it. Signs the new provider admin in."""
+    username = body.username.strip().lower()
+    request.state.audit_username = username
+    if body.category not in records.PROVIDER_CATEGORIES:
+        raise HTTPException(400, "Choose a provider category.")
+    if user_store.get(username):
+        raise HTTPException(400, f"An account for {username} already exists.")
+    org = records.orgs.add(records.Org(
+        records.new_id(), body.org_name.strip(), category=body.category,
+        status=records.PENDING, npi=body.npi, address=body.address.strip(),
+        city=body.city.strip(), phone=body.phone.strip(), contact_email=username,
+        signed_up_by=username))
+    try:
+        user = user_store.create(username, body.password, Role.HOSPITAL_ADMIN,
+                                 org_id=org.org_id, must_change_password=False)
+        user = user_store.update(username, full_name=body.full_name.strip())
+    except ValueError as exc:
+        records.orgs.remove(org.org_id)
+        raise HTTPException(400, str(exc)) from exc
+    _set_cookie(response, sessions.start(user.username))
+    return account(user)
 
 
 @router.post("/logout")
 async def logout(request: Request, response: Response) -> dict:
     if token := request.cookies.get(SESSION_COOKIE):
+        if session := sessions.touch(token):
+            request.state.audit_username = session.username  # who signed out
         sessions.end(token)
     response.delete_cookie(SESSION_COOKIE, path="/")
     return {"signed_out": True}
@@ -81,7 +145,7 @@ async def logout(request: Request, response: Response) -> dict:
 
 @router.get("/me")
 async def me(user: User = Depends(signed_in)) -> dict:
-    return user.public()
+    return account(user)
 
 
 @router.post("/password")
@@ -99,4 +163,4 @@ async def change_password(body: PasswordChange, response: Response,
     # sign out every other session, then issue a fresh one for this browser
     sessions.end_all_for(user.username)
     _set_cookie(response, sessions.start(user.username))
-    return updated.public()
+    return account(updated)

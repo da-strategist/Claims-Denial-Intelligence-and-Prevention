@@ -26,7 +26,7 @@ from ..models.coverage import (
 )
 from ..services import registry
 from ..services.coverage_assessor import assess_coverage as assess_service
-from ..services.retrieval import load_chunks, retrieve_for_policy
+from ..services.retrieval import adapt_vocabulary, load_chunks, retrieve
 
 router = APIRouter(prefix="/api/coverage", tags=["coverage"])
 
@@ -64,11 +64,12 @@ async def generate_auth_checklist(
     """Generate a prior authorization preparation checklist."""
     audit_document(http, req.document_id)
     entry_or_404(user, registry.load(), req.document_id)
-    query = (
-        f"prior authorization precertification requirements {req.service_name} "
-        f"{req.service_code} {req.diagnosis_code}"
-    )
-    results = retrieve_for_policy(query, CHUNK_DIR, req.document_id, top_k=6)
+    chunks = load_chunks(CHUNK_DIR, req.document_id)
+    # "prior authorization" becomes the policy's own term (precertification, advance approval, ...)
+    query = adapt_vocabulary(
+        f"prior authorization requirements {req.service_name} {req.service_code} {req.diagnosis_code}",
+        chunks)
+    results = retrieve(query, chunks, top_k=6)
 
     checklist_id = uuid.uuid4().hex[:12]
     items: list[ChecklistItem] = []
@@ -98,6 +99,7 @@ async def generate_auth_checklist(
             document_id=chunk.document_id,
             page_number=chunk.page_number,
             section=chunk.section_heading,
+            from_scan=bool(chunk.metadata.get("from_scan")),
             excerpt=chunk.content[:250],
             confidence="supported" if score > 0.3 else "interpreted",
         ))

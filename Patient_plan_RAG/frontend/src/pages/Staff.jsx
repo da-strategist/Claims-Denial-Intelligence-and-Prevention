@@ -3,9 +3,9 @@ import { api } from "../services/api";
 import { useAuth } from "../auth/AuthContext";
 import TemporaryPassword from "../components/TemporaryPassword";
 
-const ROLE_LABELS = { hospital_staff: "Staff", hospital_admin: "Hospital admin" };
+const ROLE_LABELS = { hospital_staff: "Staff", hospital_admin: "Provider admin" };
 
-/** Hospital admins manage their own hospital's staff accounts. */
+/** Provider admins manage their own organisation's staff accounts. */
 export default function Staff() {
   const { user } = useAuth();
   const [staff, setStaff] = useState([]);
@@ -37,7 +37,6 @@ export default function Staff() {
 
   return (
     <div className="space-y-6">
-      <h2 className="text-2xl font-bold">Staff</h2>
       {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
       {temp && <TemporaryPassword {...temp} onDismiss={() => setTemp(null)} />}
 
@@ -53,7 +52,7 @@ export default function Staff() {
           <select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}
                   className="border rounded px-3 py-1.5">
             <option value="hospital_staff">Staff</option>
-            <option value="hospital_admin">Hospital admin</option>
+            <option value="hospital_admin">Provider admin</option>
           </select>
         </label>
         <button type="submit" className="bg-blue-600 text-white px-4 py-1.5 rounded text-sm hover:bg-blue-700">

@@ -36,8 +36,13 @@ class PolicyDocument(DomainModel):
     owner: str | None = None
     org_id: str | None = None
     patient_id: str | None = None
+    display_name: str = ""  # set by the owner; shown instead of the plan name
+    content_hash: str = ""  # of the uploaded file, to spot the same file uploaded twice
     is_synthetic: bool = True
     error_message: str | None = None
+    # Pages with no selectable text: read by OCR, or left unreadable
+    ocr_pages: list[int] = Field(default_factory=list)
+    unreadable_pages: list[int] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -76,4 +81,6 @@ class DocumentUploadResponse(BaseModel):
     status: DocumentStatus
     page_count: int = 0
     message: str = ""
+    ocr_pages: list[int] = Field(default_factory=list)
+    unreadable_pages: list[int] = Field(default_factory=list)
     disclaimer: str = DISCLAIMER

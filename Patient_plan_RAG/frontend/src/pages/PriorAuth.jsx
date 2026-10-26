@@ -1,20 +1,34 @@
 import React, { useEffect, useState } from "react";
 import { api } from "../services/api";
-import { usePolicyOptions } from "../hooks/usePolicyOptions";
+import { usePolicyPicker } from "../hooks/usePolicyPicker";
 
 export default function PriorAuth() {
-  const { options, error: policyError } = usePolicyOptions();
-  const [selectedPolicy, setSelectedPolicy] = useState("");
+  // hospital staff pick a patient first (or arrive with ?patient=<id>)
+  const { policyId: selectedPolicy, patientId, patient, picker } = usePolicyPicker();
   const [serviceName, setServiceName] = useState("");
   const [serviceCode, setServiceCode] = useState("");
   const [diagnosisCode, setDiagnosisCode] = useState("");
   const [checklist, setChecklist] = useState(null);
   const [loading, setLoading] = useState(false);
   const [items, setItems] = useState([]);
+  const [saved, setSaved] = useState("");
 
-  useEffect(() => {
-    if (!selectedPolicy && options.length > 0) setSelectedPolicy(options[0].id);
-  }, [options, selectedPolicy]);
+  const saveToPatient = async () => {
+    setSaved("");
+    try {
+      await api.saveChecklist(patientId, {
+        document_id: selectedPolicy,
+        service_name: serviceName.trim(),
+        service_code: serviceCode.trim(),
+        diagnosis_code: diagnosisCode.trim(),
+        items: items.map(({ item_id, category, description, required, completed }) =>
+          ({ item_id, category, description, required, completed: Boolean(completed) })),
+      });
+      setSaved(`Saved to ${patient?.name || "the patient"}'s record.`);
+    } catch (e) {
+      setSaved(`Couldn't save: ${e.message.replace(/^\d+: /, "")}`);
+    }
+  };
 
   const handleGenerate = async () => {
     if (!serviceName.trim() || !selectedPolicy) return;
@@ -54,25 +68,7 @@ export default function PriorAuth() {
 
       <div className="bg-white rounded-lg shadow p-5 space-y-4">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Policy
-            </label>
-            <select
-              value={selectedPolicy}
-              onChange={(e) => setSelectedPolicy(e.target.value)}
-              className="w-full border rounded px-3 py-2 text-sm"
-            >
-              {options.map((o) => (
-                <option key={o.id} value={o.id}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
-            {policyError && (
-              <p className="text-xs text-red-600 mt-1">Couldn't load policies: {policyError}</p>
-            )}
-          </div>
+          <div>{picker}</div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Service / Procedure
@@ -184,6 +180,15 @@ export default function PriorAuth() {
             ))}
           </div>
 
+          {patientId && (
+            <div className="flex items-center gap-3">
+              <button onClick={saveToPatient}
+                      className="border px-4 py-1.5 rounded text-sm hover:bg-gray-50">
+                Save to patient record
+              </button>
+              {saved && <span role="status" className="text-sm text-gray-600">{saved}</span>}
+            </div>
+          )}
           {checklist.citations?.length > 0 && (
             <div>
               <h4 className="text-sm font-semibold text-gray-600 mb-2">

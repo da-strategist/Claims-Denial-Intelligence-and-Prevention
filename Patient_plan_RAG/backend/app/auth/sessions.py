@@ -131,6 +131,7 @@ class Permission(str, Enum):
     UPLOAD_POLICY = "upload_policy"      # individuals: own; hospitals: to a patient; admin: samples
     VIEW_DASHBOARD = "view_dashboard"
     SHARE_POLICIES = "share_policies"    # individuals share their documents with a hospital
+    MANAGE_OWN_DATA = "manage_own_data"  # individuals: providers, export, delete account
     MANAGE_PATIENTS = "manage_patients"  # hospital patient records
     MANAGE_STAFF = "manage_staff"        # hospital admins: their hospital's staff
     MANAGE_ORGS = "manage_orgs"          # platform admin: hospital organisations
@@ -140,7 +141,7 @@ class Permission(str, Enum):
 _COMMON = {Permission.READ_POLICIES, Permission.ASK, Permission.UPLOAD_POLICY,
            Permission.VIEW_DASHBOARD}
 ROLE_PERMISSIONS: dict[Role, set[Permission]] = {
-    Role.INDIVIDUAL: _COMMON | {Permission.SHARE_POLICIES},
+    Role.INDIVIDUAL: _COMMON | {Permission.SHARE_POLICIES, Permission.MANAGE_OWN_DATA},
     Role.HOSPITAL_STAFF: _COMMON | {Permission.MANAGE_PATIENTS},
     Role.HOSPITAL_ADMIN: _COMMON | {Permission.MANAGE_PATIENTS, Permission.MANAGE_STAFF},
     Role.PLATFORM_ADMIN: _COMMON | {Permission.MANAGE_ORGS, Permission.MANAGE_USERS},
@@ -152,9 +153,9 @@ def current_user(request: Request) -> User:
     token = request.cookies.get(SESSION_COOKIE)
     session = sessions.touch(token) if token else None
     user = user_store.get(session.username) if session else None
-    if user is not None and user.org_id:  # a disabled hospital disables its staff
+    if user is not None and user.org_id:  # a disabled or rejected provider disables its staff
         org = records.orgs.get(user.org_id)
-        if org is None or org.disabled:
+        if org is None or org.disabled or org.status == records.REJECTED:
             user = None
     if user is None or user.disabled:
         if token:
@@ -175,6 +176,9 @@ def require(permission: Permission):
     def check(user: User = Depends(current_user)) -> User:
         if user.must_change_password:
             raise HTTPException(403, "Password change required")
+        if user.org_id and not records.orgs.get(user.org_id).usable:
+            # a provider that signed itself up waits for the platform admin
+            raise HTTPException(403, "Your provider account is awaiting approval")
         if permission not in ROLE_PERMISSIONS[user.role]:
             raise HTTPException(403, "Not permitted")
         return user

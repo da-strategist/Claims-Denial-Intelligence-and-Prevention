@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { api } from "../services/api";
-import { usePolicyOptions } from "../hooks/usePolicyOptions";
+import { usePolicyPicker } from "../hooks/usePolicyPicker";
 
 const CLASSIFICATION_STYLES = {
   coverage_indicated: { bg: "bg-green-100", text: "text-green-800", label: "Coverage Indicated" },
@@ -11,16 +11,13 @@ const CLASSIFICATION_STYLES = {
 };
 
 export default function CoverageAssessment() {
-  const { options, error: policyError } = usePolicyOptions();
-  const [selectedPolicy, setSelectedPolicy] = useState("");
+  // hospital staff pick a patient first (or arrive with ?patient=<id>)
+  const { policyId: selectedPolicy, patientId, patient, picker } = usePolicyPicker();
   const [serviceName, setServiceName] = useState("");
   const [serviceCode, setServiceCode] = useState("");
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    if (!selectedPolicy && options.length > 0) setSelectedPolicy(options[0].id);
-  }, [options, selectedPolicy]);
 
   const handleCheck = async () => {
     if (!serviceName.trim() || !selectedPolicy) return;
@@ -46,25 +43,7 @@ export default function CoverageAssessment() {
 
       <div className="bg-white rounded-lg shadow p-5 space-y-4">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Policy
-            </label>
-            <select
-              value={selectedPolicy}
-              onChange={(e) => setSelectedPolicy(e.target.value)}
-              className="w-full border rounded px-3 py-2 text-sm"
-            >
-              {options.map((o) => (
-                <option key={o.id} value={o.id}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
-            {policyError && (
-              <p className="text-xs text-red-600 mt-1">Couldn't load policies: {policyError}</p>
-            )}
-          </div>
+          <div>{picker}</div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Service / Procedure

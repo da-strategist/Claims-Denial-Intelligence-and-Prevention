@@ -116,3 +116,23 @@ def test_cli_verify_exit_codes(log, monkeypatch, capsys):
     log.write_text(log.read_text().replace('"u0"', '"x"'))
     assert audit.main(["verify"]) == 1 and "TAMPERED" in capsys.readouterr().out
     assert audit.main([]) == 2
+
+
+@pytest.mark.parametrize("entry, label, routine", [
+    ({"method": "POST", "route": "/api/auth/login", "status": 200}, "Signed in", False),
+    ({"method": "POST", "route": "/api/auth/login", "status": 401}, "Failed sign-in", False),
+    ({"method": "POST", "route": "/api/auth/login", "status": 429}, "Sign-in locked out", False),
+    ({"method": "GET", "route": "/api/hospital/patients/{patient_id}", "status": 200}, "Opened patient record", False),
+    ({"method": "POST", "route": "/api/chat", "status": 200}, "Asked a question", False),
+    ({"method": "POST", "route": "/api/hospital/patients/{patient_id}/merge", "status": 200}, "Merged patient records", False),
+    ({"method": "GET", "route": "/api/hospital/overview", "status": 200}, "Loaded hospital/overview", True),
+    ({"method": "GET", "route": "/api/hospital/overview", "status": 403}, "Loaded hospital/overview", False),
+])
+def test_describe_in_plain_words(entry, label, routine):
+    assert audit.describe(entry) == (label, routine)
+
+
+def test_sign_out_is_recorded_with_the_user(client):
+    client.post("/api/auth/logout")
+    entry = audit.read_entries()[-1]
+    assert (entry["route"], entry["user"]) == ("/api/auth/logout", "admin@example.com")

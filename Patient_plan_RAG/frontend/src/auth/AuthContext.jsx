@@ -4,7 +4,7 @@ import { api, AUTH_REQUIRED_EVENT } from "../services/api";
 const AuthContext = createContext(null);
 
 /**
- * Holds the signed-in user ({username, role, plan_ids, must_change_password})
+ * Holds the signed-in user ({username, role, org_id, org_status, must_change_password, ...})
  * or null. Asks the server on load; any 401 from the API signs the app out.
  */
 export function AuthProvider({ children }) {
@@ -26,10 +26,23 @@ export function AuthProvider({ children }) {
     setUser(await api.register(username, password));
   }, []);
 
+  const registerProvider = useCallback(async (details) => {
+    setUser(await api.registerProvider(details));
+  }, []);
+
   const signOut = useCallback(async () => {
     try {
       await api.logout();
     } finally {
+      setUser(null);
+    }
+  }, []);
+
+  /** Re-read the signed-in user (after a profile change); null when signed out. */
+  const refresh = useCallback(async () => {
+    try {
+      setUser(await api.me());
+    } catch {
       setUser(null);
     }
   }, []);
@@ -39,7 +52,7 @@ export function AuthProvider({ children }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, loading, signIn, register, signOut, changePassword }}>
+    <AuthContext.Provider value={{ user, loading, signIn, register, registerProvider, signOut, changePassword, refresh }}>
       {children}
     </AuthContext.Provider>
   );

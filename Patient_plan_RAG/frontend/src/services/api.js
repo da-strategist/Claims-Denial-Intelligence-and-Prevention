@@ -48,13 +48,17 @@ export const api = {
   me: () => request("/auth/me"),
   login: (username, password) => post("/auth/login", { username, password }),
   register: (username, password) => post("/auth/register", { username, password }),
+  registerProvider: (details) => post("/auth/register/provider", details),
   logout: () => post("/auth/logout"),
   changePassword: (currentPassword, newPassword) =>
     post("/auth/password", { current_password: currentPassword, new_password: newPassword }),
 
-  // Platform admin: hospitals and accounts
+  // Platform admin: providers (approval queue) and accounts
   listOrgs: () => request("/admin/orgs"),
-  createOrg: (name, adminUsername) => post("/admin/orgs", { name, admin_username: adminUsername }),
+  createOrg: ({ name, adminUsername, category, city }) =>
+    post("/admin/orgs", { name, admin_username: adminUsername, category, city }),
+  approveOrg: (orgId, note = "") => post(`/admin/orgs/${orgId}/approve`, { note }),
+  rejectOrg: (orgId, note = "") => post(`/admin/orgs/${orgId}/reject`, { note }),
   updateOrg: (orgId, changes) =>
     request(`/admin/orgs/${orgId}`, { method: "PATCH", body: JSON.stringify(changes) }),
   listUsers: () => request("/admin/users"),
@@ -65,6 +69,23 @@ export const api = {
     }),
   resetPassword: (username) =>
     post(`/admin/users/${encodeURIComponent(username)}/reset-password`),
+  userDetail: (username) => request(`/admin/users/${encodeURIComponent(username)}`),
+  deleteUser: (username, confirm) =>
+    request(`/admin/users/${encodeURIComponent(username)}`, { method: "DELETE", body: JSON.stringify({ confirm }) }),
+  orgDetail: (orgId) => request(`/admin/orgs/${orgId}`),
+  deleteOrg: (orgId, confirm) =>
+    request(`/admin/orgs/${orgId}`, { method: "DELETE", body: JSON.stringify({ confirm }) }),
+
+  // Platform admin: oversight
+  platformStats: () => request("/admin/stats"),
+  auditLog: (filters = {}) => {
+    const q = new URLSearchParams(Object.entries(filters).filter(([, v]) => v !== "" && v != null));
+    return request(`/admin/audit${q.toString() ? `?${q}` : ""}`);
+  },
+  verifyAudit: () => request("/admin/audit/verify"),
+  securityEvents: (days = 7) => request(`/admin/security?days=${days}`),
+  sampleHealth: () => request("/admin/samples"),
+  reprocessSample: (documentId) => post(`/admin/samples/${documentId}/reprocess`),
 
   // Hospital: staff (hospital admins), patients, shared policies
   listStaff: () => request("/hospital/staff"),
@@ -76,15 +97,60 @@ export const api = {
     }),
   resetStaffPassword: (username) =>
     post(`/hospital/staff/${encodeURIComponent(username)}/reset-password`),
-  listPatients: () => request("/hospital/patients"),
+  listPatients: (includeArchived = false) =>
+    request(`/hospital/patients${includeArchived ? "?include_archived=true" : ""}`),
   createPatient: (patient) => post("/hospital/patients", patient),
+  mergePatient: (patientId, intoPatientId) =>
+    post(`/hospital/patients/${patientId}/merge`, { into_patient_id: intoPatientId }),
   getPatient: (id) => request(`/hospital/patients/${id}`),
+  updatePatient: (id, changes) =>
+    request(`/hospital/patients/${id}`, { method: "PATCH", body: JSON.stringify(changes) }),
+  deletePatient: (id) => request(`/hospital/patients/${id}`, { method: "DELETE" }),
+  listChecklists: (patientId) => request(`/hospital/patients/${patientId}/checklists`),
+  saveChecklist: (patientId, checklist) => post(`/hospital/patients/${patientId}/checklists`, checklist),
+  updateChecklist: (patientId, id, items) =>
+    request(`/hospital/patients/${patientId}/checklists/${id}`, {
+      method: "PATCH", body: JSON.stringify({ items }),
+    }),
+  deleteChecklist: (patientId, id) =>
+    request(`/hospital/patients/${patientId}/checklists/${id}`, { method: "DELETE" }),
+  hospitalOverview: () => request("/hospital/overview"),
+  getHospitalProfile: () => request("/hospital/profile"),
+  updateHospitalProfile: (profile) =>
+    request("/hospital/profile", { method: "PATCH", body: JSON.stringify(profile) }),
+  accessLog: (includeRoutine = false) =>
+    request(`/hospital/access-log${includeRoutine ? "?include_routine=true" : ""}`),
+  listConnections: () => request("/hospital/connections"),
+  fileConnection: (connectionId, patientId) =>
+    request(`/hospital/connections/${connectionId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ patient_id: patientId || null }),
+    }),
   listShared: () => request("/hospital/shared"),
   fileShared: (shareId, patientId) =>
     request(`/hospital/shared/${shareId}`, {
       method: "PATCH",
       body: JSON.stringify({ patient_id: patientId || null }),
     }),
+
+  // Individuals: my account
+  overview: () => request("/me/overview"),
+  updateProfile: (fullName, phone) => request("/me/profile", {
+    method: "PATCH", body: JSON.stringify({ full_name: fullName, phone }),
+  }),
+  listProviders: () => request("/me/providers"),
+  addProvider: (provider) => post("/me/providers", provider),
+  updateProvider: (id, provider) => request(`/me/providers/${id}`, {
+    method: "PATCH", body: JSON.stringify(provider),
+  }),
+  deleteProvider: (id) => request(`/me/providers/${id}`, { method: "DELETE" }),
+  sharingOverview: () => request("/me/sharing"),
+  removeHospitalAccess: (orgId) => request(`/me/sharing/${orgId}`, { method: "DELETE" }),
+  exportMyData: () => request("/me/export"),
+  signOutEverywhere: () => post("/me/sign-out-everywhere"),
+  deleteAccount: (confirmEmail) => request("/me", {
+    method: "DELETE", body: JSON.stringify({ confirm_email: confirmEmail }),
+  }),
 
   // Individuals: share a policy with a hospital
   hospitalDirectory: () => request("/shares/hospitals"),
@@ -99,6 +165,10 @@ export const api = {
   listPolicies: () => request("/policies"),
   getPolicy: (id) => request(`/policies/${id}`),
   getPolicySummary: (id) => request(`/policies/${id}/summary`),
+  renamePolicy: (id, displayName) => request(`/policies/${id}`, {
+    method: "PATCH", body: JSON.stringify({ display_name: displayName }),
+  }),
+  deletePolicy: (id) => request(`/policies/${id}`, { method: "DELETE" }),
   getPolicyChunks: (id, page = 1) =>
     request(`/policies/${id}/chunks?page=${page}`),
   uploadPolicy: async (file, patientId) => {
@@ -123,6 +193,13 @@ export const api = {
         patient_id: patientId || null,
       }),
     }),
+
+  chatSuggestions: (policyId, patientId) => {
+    const params = new URLSearchParams();
+    if (policyId) params.set("policy_id", policyId);
+    if (patientId) params.set("patient_id", patientId);
+    return request(`/chat/suggestions?${params}`);
+  },
 
   // Coverage
   assessCoverage: (serviceName, serviceCode, documentId) =>

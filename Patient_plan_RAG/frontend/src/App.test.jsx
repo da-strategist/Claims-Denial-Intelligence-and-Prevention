@@ -1,4 +1,4 @@
-import { act, render, screen, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import App from "./App";
 import { AuthProvider } from "./auth/AuthContext";
@@ -6,7 +6,8 @@ import { api, AUTH_REQUIRED_EVENT } from "./services/api";
 
 vi.mock("./services/api", () => ({
   AUTH_REQUIRED_EVENT: "auth-required",
-  api: { me: vi.fn(), login: vi.fn(), register: vi.fn(), logout: vi.fn(), changePassword: vi.fn() },
+  api: { me: vi.fn(), login: vi.fn(), register: vi.fn(), registerProvider: vi.fn(), logout: vi.fn(),
+         changePassword: vi.fn() },
 }));
 
 // Stub pages so no data calls run; Dashboard crashes on render.
@@ -22,7 +23,21 @@ vi.mock("./pages/PriorAuth", () => ({ default: () => <p>auth page</p> }));
 vi.mock("./pages/Admin", () => ({ default: () => <p>admin page</p> }));
 vi.mock("./pages/Patients", () => ({ default: () => <p>patients page</p> }));
 vi.mock("./pages/SharedWithUs", () => ({ default: () => <p>shared page</p> }));
-vi.mock("./pages/Staff", () => ({ default: () => <p>staff page</p> }));
+const mounts = vi.hoisted(() => ({ overview: 0 }));
+vi.mock("./pages/HospitalOverview", async () => {
+  const { useEffect } = await import("react");
+  return {
+    default: function Overview() {
+      useEffect(() => { mounts.overview += 1; }, []);
+      return <p>hospital overview page</p>;
+    },
+  };
+});
+vi.mock("./pages/HospitalAdmin", () => ({ default: () => <p>hospital admin page</p> }));
+vi.mock("./pages/MyAccount", () => ({ default: () => <p>my account page</p> }));
+vi.mock("./pages/SharingAccess", () => ({ default: () => <p>sharing page</p> }));
+vi.mock("./pages/Settings", () => ({ default: () => <p>settings page</p> }));
+vi.mock("./pages/Oversight", () => ({ default: () => <p>oversight page</p> }));
 
 const MEMBER = { username: "m@example.com", role: "individual", org_id: null, must_change_password: false };
 const ADMIN = { ...MEMBER, username: "a@example.com", role: "platform_admin" };
@@ -54,6 +69,7 @@ afterEach(() => vi.restoreAllMocks());
 // ── Error boundary (signed in) ───────────────────────────────────────
 
 test("a crashing page keeps the disclaimer and navigation on screen", async () => {
+  api.me.mockResolvedValue(ADMIN);  // the admin lands on the (crashing) Dashboard
   renderApp();
   expect(await screen.findByRole("alert")).toHaveTextContent("Something went wrong on this page");
   expect(screen.getByText(/Demonstration Only/)).toBeInTheDocument();
@@ -61,6 +77,7 @@ test("a crashing page keeps the disclaimer and navigation on screen", async () =
 });
 
 test("navigating away from a crashed page recovers", async () => {
+  api.me.mockResolvedValue(ADMIN);  // the admin lands on the (crashing) Dashboard
   renderApp();
   await screen.findByRole("alert");
   goTo("/chat");
@@ -76,12 +93,23 @@ test("other pages render normally", async () => {
 
 // ── Sign-in ──────────────────────────────────────────────────────────
 
-test("signed-out visitors see only the sign-in page, with the disclaimer", async () => {
+test("signed-out visitors see the landing page with both sign-ups and the disclaimer", async () => {
   api.me.mockRejectedValue(new Error("401: Sign in required"));
   renderApp();
-  expect(await screen.findByRole("heading", { name: "Sign in" })).toBeInTheDocument();
+  expect(await screen.findByRole("heading", { name: "Understand your health insurance policy" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Sign up as an individual" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Sign up as a provider" })).toBeInTheDocument();
   expect(screen.getByText(/Demonstration Only/)).toBeInTheDocument();
   expect(screen.queryByRole("button", { name: /Ask a Question/ })).toBeNull();
+  await userEvent.click(screen.getAllByRole("button", { name: "Sign in" })[0]);
+  expect(await screen.findByRole("heading", { name: "Sign in" })).toBeInTheDocument();
+});
+
+test("a deep link while signed out asks to sign in first", async () => {
+  api.me.mockRejectedValue(new Error("401: Sign in required"));
+  window.location.hash = "/chat";
+  renderApp();
+  expect(await screen.findByRole("heading", { name: "Sign in" })).toBeInTheDocument();
 });
 
 test("signing in shows the app; a wrong password shows the error", async () => {
@@ -93,10 +121,10 @@ test("signing in shows the app; a wrong password shows the error", async () => {
   renderApp();
   await userEvent.type(await screen.findByLabelText("Email"), "m@example.com");
   await userEvent.type(screen.getByLabelText("Password"), "wrong");
-  await userEvent.click(screen.getByRole("button", { name: "Sign in" }));
+  await userEvent.click(within(screen.getByRole("main")).getByRole("button", { name: "Sign in" }));
   expect(await screen.findByRole("alert")).toHaveTextContent("Incorrect email or password");
   await userEvent.type(screen.getByLabelText("Password"), "right password");
-  await userEvent.click(screen.getByRole("button", { name: "Sign in" }));
+  await userEvent.click(within(screen.getByRole("main")).getByRole("button", { name: "Sign in" }));
   expect(await screen.findByText("chat page")).toBeInTheDocument();
   expect(api.login).toHaveBeenLastCalledWith("m@example.com", "right password");
 });
@@ -148,10 +176,10 @@ test("sign out returns to the sign-in page", async () => {
 
 test("each kind of account gets its own navigation", async () => {
   const cases = [
-    [MEMBER, ["Dashboard", "My Policies", "Ask a Question", "Coverage Check", "Prior Auth"]],
-    [STAFF, ["Patients", "Shared with us", "Ask a Question", "Coverage Check", "Prior Auth"]],
-    [HADMIN, ["Patients", "Shared with us", "Ask a Question", "Coverage Check", "Prior Auth", "Staff"]],
-    [ADMIN, ["Dashboard", "Hospitals & Accounts", "Sample Policies", "Ask a Question"]],
+    [MEMBER, ["My Account", "My Policies", "Ask a Question", "Coverage Check", "Sharing & Access", "Settings"]],
+    [STAFF, ["Overview", "Patients", "Shared with us", "Ask a Question", "Coverage Check", "Prior Auth"]],
+    [HADMIN, ["Overview", "Patients", "Shared with us", "Ask a Question", "Coverage Check", "Prior Auth", "Provider admin"]],
+    [ADMIN, ["Dashboard", "Providers & Accounts", "Audit & Security", "Sample Policies", "Ask a Question"]],
   ];
   for (const [user, expected] of cases) {
     api.me.mockResolvedValue(user);
@@ -163,14 +191,15 @@ test("each kind of account gets its own navigation", async () => {
   }
 });
 
-test("hospital accounts start on the patient list", async () => {
+test("hospital accounts start on their overview", async () => {
   api.me.mockResolvedValue(STAFF);
   renderApp();
-  expect(await screen.findByText("patients page")).toBeInTheDocument();
+  expect(await screen.findByText("hospital overview page")).toBeInTheDocument();
 });
 
 test("pages outside your role are refused", async () => {
-  for (const [user, path] of [[MEMBER, "/admin"], [MEMBER, "/patients"], [STAFF, "/staff"],
+  for (const [user, path] of [[MEMBER, "/admin"], [MEMBER, "/patients"], [MEMBER, "/auth"],
+                              [STAFF, "/settings"], [STAFF, "/sharing"], [STAFF, "/provider-admin"],
                               [ADMIN, "/patients"], [STAFF, "/admin"]]) {
     api.me.mockResolvedValue(user);
     window.location.hash = path;
@@ -184,24 +213,100 @@ test("pages outside your role are refused", async () => {
   expect(await screen.findByText("admin page")).toBeInTheDocument();
 });
 
-test("individuals can create an account from the sign-in page", async () => {
+test("individuals sign up from the landing page and land on My Account", async () => {
   api.me.mockRejectedValue(new Error("401: Sign in required"));
   api.register.mockResolvedValue(MEMBER);
-  window.location.hash = "/chat";
   renderApp();
-  await userEvent.click(await screen.findByRole("button", { name: /Create an account/ }));
-  expect(screen.getByRole("heading", { name: "Create your account" })).toBeInTheDocument();
+  await userEvent.click(await screen.findByRole("button", { name: "Sign up as an individual" }));
+  expect(screen.getByRole("heading", { name: "Sign up as an individual" })).toBeInTheDocument();
   await userEvent.type(screen.getByLabelText("Email"), "new@example.com");
-  await userEvent.type(screen.getByLabelText("Password"), "short");
+  await userEvent.type(screen.getByLabelText(/^Password/), "short");
   await userEvent.type(screen.getByLabelText("Confirm password"), "short");
   await userEvent.click(screen.getByRole("button", { name: "Create account" }));
   expect(screen.getByRole("alert")).toHaveTextContent("at least 12");
   expect(api.register).not.toHaveBeenCalled();
-  await userEvent.clear(screen.getByLabelText("Password"));
-  await userEvent.type(screen.getByLabelText("Password"), "a long passphrase");
+  await userEvent.clear(screen.getByLabelText(/^Password/));
+  await userEvent.type(screen.getByLabelText(/^Password/), "a long passphrase");
   await userEvent.clear(screen.getByLabelText("Confirm password"));
   await userEvent.type(screen.getByLabelText("Confirm password"), "a long passphrase");
   await userEvent.click(screen.getByRole("button", { name: "Create account" }));
-  expect(await screen.findByText("chat page")).toBeInTheDocument();
+  expect(await screen.findByText("my account page")).toBeInTheDocument();
   expect(api.register).toHaveBeenCalledWith("new@example.com", "a long passphrase");
+  expect(window.location.hash).toBe("#/");
+});
+
+const PENDING = { ...HADMIN, username: "dana@lakeside.example", org_name: "Lakeside Clinic",
+                  org_category: "clinic", org_status: "pending" };
+
+test("providers sign up with a category and wait for approval", async () => {
+  api.me.mockRejectedValue(new Error("401: Sign in required"));
+  api.registerProvider.mockResolvedValue(PENDING);
+  window.location.hash = "/signup/provider";
+  renderApp();
+  await userEvent.type(await screen.findByLabelText("Organisation name"), " Lakeside Clinic ");
+  await userEvent.selectOptions(screen.getByLabelText("Provider category"), "clinic");
+  await userEvent.type(screen.getByLabelText(/^NPI/), "1234567893");
+  await userEvent.type(screen.getByLabelText("City"), "Riverton");
+  await userEvent.type(screen.getByLabelText("Your full name"), "Dana Lee");
+  await userEvent.type(screen.getByLabelText("Work email"), "dana@lakeside.example");
+  await userEvent.type(screen.getByLabelText(/^Password/), "a long passphrase");
+  await userEvent.type(screen.getByLabelText("Confirm password"), "a long passphrase");
+  await userEvent.click(screen.getByRole("button", { name: "Create account" }));
+  expect(await screen.findByRole("heading", { name: /awaiting approval/ })).toBeInTheDocument();
+  expect(api.registerProvider).toHaveBeenCalledWith({
+    org_name: "Lakeside Clinic", category: "clinic", npi: "1234567893", address: "", city: "Riverton",
+    phone: "", full_name: "Dana Lee", username: "dana@lakeside.example", password: "a long passphrase",
+  });
+});
+
+test("a pending provider sees only the approval page, and can check again", async () => {
+  api.me.mockResolvedValue(PENDING);
+  window.location.hash = "/patients";
+  renderApp();
+  expect(await screen.findByText(/Lakeside Clinic/)).toBeInTheDocument();
+  expect(screen.getByText(/Clinic or physician practice/)).toBeInTheDocument();
+  expect(screen.queryByRole("navigation")).toBeNull();
+  expect(screen.queryByText("patients page")).toBeNull();
+  api.me.mockResolvedValue({ ...PENDING, org_status: "active" });
+  await userEvent.click(screen.getByRole("button", { name: "Check again" }));
+  expect(await screen.findByText("patients page")).toBeInTheDocument();
+});
+
+test("individuals land on My Account, not the system dashboard", async () => {
+  renderApp();
+  expect(await screen.findByText("my account page")).toBeInTheDocument();
+});
+
+test("the platform admin sees how many provider sign-ups are waiting", async () => {
+  api.me.mockResolvedValue({ ...ADMIN, pending_providers: 2 });
+  window.location.hash = "/chat";
+  renderApp();
+  const nav = await screen.findByRole("button", { name: /Providers & Accounts/ });
+  expect(nav).toHaveTextContent("2");
+  expect(within(nav).getByTitle(/2 provider sign-up/)).toBeInTheDocument();
+});
+
+test("audit & security is for the platform admin only", async () => {
+  api.me.mockResolvedValue(ADMIN);
+  window.location.hash = "/oversight";
+  const { unmount } = renderApp();
+  expect(await screen.findByText("oversight page")).toBeInTheDocument();
+  unmount();
+  api.me.mockResolvedValue(STAFF);
+  renderApp();
+  expect(await screen.findByRole("alert")).toHaveTextContent("Not permitted");
+});
+
+test("signing in on the sign-in page mounts the home page once", async () => {
+  api.me.mockRejectedValue(new Error("401: Sign in required"));
+  api.login.mockResolvedValue(STAFF);
+  window.location.hash = "/signin";
+  mounts.overview = 0;
+  renderApp();
+  await userEvent.type(await screen.findByLabelText("Email"), "s@h.example");
+  await userEvent.type(screen.getByLabelText("Password"), "a long passphrase");
+  await userEvent.click(within(screen.getByRole("main")).getByRole("button", { name: "Sign in" }));
+  expect(await screen.findByText("hospital overview page")).toBeInTheDocument();
+  await waitFor(() => expect(window.location.hash).toBe("#/"));
+  expect(mounts.overview).toBe(1);
 });
