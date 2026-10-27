@@ -3,6 +3,8 @@
     uv run python -m app.orgs list
     uv run python -m app.orgs migrate                     # one-time: today's data -> "meridian"
     uv run python -m app.orgs add-sample                  # the synthetic "lakeside" practice
+    uv run python -m app.orgs add-cms --claims inpatient.csv --beneficiaries beneficiary_2025.csv
+                                                          # CMS synthetic Medicare inpatient claims (cms_org.py)
     uv run python -m app.orgs add acme --name "Acme Health" --data-dir /path/to/acme/csvs
     uv run python -m app.orgs new-master-key              # prints a key for RCM_MASTER_KEY
     uv run python -m app.orgs encrypt                     # encrypt every organisation's files
@@ -34,6 +36,7 @@ from app.data.rules import DEFAULT_RULES_FILE
 from app.data.key_providers import active_name
 from app.data.secure_files import MASTER_KEY_ENV, EncryptionError, data_key_provider, new_master_key
 from app.data.users import get_user_store
+from app import cms_org
 from app.sample_org import generate
 from app.services.edi_settings import DEFAULT_EDI_SETTINGS_FILE
 
@@ -92,12 +95,34 @@ def add_sample() -> str:
     return f"created organisation {org_id} ({name}) with sample data in orgs/{org_id}/data"
 
 
+def add_cms(claims: Path, beneficiaries: Path, state: str, org_id: str, name: str,
+            icd: Path | None, hcpcs: Path | None) -> str:
+    registry = get_org_registry()
+    if registry.get(org_id) is not None:
+        return f"{org_id} already exists"
+    if registry.get(FIRST_ORG[0]) is None:
+        raise LookupError("Run `python -m app.orgs migrate` first (the CMS organisation copies its code sets)")
+    data_dir = registry.folder(org_id) / "data"
+    counts = cms_org.convert(claims, beneficiaries, data_dir, registry.data_dir(FIRST_ORG[0]), state, icd, hcpcs)
+    registry.add(org_id, name, Path(org_id) / "data")
+    summary = ", ".join(f"{count} {what}" for what, count in counts.items())
+    return f"created organisation {org_id} ({name}): {summary}"
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Manage organisations")
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("list", help="show organisations")
     commands.add_parser("migrate", help="move a single-organisation install into 'meridian'")
     commands.add_parser("add-sample", help="add the synthetic Lakeside Family Practice")
+    cms = commands.add_parser("add-cms", help="add one state of CMS's synthetic Medicare inpatient claims")
+    cms.add_argument("--claims", type=Path, required=True, help="inpatient.csv from the CMS download")
+    cms.add_argument("--beneficiaries", type=Path, required=True, help="the beneficiary file (beneficiary_YYYY.csv)")
+    cms.add_argument("--state", default=cms_org.STATE, help="SSA state code (default 10, Florida)")
+    cms.add_argument("--org-id", default=cms_org.ORG_ID)
+    cms.add_argument("--name", default=cms_org.ORG_NAME)
+    cms.add_argument("--icd-descriptions", type=Path, help="CMS icd10cm_codes_YYYY.txt, for diagnosis names")
+    cms.add_argument("--hcpcs-descriptions", type=Path, help="CMS HCPCS alpha-numeric .txt, for HCPCS names")
     add = commands.add_parser("add", help="add an organisation")
     add.add_argument("org_id")
     add.add_argument("--name", required=True)
@@ -122,6 +147,9 @@ def main(argv: list[str] | None = None) -> int:
                     print(line)
             case "add-sample":
                 print(add_sample())
+            case "add-cms":
+                print(add_cms(args.claims, args.beneficiaries, args.state, args.org_id, args.name,
+                              args.icd_descriptions, args.hcpcs_descriptions))
             case "new-master-key":
                 print(new_master_key())
                 print(

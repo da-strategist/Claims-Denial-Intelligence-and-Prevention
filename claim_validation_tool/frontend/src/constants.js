@@ -87,6 +87,7 @@ export const CLAIM_TYPES = ['Professional', 'Institutional']
 
 export const PLACES_OF_SERVICE = [
   { value: '11', label: '11 · Office' },
+  { value: '21', label: '21 · Inpatient hospital' },
   { value: '22', label: '22 · Outpatient hospital' },
   { value: '23', label: '23 · Emergency room' },
 ]

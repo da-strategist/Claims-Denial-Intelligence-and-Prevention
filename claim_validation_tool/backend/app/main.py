@@ -11,13 +11,14 @@ from app.data.orgs import OrgStatus, get_org_registry
 from app.data.key_providers import LOCAL
 from app.data.secure_files import MASTER_KEY_ENV, key_provider, production
 from app.data.users import get_user_store
-from app.services.auth import cookie_secure
+from app.services.auth import cookie_secure, get_session_store
 from app.models import Role
 from app.routers import (
     aifix,
     assistant,
     audit,
     auth,
+    claim_import,
     claims,
     dashboard,
     departments,
@@ -59,6 +60,7 @@ async def lifespan(app: FastAPI):
         )
     if production() and not cookie_secure():
         raise RuntimeError("RCM_ENVIRONMENT=production needs RCM_COOKIE_SECURE=1 (HTTPS only)")
+    get_session_store()  # and so does RCM_SESSIONS_FILE in production
     if production():
         for org in get_org_registry().list():
             if org.status == OrgStatus.ACTIVE and org.baa is None:
@@ -104,6 +106,7 @@ app.include_router(audit.router)
 app.include_router(users.router)
 app.include_router(organisation.router)
 app.include_router(platform.router)
+app.include_router(claim_import.router)  # before claims: /api/claims/import isn't a claim ID
 app.include_router(claims.router)
 app.include_router(drafts.router)
 app.include_router(payers.router)

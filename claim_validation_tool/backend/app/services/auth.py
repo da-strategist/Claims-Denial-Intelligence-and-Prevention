@@ -3,15 +3,19 @@
 A session is a random token in an HttpOnly, SameSite=Strict cookie; the server keeps only
 its SHA-256. Sessions end after RCM_SESSION_IDLE_MINUTES without a request (HIPAA automatic
 logoff) or RCM_SESSION_MAX_HOURS in total, at sign-out, or when the user is deactivated.
-They live in memory, so restarting the API signs everyone out.
+They live in memory, so restarting the API signs everyone out, unless RCM_SESSIONS_FILE
+names a file to keep them in (for a demo host that stops and starts on its own; refused in
+production). The file holds only the digests, never a usable token.
 """
 
 import hashlib
+import json
 import os
 import secrets
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from functools import lru_cache
+from pathlib import Path
 from threading import Lock
 from typing import Annotated
 
@@ -26,6 +30,8 @@ from app.models import Permission, Role, User
 SESSION_COOKIE = "rcm_session"
 MAX_FAILED_LOGINS = 5
 LOCKOUT = timedelta(minutes=15)
+# A kept session's last request is saved at most this often (it's checked against the idle limit)
+SAVE_SEEN_EVERY = timedelta(seconds=60)
 
 PERMISSION_LABELS = {
     Permission.CLAIMS_READ: "view claims",
@@ -55,10 +61,44 @@ class Session:
 
 
 class SessionStore:
-    def __init__(self, idle: timedelta, max_age: timedelta) -> None:
+    def __init__(self, idle: timedelta, max_age: timedelta, path: Path | None = None) -> None:
         self.idle, self.max_age = idle, max_age
+        self.path = path
         self._sessions: dict[str, Session] = {}
+        self._saved_seen: dict[str, datetime] = {}
         self._lock = Lock()
+        if path is not None and path.exists():
+            now = _now()
+            for key, item in json.loads(path.read_text()).items():
+                session = Session(
+                    item["username"],
+                    datetime.fromisoformat(item["created_at"]),
+                    datetime.fromisoformat(item["last_seen"]),
+                )
+                if not self._expired(session, now):
+                    self._sessions[key] = session
+                    self._saved_seen[key] = session.last_seen
+
+    def _expired(self, session: Session, now: datetime) -> bool:
+        return now - session.last_seen > self.idle or now - session.created_at > self.max_age
+
+    def _save(self) -> None:
+        """Write the sessions to the file, owner-only and atomically. Caller holds the lock."""
+        if self.path is None:
+            return
+        payload = {
+            key: {
+                "username": s.username,
+                "created_at": s.created_at.isoformat(),
+                "last_seen": s.last_seen.isoformat(),
+            }
+            for key, s in self._sessions.items()
+        }
+        temp = self.path.with_suffix(".tmp")
+        temp.write_text(json.dumps(payload))
+        temp.chmod(0o600)
+        temp.replace(self.path)
+        self._saved_seen = {key: s.last_seen for key, s in self._sessions.items()}
 
     def create(self, username: str) -> str:
         """Start a session; returns the token for the cookie."""
@@ -66,6 +106,7 @@ class SessionStore:
         now = _now()
         with self._lock:
             self._sessions[_digest(token)] = Session(username, now, now)
+            self._save()
         return token
 
     def touch(self, token: str) -> Session | None:
@@ -75,19 +116,24 @@ class SessionStore:
             session = self._sessions.get(key)
             if session is None:
                 return None
-            if now - session.last_seen > self.idle or now - session.created_at > self.max_age:
+            if self._expired(session, now):
                 del self._sessions[key]
+                self._save()
                 return None
             session.last_seen = now
+            if self.path is not None and now - self._saved_seen.get(key, now) >= SAVE_SEEN_EVERY:
+                self._save()
             return session
 
     def end(self, token: str) -> None:
         with self._lock:
             self._sessions.pop(_digest(token), None)
+            self._save()
 
     def end_all(self, username: str) -> None:
         with self._lock:
             self._sessions = {k: s for k, s in self._sessions.items() if s.username != username}
+            self._save()
 
     def expires_at(self, session: Session) -> datetime:
         return session.created_at + self.max_age
@@ -117,9 +163,13 @@ class LoginThrottle:
 
 @lru_cache(maxsize=1)
 def get_session_store() -> SessionStore:
+    path = os.environ.get("RCM_SESSIONS_FILE", "").strip()
+    if path and production():
+        raise RuntimeError("RCM_SESSIONS_FILE keeps sessions across restarts: not in production")
     return SessionStore(
         idle=timedelta(minutes=float(os.environ.get("RCM_SESSION_IDLE_MINUTES", 15))),
         max_age=timedelta(hours=float(os.environ.get("RCM_SESSION_MAX_HOURS", 8))),
+        path=Path(path) if path else None,
     )
 
 

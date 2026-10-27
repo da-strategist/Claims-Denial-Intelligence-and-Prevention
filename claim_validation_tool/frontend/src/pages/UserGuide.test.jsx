@@ -36,7 +36,7 @@ describe('UserGuide', () => {
 
   it('shows administrators everything', () => {
     renderAs(user('admin', ['audit:read', 'claims:read', 'claims:write', 'patients:read', 'rules:write']))
-    expect(headings()).toHaveLength(8)
+    expect(headings()).toHaveLength(9)
     expect(headings().at(-1)).toBe('For administrators')
   })
 })

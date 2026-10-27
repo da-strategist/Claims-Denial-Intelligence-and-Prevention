@@ -135,6 +135,12 @@ export const updateClaim = (claimId, claim) =>
 export const submitClaim = (claimId) =>
   request(`/claims/${encodeURIComponent(claimId)}/submit`, { method: 'POST' })
 
+/** Upload a CSV/Excel file in the template's layout, or an 837: each claim becomes a Draft. */
+export const importClaims = (filename, content) =>
+  request('/claims/import', { method: 'POST', body: { filename, content } })
+
+export const claimImportTemplateUrl = () => `${API_BASE}/claims/import/template.csv`
+
 /** Saved drafts: unfinished New Claim forms, shared by everyone who can enter claims. */
 export const listDrafts = (options) => request('/drafts', options)
 

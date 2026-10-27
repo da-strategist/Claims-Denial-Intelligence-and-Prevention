@@ -207,3 +207,40 @@ def test_every_api_route_requires_sign_in(anon_client):
         checked += 1
     # A walk that silently finds no routes would pass; there are well over 40
     assert checked >= 40, f"only {checked} routes checked"
+
+
+# ----- Sessions kept across restarts (RCM_SESSIONS_FILE, demo hosts only) ----------
+
+
+def test_a_kept_session_survives_a_restart(tmp_path):
+    path = tmp_path / "sessions.json"
+    first = SessionStore(timedelta(minutes=15), timedelta(hours=8), path)
+    token = first.create("biller1")
+    ended = first.create("analyst1")
+    first.end(ended)
+    # The file never holds a token that could be used as a cookie
+    assert token not in path.read_text() and "biller1" in path.read_text()
+    assert oct(path.stat().st_mode & 0o777) == "0o600"
+
+    again = SessionStore(timedelta(minutes=15), timedelta(hours=8), path)
+    assert again.touch(token).username == "biller1"
+    assert again.touch(ended) is None
+
+
+def test_kept_sessions_still_expire(tmp_path, monkeypatch):
+    path = tmp_path / "sessions.json"
+    token = SessionStore(timedelta(minutes=15), timedelta(hours=8), path).create("biller1")
+    later = auth._now() + timedelta(minutes=16)
+    monkeypatch.setattr(auth, "_now", lambda: later)
+    assert SessionStore(timedelta(minutes=15), timedelta(hours=8), path).touch(token) is None
+
+
+def test_keeping_sessions_is_refused_in_production(monkeypatch, tmp_path):
+    monkeypatch.setenv("RCM_ENVIRONMENT", "production")
+    monkeypatch.setenv("RCM_SESSIONS_FILE", str(tmp_path / "sessions.json"))
+    auth.get_session_store.cache_clear()
+    try:
+        with pytest.raises(RuntimeError, match="not in production"):
+            auth.get_session_store()
+    finally:
+        auth.get_session_store.cache_clear()

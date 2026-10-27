@@ -58,6 +58,7 @@ class ClaimType(StrEnum):
 
 class PlaceOfService(StrEnum):
     OFFICE = "11"
+    INPATIENT_HOSPITAL = "21"
     OUTPATIENT_HOSPITAL = "22"
     EMERGENCY_ROOM = "23"
 

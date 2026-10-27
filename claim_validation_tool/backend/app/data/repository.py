@@ -113,10 +113,12 @@ class ClaimsRepository:
         ).dt.days
         self._add_prior_denial_flags()
 
-        # Only manually entered claims can be pending, or carry more than one diagnosis
-        # or payer on the header; the source data is single-payer and adjudicated
+        # Only manually entered claims can be pending, or carry more than one payer on the
+        # header; the source data is single-payer and adjudicated. Source data may list
+        # further diagnoses ("A|B", as CMS claims do); otherwise there are none
         self._claims["is_overdue"] = False
-        self._claims["additional_icd10"] = ""
+        if "additional_icd10" not in self._claims:
+            self._claims["additional_icd10"] = ""
         self._claims["other_payer_ids"] = ""
         self._pending_ids: set[str] = set()
         self._draft_ids: set[str] = set()

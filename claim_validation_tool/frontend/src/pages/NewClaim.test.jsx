@@ -491,3 +491,59 @@ describe('billing details for the 837', () => {
     })
   })
 })
+
+describe('uploading claims', () => {
+  const UPLOADED = {
+    file_type: 'csv',
+    claims_found: 2,
+    created: [
+      {
+        ref: 'A1',
+        where: 'rows 2, 3',
+        notes: [],
+        claim: { claim_id: 'CLM0120001', patient_id: 'PAT000003', total_charge: 245 },
+        validation: { claim_id: 'CLM0120001', status: 'warning', risk_score: 41, risk_factors: [], findings: [] },
+      },
+    ],
+    failed: [{ ref: 'B7', where: 'row 4', errors: ['Patient PAT999999 is not registered'] }],
+  }
+
+  it('sends the file, lists the saved drafts and what couldn’t be read', async () => {
+    const fetchMock = mockApi({ ...LISTS, 'POST /claims/import': () => UPLOADED })
+    render(<NewClaim />)
+    await user.click(screen.getByRole('button', { name: 'Upload claims' }))
+    const panel = screen.getByRole('region', { name: 'Upload claims' })
+    expect(within(panel).getByRole('link', { name: 'Download CSV template' })).toHaveAttribute(
+      'href',
+      '/api/claims/import/template.csv',
+    )
+    const button = within(panel).getByRole('button', { name: 'Upload and check' })
+    expect(button).toBeDisabled()
+
+    const file = new File(['claim_ref,patient_id\n'], 'claims.csv', { type: 'text/csv' })
+    await user.upload(within(panel).getByLabelText('Claims file'), file)
+    await user.click(button)
+
+    expect(await within(panel).findByText(/1 of 2 claims saved as drafts, 1 couldn’t be saved/)).toBeInTheDocument()
+    expect(within(panel).getByRole('button', { name: 'CLM0120001' })).toBeInTheDocument()
+    expect(within(panel).getByText('Patient PAT999999 is not registered')).toBeInTheDocument()
+    const [body] = sentBodies(fetchMock, 'POST /claims/import')
+    expect(body.filename).toBe('claims.csv')
+    expect(atob(body.content)).toBe('claim_ref,patient_id\n')
+  })
+
+  it('shows why a file was refused', async () => {
+    mockApi({
+      ...LISTS,
+      'POST /claims/import': () => reply(422, { detail: 'The file is missing the column claim_ref.' }),
+    })
+    render(<NewClaim />)
+    await user.click(screen.getByRole('button', { name: 'Upload claims' }))
+    const panel = screen.getByRole('region', { name: 'Upload claims' })
+    await user.upload(within(panel).getByLabelText('Claims file'), new File(['x'], 'x.csv'))
+    await user.click(within(panel).getByRole('button', { name: 'Upload and check' }))
+    expect(await within(panel).findByRole('alert')).toHaveTextContent('missing the column claim_ref')
+    await user.click(within(panel).getByRole('button', { name: 'Close upload' }))
+    expect(screen.queryByRole('region', { name: 'Upload claims' })).not.toBeInTheDocument()
+  })
+})

@@ -9,6 +9,7 @@ import {
 } from '../components/ClaimEntryFields'
 import { InstitutionalFields, PatientDetails } from '../components/BillingFields'
 import ClaimDetailPanel from '../components/ClaimDetailPanel'
+import ClaimUpload from '../components/ClaimUpload'
 import DraftsPanel from '../components/DraftsPanel'
 import EdiFileCard from '../components/EdiFileCard'
 import Icon from '../components/Icon'
@@ -377,6 +378,7 @@ export default function NewClaim() {
   const [editing, setEditing] = useState(null)
   // The saved draft this form came from or was saved as, and when it was last saved
   const [draft, setDraft] = useState({ id: null, savedAt: null, saving: false, error: null })
+  const [uploadOpen, setUploadOpen] = useState(false)
   const drafts = useApi((options) => listDrafts(options))
   const draftClaims = useClaims({ status: 'Draft', sort_by: 'service_date', sort_desc: true, page_size: 100 })
   const draftClaimIds = (draftClaims.data?.items ?? []).map((claim) => claim.claim_id)
@@ -602,7 +604,14 @@ export default function NewClaim() {
             ? 'Correct anything on this unsubmitted claim. It keeps its number, and the rules run again when you save.'
             : 'Enter a claim for a registered patient. Save a draft at any point; it’s checked against the rules when you create it.'
         }
-      />
+      >
+        {!editing && !uploadOpen && (
+          <button type="button" className="btn-secondary" onClick={() => setUploadOpen(true)}>
+            <Icon name="upload" className="h-4 w-4" />
+            Upload claims
+          </button>
+        )}
+      </PageHeader>
 
       <AccessNote />
 
@@ -610,6 +619,13 @@ export default function NewClaim() {
 
       <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_18rem] lg:gap-8">
         <div className="min-w-0">
+          {uploadOpen && !editing && (
+            <ClaimUpload
+              onClose={() => setUploadOpen(false)}
+              onImported={reloadDraftClaims}
+              onOpenClaim={showDraftClaim}
+            />
+          )}
           {openClaim ? (
             <DraftClaimView
               key={openClaim.id}

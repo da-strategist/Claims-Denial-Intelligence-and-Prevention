@@ -85,6 +85,14 @@ def create_claim(
     patient's registration so their next claim starts from them.
     """
     audit_note(request, patient_id=body.patient_id)
+    created = add_draft_claim(body, repo, rules, reference, registrations, user)
+    audit_note(request, claim_id=created.claim.claim_id)
+    return created
+
+
+def add_draft_claim(body: ClaimCreate, repo, rules, reference, registrations, user) -> ClaimCreated:
+    """Save a new Draft claim and validate it: shared by the form, the API and uploads.
+    Raises HTTPException when the claim can't be saved."""
     # Claim IDs are unique across the organisation, including claims outside this
     # person's access, so the next one comes from all of them
     claim_id = _next_id(repo.base.claims_frame()["claim_id"], "CLM", 7)
@@ -95,7 +103,6 @@ def create_claim(
         raise HTTPException(status_code=403, detail=str(err)) from err
     except ValueError as err:  # another request took the same ID first
         raise HTTPException(status_code=409, detail=str(err)) from err
-    audit_note(request, claim_id=claim.claim_id)
     _record_registration(registrations, patient, body, user)
     validation = validation_engine.validate_claims(
         repo.claims_frame([claim.claim_id]), rules.list()

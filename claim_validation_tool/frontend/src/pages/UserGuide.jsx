@@ -154,6 +154,43 @@ const SECTIONS = [
     ),
   },
   {
+    id: 'upload-claims',
+    title: 'Uploading claims from a file',
+    permission: 'claims:write',
+    body: () => (
+      <>
+        <Steps>
+          <li>
+            On <strong className="font-medium">New Claim</strong>, choose{' '}
+            <strong className="font-medium">Upload claims</strong>. Use a CSV or Excel file in the
+            template’s layout (<strong className="font-medium">Download CSV template</strong>), or an
+            837P or 837I file from another billing system.
+          </li>
+          <li>
+            In the template, each row is a service line and rows with the same claim_ref make one
+            claim. List the claim’s diagnoses in one cell, primary first, separated by |. Billing
+            details left blank (date of birth, address, member ID) come from the patient’s
+            registration.
+          </li>
+          <li>
+            837 files are matched to registered patients by name and date of birth, to providers by
+            NPI, and to payers by ID or name. A claim that doesn’t match is listed with the reason.
+          </li>
+          <li>
+            Choose <strong className="font-medium">Upload and check</strong>. Each claim is saved as
+            a draft claim and checked against the rules, exactly as if it had been typed in. Claims
+            that couldn’t be read are listed with what to fix; the rest are saved. Nothing is
+            submitted.
+          </li>
+          <li>
+            Open a claim from the results or the Drafts panel to fix what’s flagged, then submit it
+            as usual.
+          </li>
+        </Steps>
+      </>
+    ),
+  },
+  {
     id: 'drafts',
     title: 'Drafts: picking up unfinished work',
     permission: 'claims:write',

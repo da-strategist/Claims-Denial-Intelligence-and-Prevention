@@ -116,6 +116,9 @@ uv sync
 cd claim_validation_tool/backend
 uv run python -m app.orgs migrate        # creates the first organisation, "meridian", over Data/raw_data
 uv run python -m app.orgs add-sample     # optional: the synthetic "lakeside" practice, for demos
+# optional: one state of CMS's synthetic Medicare inpatient claims (data.cms.gov), as "cms-florida"
+uv run python -m app.orgs add-cms --claims inpatient.csv --beneficiaries beneficiary_2025.csv \
+  --icd-descriptions icd10cm_codes_2025.txt --hcpcs-descriptions HCPC2025_JAN_ANWEB_12172024.txt
 uv run python -m app.users add yourname --name "Your Name" --role admin --org meridian   # prompts for a password
 uv run uvicorn app.main:app --reload --port 8000
 ```
@@ -239,6 +242,7 @@ secure, so the HTTPS-only cookie is still sent).
 | `RCM_AUDIT_FILE` | `backend/logs/audit.jsonl` | Platform audit log: requests that belong to no organisation (e.g. sign-in with an unknown username). Each organisation's own log is in its folder |
 | `RCM_SESSION_IDLE_MINUTES` | `15` | Sign out after this long without a request |
 | `RCM_SESSION_MAX_HOURS` | `8` | Longest a session lasts |
+| `RCM_SESSIONS_FILE` | unset | Keep sign-in sessions in this file so a restart doesn't sign everyone out (digests only). For a demo host that stops and starts on its own; refused in production |
 | `RCM_COOKIE_SECURE` | off | Set to `1` behind HTTPS so the session cookie is never sent over plain HTTP |
 | `RCM_MASTER_KEY` | unset | Turns on encryption at rest: wraps each organisation's data key (`orgs/<id>/data_key.enc`). To replace it: put the new key first, comma, then the old; run `python -m app.orgs rotate-key`; then remove the old |
 | `RCM_KEY_PROVIDER` | `local` | Where the master key lives: `local` uses `RCM_MASTER_KEY`. Cloud key services (`aws-kms`, `azure-keyvault`, `gcp-kms`) are planned; see `DATA_SEGREGATION_PLAN.md` §9.6 |
@@ -285,7 +289,7 @@ All routes are under `/api`; full schemas at `/docs`.
 | Platform | `GET/POST /platform/organisations` · `POST /platform/organisations/{id}/suspend` · `…/reactivate` · `…/admins` · `…/baa` · `PUT/DELETE …/sso` · `…/delete` · `…/emergency-access` · `GET /platform/emergency-access` · `POST /platform/emergency-access/{id}/end` · `GET /platform/audit` (platform accounts) |
 | Organisation | `GET /organisation/export` (administrators: zip of all its data) |
 | Emergency access (organisation side) | `GET /audit/emergency-access` · `POST /audit/emergency-access/{id}/end` (administrators) |
-| Claims | `GET /claims` (search, filter, sort, page) · `POST /claims` · `GET /claims/{id}` · `PUT /claims/{id}` (edit a Draft) · `POST /claims/{id}/submit` · `GET /claims/{id}/837` · `GET /claims/{id}/claim-form.pdf` · `GET /claims/{id}/837-readable.pdf` |
+| Claims | `GET /claims` (search, filter, sort, page) · `POST /claims` · `POST /claims/import` (CSV/Excel or 837 file → Draft claims) · `GET /claims/import/template.csv` · `GET /claims/{id}` · `PUT /claims/{id}` (edit a Draft) · `POST /claims/{id}/submit` · `GET /claims/{id}/837` · `GET /claims/{id}/claim-form.pdf` · `GET /claims/{id}/837-readable.pdf` |
 | Saved drafts | `GET /drafts` · `POST /drafts` · `GET /drafts/{id}` · `PUT /drafts/{id}` · `DELETE /drafts/{id}` (billers and admins) |
 | Validation | `GET /validate/{id}` · `POST /validate` (up to 200 claims) |
 | Rules | `GET/POST /rules` · `GET/PUT/PATCH/DELETE /rules/{id}` · `GET /rules/fields` · `POST /rules/test` |
@@ -309,7 +313,8 @@ claim_validation_tool/
 ├── backend/app/
 │   ├── main.py             # FastAPI app, CORS, audit middleware, routers, data preload
 │   ├── users.py            # Account management CLI (python -m app.users)
-│   ├── orgs.py             # Organisations CLI: list, add, migrate, add-sample
+│   ├── orgs.py             # Organisations CLI: list, add, migrate, add-sample, add-cms
+│   ├── cms_org.py          # Builds an organisation from CMS synthetic inpatient claims
 │   ├── sample_org.py       # Generates the synthetic Lakeside Family Practice
 │   ├── routers/            # One module per API area
 │   ├── models/             # Pydantic request/response schemas
