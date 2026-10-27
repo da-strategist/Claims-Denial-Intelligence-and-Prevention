@@ -11,7 +11,7 @@ primary_region = "iad"
   RCM_COOKIE_SECURE = "1"
   RCM_ALLOWED_ORIGINS = "https://claustrarcm-demo.vercel.app"
   RCM_PUBLIC_URL = "https://claustrarcm-demo.vercel.app"
-  # The free trial stops the machine every few minutes: keep sessions on the volume
+  # The machine stops when idle: keep sessions on the volume in case it restarts
   RCM_SESSIONS_FILE = "/data/sessions.json"
 
 [[mounts]]
@@ -21,10 +21,11 @@ primary_region = "iad"
 [http_service]
   internal_port = 8080
   force_https = true
-  # One machine, always on (sessions live in this machine's memory and /data/sessions.json)
-  auto_stop_machines = "off"
+  # One machine, paid only while running: suspended when idle (memory kept, so it resumes
+  # in about a second; a cold start loads every organisation, about a minute)
+  auto_stop_machines = "suspend"
   auto_start_machines = true
-  min_machines_running = 1
+  min_machines_running = 0
 
   [[http_service.checks]]
     grace_period = "60s"
