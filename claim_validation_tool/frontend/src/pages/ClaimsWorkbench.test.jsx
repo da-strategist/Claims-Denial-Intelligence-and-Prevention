@@ -1,7 +1,8 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it } from 'vitest'
-import { mockApi } from '../test/mockApi'
+import { AuthContext } from '../hooks/useAuth'
+import { mockApi, reply } from '../test/mockApi'
 import ClaimsWorkbench from './ClaimsWorkbench'
 
 const CLAIM = {
@@ -94,5 +95,65 @@ describe('ClaimsWorkbench', () => {
     expect(screen.getByRole('tab', { name: 'All claims' })).toHaveAttribute('aria-selected', 'true')
     expect(screen.getByLabelText('Claim status')).toHaveValue('Pending')  // the filter carries over
   })
-})
 
+  it('keeps a fixed claim open until it is collapsed, though it leaves the queue', async () => {
+    const finding = {
+      rule_id: 'RULE-002',
+      rule_name: 'Missing Prior Authorization',
+      category: 'Authorization',
+      severity: 'error',
+      message: 'No prior authorization number',
+    }
+    const before = { claim_id: CLAIM.claim_id, status: 'error', risk_score: 75, findings: [finding], risk_factors: [] }
+    const after = { claim_id: CLAIM.claim_id, status: 'pass', risk_score: 10, findings: [], risk_factors: [] }
+    const suggestion = {
+      id: `${CLAIM.claim_id}:RULE-002`,
+      claim_id: CLAIM.claim_id,
+      rule_id: 'RULE-002',
+      title: 'Add the authorization number',
+      summary: 'Enter the number from the payer.',
+      reasoning: 'The payer requires it.',
+      steps: [],
+      action: 'apply',
+      confidence: 'high',
+      changes: [{ field: 'prior_auth_number', label: 'Authorization number', type: 'text', current_value: null, suggested_value: 'PA123' }],
+      citations: [],
+      clarification_topic: null,
+      needs_clarification: false,
+    }
+    let fixed = false
+    let listed = 0
+    const fixes = () => ({ suggestions: fixed ? [] : [suggestion], corrections: [], validation: fixed ? after : before })
+    mockApi({
+      // Once fixed, the claim no longer needs attention
+      'GET /claims': ({ params }) => (params.page_size === '1' ? page([], fixed ? 0 : 1) : (listed++, page(fixed ? [] : [CLAIM]))),
+      'POST /validate': () => [fixed ? after : before],
+      'GET /payers': () => [{ payer_id: 'PAY001', payer_name: 'Aetna' }],
+      'GET /departments': () => [],
+      [`GET /claims/${CLAIM.claim_id}`]: () => reply(404, { detail: 'not in this test' }),
+      [`GET /aifix/${CLAIM.claim_id}`]: fixes,
+      [`POST /aifix/${CLAIM.claim_id}/apply`]: () => {
+        fixed = true
+        const applied = [{ id: 'C1', claim_id: CLAIM.claim_id, field: 'prior_auth_number', old_value: null, new_value: 'PA123', suggestion_id: suggestion.id, applied_at: '2026-10-27T10:00:00Z' }]
+        return { claim_id: CLAIM.claim_id, applied, before, after: fixes() }
+      },
+    })
+    const biller = { user: { username: 'biller1', permissions: ['claims:read', 'claims:write'] } }
+    render(
+      <AuthContext.Provider value={biller}>
+        <ClaimsWorkbench />
+      </AuthContext.Provider>,
+    )
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Expand claim CLM0000002' }))
+    const apply = await screen.findByRole('button', { name: /Apply fix & re-validate/ })
+    const listedBefore = listed
+    await userEvent.click(apply)
+    await waitFor(() => expect(listed).toBeGreaterThan(listedBefore))
+    expect(screen.getByText('CLM0000002')).toBeInTheDocument()
+    expect(screen.getByText(/Fix applied/)).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Collapse claim CLM0000002' }))
+    await waitFor(() => expect(screen.queryByText('CLM0000002')).not.toBeInTheDocument())
+  })
+})
