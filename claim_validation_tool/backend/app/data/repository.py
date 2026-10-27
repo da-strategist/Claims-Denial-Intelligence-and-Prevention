@@ -133,8 +133,10 @@ class ClaimsRepository:
         self._original = self._claims[list(CORRECTABLE_FIELDS)].copy()
         self._corrected_ids: set[str] = set()
         self._overlay_lock = Lock()
-        # Bumped whenever the overlay changes, so caches of claim-derived results can expire
+        # Bumped whenever the overlay changes, so caches of claim-derived results can expire;
+        # each recent bump keeps the claims it touched, so a cache can update just those
         self.version = 0
+        self._changes: dict[int, frozenset[str]] = {}
 
         self._claim_pos = pd.Index(self._claims["claim_id"]).get_indexer
         self._lines_by_claim = self._lines.groupby("claim_id", sort=False).indices
@@ -216,8 +218,9 @@ class ClaimsRepository:
                         value = parse_condition_value(RULE_FIELDS[field], fields[field])
                     self._claims.loc[pos, field] = value
                 self._claims.loc[pos, "has_corrections"] = True
+            changed = self._corrected_ids | overrides.keys()
             self._corrected_ids = set(overrides)
-            self.version += 1
+            self._bump(changed)
 
     # --- Claims -------------------------------------------------------------
 
@@ -277,6 +280,29 @@ class ClaimsRepository:
             }
         )
 
+    # Bumps kept for changed_since; a cache further behind than this validates everything
+    KEPT_CHANGES = 500
+
+    def _bump(self, claim_ids: set[str]) -> None:
+        """Record a change to these claims. Caller holds the lock."""
+        self.version += 1
+        self._changes[self.version] = frozenset(claim_ids)
+        self._changes.pop(self.version - self.KEPT_CHANGES, None)
+
+    def changed_since(self, version: int) -> tuple[int, set[str] | None]:
+        """The current version and the claims changed after `version`, or None if that's
+        no longer known (too many changes since). Ages open claims first, like a read."""
+        self._age_open_claims()
+        with self._overlay_lock:
+            if version > self.version or version < self.version - self.KEPT_CHANGES + 1:
+                return self.version, None
+            changed: set[str] = set()
+            for bump in range(version + 1, self.version + 1):
+                if bump not in self._changes:  # bumped without saying what changed
+                    return self.version, None
+                changed |= self._changes[bump]
+            return self.version, changed
+
     def claims_frame(self, claim_ids: list[str] | None = None) -> pd.DataFrame:
         """Typed claim rows (plus derived columns) for the validation engine.
 
@@ -319,7 +345,7 @@ class ClaimsRepository:
                 self._pending_ids.add(claim_id)
             elif fields["status"] == ClaimStatus.DRAFT:
                 self._draft_ids.add(claim_id)
-            self.version += 1
+            self._bump({claim_id})
         if fields.get("billing"):
             self._billing[claim_id] = fields["billing"]
         self._revenue_codes[claim_id] = [line.get("revenue_code") for line in lines]
@@ -355,7 +381,7 @@ class ClaimsRepository:
                 self._original.at[pos, field] = new.at[0, field]
             self._lines = self._lines[self._lines["claim_id"] != claim_id].reset_index(drop=True)
             self._append_lines(claim_id, lines)
-            self.version += 1
+            self._bump({claim_id})
         self._billing[claim_id] = fields.get("billing")
         self._revenue_codes[claim_id] = [line.get("revenue_code") for line in lines]
         self._new_claims.replace(fields, lines)
@@ -441,7 +467,7 @@ class ClaimsRepository:
             self._claims.loc[pos, "has_prior_preventable_denial"] = prior_preventable
             self._draft_ids.discard(claim_id)
             self._pending_ids.add(claim_id)
-            self.version += 1
+            self._bump({claim_id})
         if edi is not None:
             self._edi[claim_id] = edi[1]
         if self._new_claims is not None and on is None:
@@ -595,15 +621,15 @@ class ClaimsRepository:
             return
         today = _today()
         with self._overlay_lock:
-            changed = self._age_drafts(today)
-            changed = self._age_pending(today) or changed
+            changed = self._age_drafts(today) | self._age_pending(today)
             if changed:
-                self.version += 1
+                self._bump(changed)
 
-    def _age_drafts(self, today: date) -> bool:
-        """Move past planned submission dates up to today. Caller holds the lock."""
+    def _age_drafts(self, today: date) -> set[str]:
+        """Move past planned submission dates up to today; returns the claims moved.
+        Caller holds the lock."""
         if not self._draft_ids:
-            return False
+            return set()
         rows = self._claims.iloc[self._claim_pos(sorted(self._draft_ids))]
         late = rows[rows["submission_date"] < today.isoformat()]
         for index, row in late.iterrows():
@@ -614,12 +640,13 @@ class ClaimsRepository:
             ).days
             self._claims.loc[index, "has_prior_denial"] = prior
             self._claims.loc[index, "has_prior_preventable_denial"] = prior_preventable
-        return not late.empty
+        return set(late["claim_id"])
 
-    def _age_pending(self, today: date) -> bool:
-        """Days in AR and the overdue flag for pending claims. Caller holds the lock."""
+    def _age_pending(self, today: date) -> set[str]:
+        """Days in AR and the overdue flag for pending claims; returns the claims changed.
+        Caller holds the lock."""
         if not self._pending_ids:
-            return False
+            return set()
         positions = self._claim_pos(sorted(self._pending_ids))
         rows = self._claims.iloc[positions]
         days = rows["submission_date"].map(
@@ -631,11 +658,12 @@ class ClaimsRepository:
             else None
         )
         overdue = limits.notna() & (days > limits.fillna(0))
-        if days.equals(rows["days_in_ar"]) and overdue.equals(rows["is_overdue"]):
-            return False
+        moved = (days != rows["days_in_ar"]) | (overdue != rows["is_overdue"])
+        if not moved.any():
+            return set()
         self._claims.loc[rows.index, "days_in_ar"] = days.astype("int64")
         self._claims.loc[rows.index, "is_overdue"] = overdue.astype(bool)
-        return True
+        return set(rows.loc[moved, "claim_id"])
 
     def _add_prior_denial_flags(self) -> None:
         """Flag claims whose patient had a denial issued before this claim was submitted.
