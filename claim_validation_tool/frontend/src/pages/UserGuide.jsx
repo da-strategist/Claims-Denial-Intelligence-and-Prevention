@@ -141,13 +141,25 @@ const SECTIONS = [
             can’t be edited once it’s submitted.
           </li>
           <li>
-            Once nothing is flagged, choose <strong className="font-medium">Mark as submitted</strong>.
+            If you send claims from your own billing system, choose{' '}
+            <strong className="font-medium">Hand off to billing system</strong>. Nothing goes to the
+            payer from here. If issues are still open you can tick the box to fix them over there;
+            they stay listed on the claim. The claim then offers its 837 file to import and a{' '}
+            <strong className="font-medium">List of changes</strong> PDF, showing each value as it was
+            and as it is now. An uploaded claim keeps your claim number (claim_ref, or the number in
+            your 837) in the file, and the file is a first-time claim, not a replacement. To change it
+            or send it from here instead, choose{' '}
+            <strong className="font-medium">Reopen claim</strong> and confirm your system hasn’t sent it.
+          </li>
+          <li>
+            To send from ClaustraRCM, once nothing is flagged, choose{' '}
+            <strong className="font-medium">Mark as submitted</strong>.
             The claim becomes Pending and moves to Claims, and its 837 claim file is created; use{' '}
             <strong className="font-medium">Download 837</strong> on the claim to get it, or the{' '}
             <strong className="font-medium">CMS-1500/UB-04 PDF</strong> and{' '}
             <strong className="font-medium">Readable 837 PDF</strong> to read or print it. A file
             marked <strong className="font-medium">Test file</strong> can’t go to a payer until an
-            administrator completes the EDI settings.
+            administrator completes the claim file settings on the Users page.
           </li>
         </Steps>
       </>
@@ -221,7 +233,7 @@ const SECTIONS = [
     body: () => (
       <>
         <p className="text-[15px] text-gray-700">
-          A claim can’t be submitted while it has any <strong className="font-medium">error</strong>{' '}
+          A claim can’t be submitted from ClaustraRCM while it has any <strong className="font-medium">error</strong>{' '}
           or <strong className="font-medium">warning</strong>; this applies to claims entered here
           and through the API. The rules are checked again as you submit, using today’s date,
           so a draft left too long can pick up a Timely Filing warning.
@@ -250,6 +262,7 @@ const SECTIONS = [
         <Term name={<ClaimStatusBadge status="Draft" />}>Created, not yet submitted.</Term>
         <Term name={<ClaimStatusBadge status="Pending" />}>Submitted, waiting for the payer.</Term>
         <Term name={<ClaimStatusBadge status="Pending" overdue />}>Waiting longer than this payer usually takes to pay.</Term>
+        <Term name={<ClaimStatusBadge status="Handed off" />}>Finished here; your billing system sends it. A handed-off claim can’t also be submitted from here.</Term>
         <Term name={<ClaimStatusBadge status="Paid" />}>Paid by the payer.</Term>
         <Term name={<ClaimStatusBadge status="Denied" />}>Refused by the payer; the claim shows why and how to appeal.</Term>
       </dl>

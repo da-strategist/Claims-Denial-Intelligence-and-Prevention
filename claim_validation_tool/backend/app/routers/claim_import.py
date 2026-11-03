@@ -84,7 +84,9 @@ def import_claims(
             failed.append(ImportFailure(ref=item.ref, where=item.where, errors=item.errors))
             continue
         try:
-            result = add_draft_claim(item.body, repo, rules, reference, registrations, user)
+            result = add_draft_claim(
+                item.body, repo, rules, reference, registrations, user, source_ref=item.ref
+            )
         except HTTPException as err:
             failed.append(ImportFailure(ref=item.ref, where=item.where, errors=[str(err.detail)]))
             continue

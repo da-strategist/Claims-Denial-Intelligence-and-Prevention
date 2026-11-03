@@ -95,7 +95,7 @@ def test_lists_and_dashboards_hold_only_the_organisations_own_data(client):
         leak = MERIDIAN_MARKERS.search(text)
         assert leak is None, f"Lakeside's GET {path} shows Meridian's {leak.group()}"
     assert client.get("/api/claims").json()["total"] == 10
-    assert client.get("/api/auth/me").json()["organisation"] == {"id": "lakeside", "name": "Lakeside"}
+    assert client.get("/api/auth/me").json()["organisation"]["id"] == "lakeside"
 
 
 def test_writes_stay_inside_the_organisation(client, today):

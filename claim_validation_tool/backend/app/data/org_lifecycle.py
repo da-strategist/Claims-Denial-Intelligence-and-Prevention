@@ -39,6 +39,7 @@ PHI_FILES = [
     "new_claims.json",
     "claim_drafts.json",
     "claim_corrections.json",
+    "claim_changes.json",
     "patient_registrations.json",
 ]
 AUDIT_FILE = "logs/audit.jsonl"  # encrypted line by line; closed years in audit-<year>.jsonl
@@ -63,10 +64,10 @@ def encrypt_organisation(org_id: str) -> list[str]:
         path = folder / name
         if path.exists() and encrypt_file(path, cipher):
             done.append(f"encrypted {org_id}/{name}")
-    data_dir = registry.data_dir(org_id)
     for path in [p for _, p in closed_year_files(folder / AUDIT_FILE)] + [folder / AUDIT_FILE]:
         if path.exists() and encrypt_file(path, cipher, by_line=True):
             done.append(f"encrypted {org_id}/logs/{path.name}")
+    data_dir = registry.data_dir(org_id)
     if not owns_data_dir(org_id):
         done.append(f"left {data_dir} as it is: it's outside {org_id}'s folder")
         return done

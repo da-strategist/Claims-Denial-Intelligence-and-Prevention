@@ -30,6 +30,7 @@ from app.models import (
     ClaimDetail,
     ClaimLine,
     ClaimQuery,
+    ClaimHandoff,
     ClaimStatus,
     Denial,
     Department,
@@ -127,6 +128,8 @@ class ClaimsRepository:
         self._billing: dict[str, dict[str, Any]] = {}
         self._revenue_codes: dict[str, list[str | None]] = {}
         self._edi: dict[str, EdiFile] = {}
+        self._handoffs: dict[str, ClaimHandoff] = {}
+        self._source_refs: dict[str, str] = {}
 
         # AI Fix corrections are layered over these columns; keep the originals to restore
         self._claims["has_corrections"] = False
@@ -190,6 +193,8 @@ class ClaimsRepository:
                 self.submit_claim(claim_id, on=date.fromisoformat(record["submitted_on"]))
             if record.get("edi"):
                 self._edi[claim_id] = EdiFile.model_validate(record["edi"]["summary"])
+            if record.get("handoff"):
+                self._apply_handoff(claim_id, ClaimHandoff.model_validate(record["handoff"]))
         self._new_claims = new_claims
 
     # --- Corrections overlay ------------------------------------------------
@@ -240,7 +245,10 @@ class ClaimsRepository:
         if statuses is not None:
             df = df.assign(risk_score=df["claim_id"].map(statuses["risk_score"]).fillna(0))
             if query.needs_attention is not None:
-                at_risk = df["claim_id"].map(statuses["status"]).isin(AT_RISK_STATUSES)
+                # A handed-off claim is out of the queue, whatever was still open on it
+                at_risk = df["claim_id"].map(statuses["status"]).isin(AT_RISK_STATUSES) & (
+                    df["status"] != ClaimStatus.HANDED_OFF
+                )
                 df = df[at_risk if query.needs_attention else ~at_risk]
         df = df.sort_values(
             [query.sort_by, "claim_id"],
@@ -277,6 +285,8 @@ class ClaimsRepository:
                 "provider": self._providers.get(row["provider_id"]),
                 "billing": self._billing.get(claim_id),
                 "edi": self._edi.get(claim_id),
+                "handoff": self._handoffs.get(claim_id),
+                "source_ref": self._source_refs.get(claim_id),
             }
         )
 
@@ -348,6 +358,8 @@ class ClaimsRepository:
             self._bump({claim_id})
         if fields.get("billing"):
             self._billing[claim_id] = fields["billing"]
+        if fields.get("source_ref"):
+            self._source_refs[claim_id] = fields["source_ref"]
         self._revenue_codes[claim_id] = [line.get("revenue_code") for line in lines]
         if self._new_claims is not None:
             self._new_claims.add(fields, lines)
@@ -361,6 +373,8 @@ class ClaimsRepository:
         restarts. Raises LookupError if there's no such claim, ValueError if it can't be
         edited (submitted, from the source data, or a different patient)."""
         claim_id = fields["claim_id"]
+        # An edit gives the claim's details again; the hospital's number for it stays
+        fields = {**fields, "source_ref": self._source_refs.get(claim_id)}
         row = self._claim_row(fields)
         with self._overlay_lock:
             pos = self._claim_pos([claim_id])[0]
@@ -456,16 +470,7 @@ class ClaimsRepository:
                 raise ValueError(f"Only draft claims can be submitted; {claim_id} is {row['status']}")
             if row["service_date"] > day.isoformat():
                 raise ValueError("A claim can't be submitted before its service date")
-            self._claims.loc[pos, "status"] = ClaimStatus.PENDING.value
-            self._claims.loc[pos, "submission_date"] = day.isoformat()
-            self._claims.loc[pos, "days_to_submission"] = (
-                day - date.fromisoformat(row["service_date"])
-            ).days
-            self._claims.loc[pos, "days_in_ar"] = 0
-            prior, prior_preventable = self._prior_denials(row["patient_id"], day.isoformat())
-            self._claims.loc[pos, "has_prior_denial"] = prior
-            self._claims.loc[pos, "has_prior_preventable_denial"] = prior_preventable
-            self._draft_ids.discard(claim_id)
+            self._leave_draft(pos, row, day, ClaimStatus.PENDING)
             self._pending_ids.add(claim_id)
             self._bump({claim_id})
         if edi is not None:
@@ -477,12 +482,90 @@ class ClaimsRepository:
         assert claim is not None
         return claim
 
+    def hand_off_claim(self, claim_id: str, by: str, open_issues: list[str]) -> ClaimDetail:
+        """Mark a Draft as finished here, to be sent from the hospital's billing system. It
+        won't age in AR or turn overdue, because nothing here is waiting on a payer.
+
+        Raises LookupError for an unknown claim, ValueError if it isn't a Draft or its
+        service date is still in the future.
+        """
+        handoff = ClaimHandoff(handed_off_on=_today(), handed_off_by=by, open_issues=open_issues)
+        self._apply_handoff(claim_id, handoff)
+        if self._new_claims is not None:
+            self._new_claims.set_handoff(claim_id, handoff.model_dump(mode="json"))
+        claim = self.get_claim(claim_id)
+        assert claim is not None
+        return claim
+
+    def reopen_claim(self, claim_id: str) -> ClaimDetail:
+        """Put a handed-off claim back to Draft. Raises LookupError for an unknown claim,
+        ValueError if it isn't handed off."""
+        with self._overlay_lock:
+            pos = self._claim_pos([claim_id])[0]
+            if pos == -1:
+                raise LookupError(f"Claim {claim_id} not found")
+            status = self._claims.at[pos, "status"]
+            if status != ClaimStatus.HANDED_OFF:
+                raise ValueError(f"Only handed-off claims can be reopened; {claim_id} is {status}")
+            self._claims.loc[pos, "status"] = ClaimStatus.DRAFT.value
+            self._draft_ids.add(claim_id)
+            self._handoffs.pop(claim_id, None)
+            self._bump({claim_id})
+        if self._new_claims is not None:
+            self._new_claims.set_handoff(claim_id, None)
+        claim = self.get_claim(claim_id)
+        assert claim is not None
+        return claim
+
+    def _apply_handoff(self, claim_id: str, handoff: ClaimHandoff) -> None:
+        with self._overlay_lock:
+            pos = self._claim_pos([claim_id])[0]
+            if pos == -1:
+                raise LookupError(f"Claim {claim_id} not found")
+            row = self._claims.iloc[pos]
+            if row["status"] != ClaimStatus.DRAFT:
+                raise ValueError(f"Only draft claims can be handed off; {claim_id} is {row['status']}")
+            if row["service_date"] > handoff.handed_off_on.isoformat():
+                raise ValueError("A claim can't be handed off before its service date")
+            self._leave_draft(pos, row, handoff.handed_off_on, ClaimStatus.HANDED_OFF)
+            self._handoffs[claim_id] = handoff
+            self._bump({claim_id})
+
+    def _leave_draft(self, pos: int, row: pd.Series, day: date, status: ClaimStatus) -> None:
+        """Move a Draft on to `status` as of `day`. Caller holds the lock."""
+        self._claims.loc[pos, "status"] = status.value
+        self._claims.loc[pos, "submission_date"] = day.isoformat()
+        self._claims.loc[pos, "days_to_submission"] = (
+            day - date.fromisoformat(row["service_date"])
+        ).days
+        self._claims.loc[pos, "days_in_ar"] = 0
+        prior, prior_preventable = self._prior_denials(row["patient_id"], day.isoformat())
+        self._claims.loc[pos, "has_prior_denial"] = prior
+        self._claims.loc[pos, "has_prior_preventable_denial"] = prior_preventable
+        self._draft_ids.discard(row["claim_id"])
+
     def next_control_number(self) -> int:
         """Interchange control number for the next 837 (1, 2, … without a store)."""
         if self._new_claims is not None:
             return self._new_claims.next_control_number()
         self._control = getattr(self, "_control", 0) + 1
         return self._control
+
+    def handoff_control_number(self, claim_id: str) -> int:
+        """The control number of a handed-off claim's 837 export, taken on first download so
+        every download of the same claim matches. Reopening the claim gives up the number.
+        Raises ValueError if the claim isn't handed off."""
+        with self._overlay_lock:
+            handoff = self._handoffs.get(claim_id)
+            if handoff is None:
+                raise ValueError(f"{claim_id} isn't handed off")
+            if handoff.control_number is not None:
+                return handoff.control_number
+            handoff = handoff.model_copy(update={"control_number": self.next_control_number()})
+            self._handoffs[claim_id] = handoff
+            if self._new_claims is not None:
+                self._new_claims.set_handoff(claim_id, handoff.model_dump(mode="json"))
+            return handoff.control_number
 
     def edi_text(self, claim_id: str) -> str | None:
         """The 837 a claim was submitted with, if it was submitted from the app."""

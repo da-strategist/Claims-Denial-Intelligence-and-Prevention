@@ -51,6 +51,17 @@ class ClaimParties:
     settings: EdiSettings
 
 
+# CLM01 holds up to 38 characters
+MAX_CLAIM_NUMBER = 38
+
+
+def billing_system_claim_number(source_ref: str | None) -> str | None:
+    """The hospital's number as an 837 can carry it, or None if it can't: a shortened number
+    would match the wrong claim, or none, in the billing system."""
+    cleaned = _clean(source_ref) if source_ref else ""
+    return cleaned if 0 < len(cleaned) <= MAX_CLAIM_NUMBER else None
+
+
 def _clean(value: object) -> str:
     text = str(value).upper()
     for separator in "*~:^":
@@ -86,6 +97,18 @@ def _split_address(one_line: str) -> tuple[str, str, str, str]:
     return one_line, "", "", ""
 
 
+def _facility_zip(settings: EdiSettings, facility: Facility) -> str:
+    return settings.facility_zip_codes.get(facility.facility_id) or _split_address(facility.address)[3]
+
+
+def facility_zip_gap(settings: EdiSettings, facility: Facility) -> str | None:
+    """5010 wants ZIP+4 wherever the service was performed."""
+    zip_code = _facility_zip(settings, facility)
+    if zip_code.isdigit() and len(zip_code) == 9:
+        return None
+    return f"ZIP+4 (9 digits) for {facility.facility_name}"
+
+
 class _Segments:
     def __init__(self) -> None:
         self.items: list[str] = []
@@ -98,26 +121,39 @@ class _Segments:
 
 
 def build_837(
-    claim: ClaimDetail, parties: ClaimParties, control_number: int, now: datetime
+    claim: ClaimDetail,
+    parties: ClaimParties,
+    control_number: int,
+    now: datetime,
+    patient_control_number: str | None = None,
+    handoff: bool = False,
 ) -> tuple[str, EdiFile]:
-    """The 837 file for `claim` and a summary of it. Raises ValueError if the claim has
-    no billing details (claims from the source data were never entered in the app)."""
+    """The 837 file for `claim` and a summary of it. CLM01, the number a billing system and
+    payer match the claim by, is the claim ID unless `patient_control_number` is given.
+    A `handoff` file goes to the hospital's own billing system, so it needs no clearinghouse
+    and names the hospital as its receiver unless one is set.
+    Raises ValueError if the claim has no billing details (claims from the source data were
+    never entered in the app)."""
     if claim.billing is None or claim.patient is None or claim.provider is None:
         raise ValueError(f"{claim.claim_id} has no billing details to build an 837 from")
     billing = claim.billing
     settings = parties.settings
     institutional = claim.claim_type == ClaimType.INSTITUTIONAL
     version = VERSION[claim.claim_type]
+    claim_number = patient_control_number or claim.claim_id
     payer_ids = [p.payer_id for p in parties.payers]
-    notes = settings.missing(payer_ids)
-    # 5010 wants ZIP+4 wherever the service was performed
-    facility_zip = _split_address(parties.facility.address)[3]
-    if not (facility_zip.isdigit() and len(facility_zip) == 9):
-        notes.append(f"ZIP+4 (9 digits) for {parties.facility.facility_name}")
+    notes = settings.missing(payer_ids, needs_clearinghouse=not handoff)
+    gap = facility_zip_gap(settings, parties.facility)
+    if gap:
+        notes.append(gap)
     test = settings.mode != "production" or bool(notes)
     control = f"{control_number:09d}"
     sender = _or_not_set(settings.submitter.id)
-    receiver = _or_not_set(settings.receiver.id)
+    receiver_id, receiver_name = settings.receiver.id, settings.receiver.name
+    if handoff:
+        receiver_id = receiver_id or settings.submitter.id
+        receiver_name = receiver_name or settings.submitter.name
+    receiver = _or_not_set(receiver_id)
 
     s = _Segments()
     s.add(
@@ -133,11 +169,12 @@ def build_837(
     # 1000A submitter, 1000B receiver
     s.add("NM1", "41", "2", _or_not_set(settings.submitter.name), "", "", "", "", "46", sender)
     s.add("PER", "IC", _or_not_set(settings.submitter.contact_name), "TE", _or_not_set(settings.submitter.phone))
-    s.add("NM1", "40", "2", _or_not_set(settings.receiver.name), "", "", "", "", "46", receiver)
+    s.add("NM1", "40", "2", _or_not_set(receiver_name), "", "", "", "", "46", receiver)
 
     # 2000A / 2010AA billing provider: the organisation, else the facility's own details
     provider = settings.billing_provider
-    fac_line1, fac_city, fac_state, fac_zip = _split_address(parties.facility.address)
+    fac_line1, fac_city, fac_state, _ = _split_address(parties.facility.address)
+    fac_zip = _facility_zip(settings, parties.facility)
     s.add("HL", "1", "", "20", "1")
     s.add("NM1", "85", "2", _clean(provider.name or parties.facility.facility_name), "", "", "", "", "XX", _or_not_set(provider.npi))
     if provider.address.line1:
@@ -179,11 +216,11 @@ def build_837(
     if institutional:
         details = billing.institutional
         bill = details.type_of_bill
-        s.add("CLM", claim.claim_id, total, "", "", f"{bill[:2]}:A:{bill[2]}", "", "A", "Y", "Y")
+        s.add("CLM", claim_number, total, "", "", f"{bill[:2]}:A:{bill[2]}", "", "A", "Y", "Y")
         s.add("DTP", "434", "RD8", f"{service}-{service}")
         s.add("CL1", details.admission_type, details.admission_source, details.patient_status)
     else:
-        s.add("CLM", claim.claim_id, total, "", "", f"{claim.place_of_service}:B:1", "Y", "A", "Y", "Y")
+        s.add("CLM", claim_number, total, "", "", f"{claim.place_of_service}:B:1", "Y", "A", "Y", "Y")
     if claim.pa_number:
         s.add("REF", "G1", _clean(claim.pa_number))
     s.add("HI", *[f"{'ABK' if i == 0 else 'ABF'}:{_dx(code)}" for i, code in enumerate(diagnoses)])

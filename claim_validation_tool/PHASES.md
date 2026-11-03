@@ -143,10 +143,31 @@ continuous claims:
 
 ## Planned feature updates: claim submission
 
-Not scheduled; to be built when the need arises. Today a claim goes Draft -> Pending
-with its 837 saved and downloadable, and stays Pending (turning Overdue) because nothing
-comes back from the payer. Suggested order: 1 then 2 complete the cycle without any
-outside partner; 3 and 5 matter once real volume flows; 4 can be added at any time.
+ClaustraRCM sits alongside a hospital's billing system rather than replacing it. Each
+organisation sets a default route, and either route can be used on any claim:
+
+- **Validate only:** check and correct here, export, and send from the hospital's own
+  billing system. Draft -> Handed off.
+- **Send through ClaustraRCM:** Draft -> Pending, with its 837 saved. Sending for real needs
+  the clearinghouse connection below.
+
+Build order:
+
+- [x] **Choosing the route.** Organisation default (Users page), both routes on each draft,
+  the Handed off status, and duplicate protection: a claim takes one route, and reopening a
+  handed-off claim requires confirming the billing system hasn't sent it.
+- [x] **Corrected claim export.** After hand-off: the claim's 837 with its corrections (under
+  the hospital's own claim number if it was uploaded with one) and a list of what changed,
+  both audited. One claim at a time; a batch export for validate-only hospitals is still to come.
+- [x] **Claim file settings.** Administrators keep the 837 identifiers on the Users page. Hand-off
+  files need no clearinghouse, and a facility with a 5-digit ZIP on file can be given its ZIP+4.
+- [ ] **Standard API.** One API for hospital systems to send a claim and get back its errors
+  and suggested fixes, alongside file upload.
+- [ ] **Payer outcomes.** Features 1 and 2 below, with 835 upload optional for validate-only
+  hospitals so they can see whether denials fell.
+- [ ] **Clearinghouse connection.** Feature 5 below, once a vendor is chosen and the BAA signed.
+
+Features 3 and 4 can follow when real volume flows or a client asks.
 
 1. **Record payer decisions.** Enter the payer's decision by hand (paid and adjusted
    amounts, CARC/RARC denial codes), or import an 835 remittance file to update claims

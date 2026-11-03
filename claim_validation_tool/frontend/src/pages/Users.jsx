@@ -1,4 +1,5 @@
 import { useId, useMemo, useState } from 'react'
+import EdiSettingsCard from '../components/EdiSettingsCard'
 import Icon from '../components/Icon'
 import PasswordFields from '../components/PasswordFields'
 import PageHeader, { Notice, Page } from '../components/PageHeader'
@@ -13,6 +14,7 @@ import {
   listProviders,
   listUsers,
   resetUserPassword,
+  setDefaultClaimRoute,
   updateUser,
 } from '../services/api'
 
@@ -22,6 +24,71 @@ const ROLES = [
   { value: 'admin', label: 'Administrator', summary: 'Also rules, users, and the audit log' },
 ]
 const roleLabel = (value) => ROLES.find((r) => r.value === value)?.label ?? value
+
+const CLAIM_ROUTES = [
+  {
+    value: 'validate_only',
+    label: 'Our billing system',
+    summary: 'Check and correct claims here, then send them from your own billing system.',
+  },
+  {
+    value: 'send',
+    label: 'ClaustraRCM',
+    summary: 'Send claims from here once every rule passes.',
+  },
+]
+
+/** The route staff are offered first. Both stay available on every claim. */
+function ClaimRouteSetting({ auth }) {
+  const current = auth.user.organisation?.default_claim_route ?? 'validate_only'
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState(null)
+
+  const choose = async (route) => {
+    setBusy(true)
+    setError(null)
+    try {
+      await setDefaultClaimRoute(route)
+      await auth.refresh()
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <fieldset className="card space-y-3 p-6" disabled={busy}>
+      <legend className="sr-only">Default way to send claims</legend>
+      <div>
+        <h2 className="text-[15px] font-semibold text-gray-900">Where do your claims usually go from?</h2>
+        <p className="text-sm text-gray-500">
+          This sets which option staff see first. They can still choose either one on any claim.
+        </p>
+      </div>
+      {CLAIM_ROUTES.map((route) => (
+        <label key={route.value} className="flex items-start gap-2 text-sm text-gray-800">
+          <input
+            type="radio"
+            name="default-claim-route"
+            className="mt-0.5"
+            checked={current === route.value}
+            onChange={() => choose(route.value)}
+          />
+          <span>
+            <span className="font-medium">{route.label}</span>
+            <span className="block text-gray-500">{route.summary}</span>
+          </span>
+        </label>
+      ))}
+      {error && (
+        <p role="alert" className="text-sm text-red-700">
+          Could not save — {error}
+        </p>
+      )}
+    </fieldset>
+  )
+}
 
 function AddUser({ onCreated, onCancel }) {
   const base = useId()
@@ -376,7 +443,8 @@ function UserRow({ user, areas, isMe, onError, onDone }) {
 
 /** Accounts and their roles (administrators). */
 export default function Users() {
-  const { user: me } = useAuth()
+  const auth = useAuth()
+  const me = auth?.user
   const { data: users, error, reload } = useApi((options) => listUsers(options))
   const [adding, setAdding] = useState(false)
   const [message, setMessage] = useState(null)
@@ -414,6 +482,12 @@ export default function Users() {
         )}
       </PageHeader>
 
+      {auth?.user?.permissions?.includes('organisation:settings') && (
+        <>
+          <ClaimRouteSetting auth={auth} />
+          <EdiSettingsCard />
+        </>
+      )}
       {message && <Notice tone="info">{message}</Notice>}
       {(error || actionError) && <Notice>{error ? `Could not load users — ${error}` : actionError}</Notice>}
 

@@ -91,7 +91,11 @@ copy for reading and printing, not the red-ink OCR form payers scan), and a **re
 that names each part of the file, shows where every value sits, and ends with the raw file.
 Test files carry a "TEST FILE" mark on every page.
 
-The organisation's identifiers live in `backend/edi_settings.json` (git-ignored): submitter,
+Administrators keep the organisation's identifiers under **Claim file settings** on the Users
+page (`GET/PUT /organisation/edi-settings`, saved as `edi_settings.json` in its folder, audited by
+field name). Files going back to a hospital's own billing system need no clearinghouse, and name
+the hospital as receiver unless one is set. A facility whose address on file has a 5-digit ZIP
+can be given its ZIP+4 there. The identifiers: submitter,
 clearinghouse (receiver), billing provider (name, NPI, 9-digit EIN, address with ZIP+4), and
 each payer's electronic payer ID. Until every one is set, `mode` is `production`, and the
 facility address has a ZIP+4, files are marked as test files (ISA15 = T) and the claim lists
@@ -169,10 +173,6 @@ uv run python -m app.orgs rotate-key        # after putting a new key first in R
 uv run python -m app.orgs key-status        # which key provider holds each organisation's key
 ```
 
-Without the master key the data can't be read, so keep a copy somewhere separate (a
-password manager or key vault). Production mode refuses to start without one. Details in
-`DATA_SEGREGATION_PLAN.md` §9.
-
 The audit log keeps each closed year in its own file (`logs/audit-2026.jsonl`) and every
 event for at least `RCM_AUDIT_RETENTION_YEARS` (6). Years past that can be deleted, never
 automatically, with the API running or not:
@@ -181,6 +181,10 @@ automatically, with the API running or not:
 uv run python -m app.orgs audit-purge --dry-run   # what would go
 uv run python -m app.orgs audit-purge             # delete it; the hash check still covers what's left
 ```
+
+Without the master key the data can't be read, so keep a copy somewhere separate (a
+password manager or key vault). Production mode refuses to start without one. Details in
+`DATA_SEGREGATION_PLAN.md` §9.
 
 **Data export.** An organisation's administrators download all its data, decrypted, as one
 zip with a manifest (Audit log page, **Export all data**). The download is in its audit log.
@@ -192,6 +196,25 @@ page, and ends at the set time or earlier, by the platform or by the organisatio
 administrators. Starting it, ending it, and every request made with it are in the
 organisation's own audit log, and its administrators see each grant and its reason on their
 Audit Log page. Grants are kept in `backend/orgs/break_glass.json`.
+
+### How claims leave
+
+ClaustraRCM works alongside a hospital's billing system. A draft can be **handed off**
+(`POST /api/claims/{id}/hand-off`: the billing system sends it, open issues must be
+acknowledged) or **submitted** (`POST /api/claims/{id}/submit`: blocked by any rule error or
+warning). A claim takes one route; `POST /api/claims/{id}/reopen` puts a handed-off claim
+back to Draft once someone confirms it wasn't sent. Administrators choose which route is
+offered first on the Users page (default: the hospital's billing system).
+
+Once handed off, the claim can go back to the billing system: `GET /api/claims/{id}/handoff`
+summarises it, `…/handoff/837` downloads its 837 with the corrections in, and
+`…/handoff/changes.pdf` lists what changed since it was first entered or uploaded (net of
+AI Fix and edits: a value changed back isn't listed) and what was still open. Only billers and
+admins can export, each download is audited (field names, never values), and every download
+of a claim keeps one control number until it's reopened. The file is a first-time claim
+(frequency code 1) because nothing has reached a payer, and CLM01 carries the hospital's own
+number when the claim was uploaded with one. It's marked as a test file until the EDI settings
+are complete. Self-pay claims get the list only.
 
 ### Accounts
 
@@ -243,12 +266,13 @@ secure, so the HTTPS-only cookie is still sent).
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `RCM_ORGS_DIR` | `backend/orgs` | Organisations: `organisations.json` and one folder per organisation with its `rules.json` (seeded with 9 defaults), `claim_corrections.json`, `claim_drafts.json` (expire 30 days after the last save), `new_claims.json` (with their 837s), `patient_registrations.json`, `edi_settings.json`, and `logs/audit.jsonl` |
+| `RCM_ORGS_DIR` | `backend/orgs` | Organisations: `organisations.json` and one folder per organisation with its `rules.json` (seeded with 9 defaults), `claim_corrections.json`, `claim_drafts.json` (expire 30 days after the last save), `new_claims.json` (with their 837s), `patient_registrations.json`, `claim_changes.json` (edits to claims, for the list of changes), `edi_settings.json`, and `logs/audit.jsonl` |
 | `ANTHROPIC_API_KEY` | unset | Enables Claude for the clarification assistant |
 | `RCM_ASSISTANT_MODEL` | `claude-sonnet-5-5` | Claude model the assistant uses |
 | `RCM_ASSISTANT_MODE` | | Set to `retrieval` to keep Claude off even with a key |
 | `RCM_USERS_FILE` | `backend/users.json` | Sign-in accounts |
 | `RCM_AUDIT_FILE` | `backend/logs/audit.jsonl` | Platform audit log: requests that belong to no organisation (e.g. sign-in with an unknown username). Each organisation's own log is in its folder |
+| `RCM_AUDIT_RETENTION_YEARS` | `6` | Years audit events are kept before `audit-purge` may delete them; less than 6 is refused |
 | `RCM_SESSION_IDLE_MINUTES` | `15` | Sign out after this long without a request |
 | `RCM_SESSION_MAX_HOURS` | `8` | Longest a session lasts |
 | `RCM_SESSIONS_FILE` | unset | Keep sign-in sessions in this file so a restart doesn't sign everyone out (digests only). For a demo host that stops and starts on its own; refused in production |
@@ -272,7 +296,6 @@ cd claim_validation_tool/frontend && npm test                 # components, page
 npm run lint                                                  # oxlint
 npm run build                                                 # production build
 ```
-| `RCM_AUDIT_RETENTION_YEARS` | `6` | Years audit events are kept before `audit-purge` may delete them; less than 6 is refused |
 
 Assistant evaluation, 17 billing questions with expected sources and answer facts
 (`backend/app/evals/assistant_cases.py`):
@@ -297,9 +320,9 @@ All routes are under `/api`; full schemas at `/docs`.
 | Audit | `GET /audit` (username, record_id, outcome, limit) · `GET /audit/verify` |
 | Users | `GET /users` · `POST /users` · `PATCH /users/{username}` · `POST /users/{username}/password` (administrators) |
 | Platform | `GET/POST /platform/organisations` · `POST /platform/organisations/{id}/suspend` · `…/reactivate` · `…/admins` · `…/baa` · `PUT/DELETE …/sso` · `…/delete` · `…/emergency-access` · `GET /platform/emergency-access` · `POST /platform/emergency-access/{id}/end` · `GET /platform/audit` (platform accounts) |
-| Organisation | `GET /organisation/export` (administrators: zip of all its data) |
+| Organisation | `GET /organisation/export` (administrators: zip of all its data) · `PUT /organisation/settings` · `GET/PUT /organisation/edi-settings` |
 | Emergency access (organisation side) | `GET /audit/emergency-access` · `POST /audit/emergency-access/{id}/end` (administrators) |
-| Claims | `GET /claims` (search, filter, sort, page) · `POST /claims` · `POST /claims/import` (CSV/Excel or 837 file → Draft claims) · `GET /claims/import/template.csv` · `GET /claims/{id}` · `PUT /claims/{id}` (edit a Draft) · `POST /claims/{id}/submit` · `GET /claims/{id}/837` · `GET /claims/{id}/claim-form.pdf` · `GET /claims/{id}/837-readable.pdf` |
+| Claims | `GET /claims` (search, filter, sort, page) · `POST /claims` · `POST /claims/import` (CSV/Excel or 837 file → Draft claims) · `GET /claims/import/template.csv` · `GET /claims/{id}` · `PUT /claims/{id}` (edit a Draft) · `POST /claims/{id}/submit` · `GET /claims/{id}/837` · `GET /claims/{id}/claim-form.pdf` · `GET /claims/{id}/837-readable.pdf` · `GET /claims/{id}/handoff` · `GET /claims/{id}/handoff/837` · `GET /claims/{id}/handoff/changes.pdf` |
 | Saved drafts | `GET /drafts` · `POST /drafts` · `GET /drafts/{id}` · `PUT /drafts/{id}` · `DELETE /drafts/{id}` (billers and admins) |
 | Validation | `GET /validate/{id}` · `POST /validate` (up to 200 claims) |
 | Rules | `GET/POST /rules` · `GET/PUT/PATCH/DELETE /rules/{id}` · `GET /rules/fields` · `POST /rules/test` |

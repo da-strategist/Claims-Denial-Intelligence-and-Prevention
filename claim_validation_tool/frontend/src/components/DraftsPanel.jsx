@@ -141,7 +141,7 @@ export default function DraftsPanel({
         ))}
       </Group>
       <div className="border-t border-gray-100" />
-      <Group title="Draft claims" hint="Validated · waiting to be submitted" count={claims.length}>
+      <Group title="Draft claims" hint="Validated · waiting to be finished" count={claims.length}>
         {claims.map((claim) => (
           <DraftClaimRow
             key={claim.claim_id}

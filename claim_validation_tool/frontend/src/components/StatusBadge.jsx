@@ -2,15 +2,16 @@ import { VALIDATION_STATUSES } from '../constants'
 
 const PILL = 'inline-flex items-center whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium'
 
-// Paid is green, a denial red; Draft and Pending are just where the claim is
+// Paid is green, a denial red; the others are just where the claim is
 const CLAIM_STATUS_STYLES = {
   Draft: 'border border-dashed border-gray-300 text-gray-600',
   Pending: 'bg-accent-soft text-accent',
+  'Handed off': 'bg-gray-100 text-gray-700',
   Paid: 'bg-emerald-50 text-emerald-700',
   Denied: 'bg-red-50 text-red-700',
 }
 
-/** Where the claim is with the payer: Draft → Pending → Paid / Denied. */
+/** Where the claim is: Draft → Pending → Paid / Denied, or Draft → Handed off to the billing system. */
 export function ClaimStatusBadge({ status, overdue = false }) {
   return (
     <span className="inline-flex items-center gap-1">

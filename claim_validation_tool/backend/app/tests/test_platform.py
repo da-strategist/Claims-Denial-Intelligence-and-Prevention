@@ -48,7 +48,11 @@ def test_a_new_organisation_starts_empty_with_its_first_admin(client):
     assert admin.status_code == 201 and admin.json()["role"] == "admin"
     with TestClient(client.app) as acme:
         acme.post("/api/auth/login", json={"username": "acmeadmin", "password": "Acme-admin-123"})
-        assert acme.get("/api/auth/me").json()["organisation"] == {"id": "acme", "name": "Acme Health"}
+        assert acme.get("/api/auth/me").json()["organisation"] == {
+            "id": "acme",
+            "name": "Acme Health",
+            "default_claim_route": "validate_only",
+        }
         assert acme.get("/api/claims").json()["total"] == 0
         assert acme.get("/api/dashboard").status_code == 200
         assert acme.get("/api/codes/procedures").json()  # shared code sets are there

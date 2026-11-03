@@ -36,7 +36,7 @@ export const EMPTY_FILTERS = {
   service_date_to: '',
 }
 
-export const CLAIM_STATUSES = ['Draft', 'Pending', 'Paid', 'Denied']
+export const CLAIM_STATUSES = ['Draft', 'Pending', 'Handed off', 'Paid', 'Denied']
 
 export const RULE_CATEGORIES = [
   'Coding',

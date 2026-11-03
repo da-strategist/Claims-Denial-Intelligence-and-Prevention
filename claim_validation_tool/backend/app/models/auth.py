@@ -11,6 +11,7 @@ from typing import Annotated, Any
 
 from pydantic import BaseModel, Field, StringConstraints
 
+from app.models.claim import ClaimRoute
 from app.models.common import DepartmentId, FacilityId, ProviderId
 
 Username = Annotated[
@@ -40,6 +41,7 @@ class Permission(StrEnum):
     AUDIT_READ = "audit:read"
     USERS_MANAGE = "users:manage"  # create accounts, change roles, reset passwords, disable
     DATA_EXPORT = "data:export"  # download all the organisation's data
+    ORG_SETTINGS = "organisation:settings"  # how the organisation works, e.g. its default claim route
     PLATFORM_MANAGE = "platform:manage"  # organisations, their first admins, emergency access
 
 
@@ -164,6 +166,11 @@ class PasswordReset(BaseModel):
 class OrganisationSummary(BaseModel):
     id: str
     name: str
+    default_claim_route: ClaimRoute = ClaimRoute.VALIDATE_ONLY
+
+
+class OrganisationSettings(BaseModel):
+    default_claim_route: ClaimRoute
 
 
 class EmergencySummary(BaseModel):

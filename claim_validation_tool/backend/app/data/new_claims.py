@@ -54,6 +54,8 @@ class NewClaimStore:
                 if record["fields"]["claim_id"] == fields["claim_id"]:
                     if record["submitted_on"]:
                         raise ValueError(f"{fields['claim_id']} was submitted; it can't change")
+                    if record.get("handoff"):
+                        raise ValueError(f"{fields['claim_id']} was handed off; reopen it to change it")
                     record["fields"], record["lines"] = fields, lines
                     self._save()
                     return
@@ -74,6 +76,16 @@ class NewClaimStore:
                 if record["fields"]["claim_id"] == claim_id:
                     record["submitted_on"] = on.isoformat()
                     record["edi"] = edi
+                    self._save()
+                    return
+        raise LookupError(f"Claim {claim_id} isn't a saved new claim")
+
+    def set_handoff(self, claim_id: str, handoff: dict[str, Any] | None) -> None:
+        """Record that the claim was handed off to the billing system, or None if reopened."""
+        with self._lock:
+            for record in self._records:
+                if record["fields"]["claim_id"] == claim_id:
+                    record["handoff"] = handoff
                     self._save()
                     return
         raise LookupError(f"Claim {claim_id} isn't a saved new claim")

@@ -56,7 +56,9 @@ def _current(user: User, sessions: SessionStore, created) -> CurrentUser:
     grant = get_emergency_access().active_for(user.username) if user.emergency_access_id else None
     return CurrentUser(
         username=user.username,
-        organisation=OrganisationSummary(id=org.id, name=org.name) if org else None,
+        organisation=OrganisationSummary(id=org.id, name=org.name, default_claim_route=org.default_claim_route)
+        if org
+        else None,
         emergency=EmergencySummary(id=grant.id, reason=grant.reason, expires_at=grant.expires_at)
         if grant
         else None,

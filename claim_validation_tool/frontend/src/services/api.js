@@ -52,8 +52,9 @@ async function request(path, { params, body, method = 'GET', signal } = {}) {
   }
   if (!res.ok) {
     const data = await res.json().catch(() => null)
-    throw new Error(
-      errorMessage(data?.detail) ?? `Request failed: ${res.status} ${res.statusText}`,
+    throw Object.assign(
+      new Error(errorMessage(data?.detail) ?? `Request failed: ${res.status} ${res.statusText}`),
+      { status: res.status },
     )
   }
   return res.status === 204 ? null : res.json()
@@ -135,6 +136,29 @@ export const updateClaim = (claimId, claim) =>
 export const submitClaim = (claimId) =>
   request(`/claims/${encodeURIComponent(claimId)}/submit`, { method: 'POST' })
 
+/** Finish a Draft here because the hospital's billing system sends it. Open issues must be acknowledged. */
+export const handOffClaim = (claimId, acknowledgeOpenIssues = false) =>
+  request(`/claims/${encodeURIComponent(claimId)}/hand-off`, {
+    method: 'POST',
+    body: { acknowledge_open_issues: acknowledgeOpenIssues },
+  })
+
+/** Put a handed-off claim back to Draft, confirming the billing system hasn't sent it. */
+export const reopenClaim = (claimId) =>
+  request(`/claims/${encodeURIComponent(claimId)}/reopen`, {
+    method: 'POST',
+    body: { confirmed_not_sent: true },
+  })
+
+/** Which route the organisation's staff are offered first: 'validate_only' or 'send'. */
+export const setDefaultClaimRoute = (route) =>
+  request('/organisation/settings', { method: 'PUT', body: { default_claim_route: route } })
+
+/** The organisation's 837 identifiers, and what each kind of file still needs to be live. */
+export const getEdiSettings = (options) => request('/organisation/edi-settings', options)
+export const saveEdiSettings = (settings) =>
+  request('/organisation/edi-settings', { method: 'PUT', body: settings })
+
 /** Upload a CSV/Excel file in the template's layout, or an 837: each claim becomes a Draft. */
 export const importClaims = (filename, content) =>
   request('/claims/import', { method: 'POST', body: { filename, content } })
@@ -180,6 +204,15 @@ export const claim837Url = (claimId) => `${API_BASE}/claims/${encodeURIComponent
 export const claimFormPdfUrl = (claimId) => `${API_BASE}/claims/${encodeURIComponent(claimId)}/claim-form.pdf`
 export const readable837PdfUrl = (claimId) =>
   `${API_BASE}/claims/${encodeURIComponent(claimId)}/837-readable.pdf`
+
+/** A handed-off claim's export: what changed, what's open, and whether its 837 is a test file. */
+export const getHandoffExport = (claimId, options) =>
+  request(`/claims/${encodeURIComponent(claimId)}/handoff`, options)
+
+/** Links to download the handed-off claim's 837 and its list of changes. */
+export const handoff837Url = (claimId) => `${API_BASE}/claims/${encodeURIComponent(claimId)}/handoff/837`
+export const handoffChangesPdfUrl = (claimId) =>
+  `${API_BASE}/claims/${encodeURIComponent(claimId)}/handoff/changes.pdf`
 
 export const searchPatients = (params, options) => request('/patients', { ...options, params })
 

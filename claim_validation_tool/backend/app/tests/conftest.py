@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 from app.data.audit import get_audit_log, get_platform_audit_log
 from app.data.emergency import get_emergency_access
 from app.data.orgs import get_org_registry
+from app.data.claim_changes import get_claim_change_log
 from app.data.corrections import get_correction_store
 from app.data.drafts import get_draft_store
 from app.data.new_claims import get_new_claim_store
@@ -167,6 +168,7 @@ def anon_client(monkeypatch, tmp_path) -> TestClient:
         get_repository,
         get_rule_repository,
         get_correction_store,
+        get_claim_change_log,
         get_draft_store,
         get_new_claim_store,
         get_registration_store,

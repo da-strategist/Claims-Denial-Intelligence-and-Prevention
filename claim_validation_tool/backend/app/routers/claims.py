@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Annotated, Any
 
 import pandas as pd
@@ -17,7 +17,10 @@ from app.models import (
     ClaimQuery,
     ClaimStatus,
     EdiFile,
+    HandoffExport,
+    HandOffRequest,
     PayerType,
+    ReopenRequest,
     Sex,
     Page,
     Permission,
@@ -27,11 +30,13 @@ from app.models import (
 from app.models.common import ClaimId
 from app.services import validation_engine
 from app.services.auth import SignedIn, audit_note, require
-from app.services.claim_pdf import claim_form_pdf, readable_837_pdf
-from app.services.edi837 import ClaimParties, build_837
+from app.services import claim_changes
+from app.services.claim_pdf import claim_changes_pdf, claim_form_pdf, readable_837_pdf
+from app.services.edi837 import ClaimParties, billing_system_claim_number, build_837
 from app.services.edi_reader import read_837
 from app.services.edi_settings import load_edi_settings
 from app.services.org_context import (
+    OrgClaimChanges,
     OrgClaims,
     OrgCorrections,
     OrgId,
@@ -90,13 +95,18 @@ def create_claim(
     return created
 
 
-def add_draft_claim(body: ClaimCreate, repo, rules, reference, registrations, user) -> ClaimCreated:
+def add_draft_claim(
+    body: ClaimCreate, repo, rules, reference, registrations, user, source_ref: str | None = None
+) -> ClaimCreated:
     """Save a new Draft claim and validate it: shared by the form, the API and uploads.
-    Raises HTTPException when the claim can't be saved."""
+    `source_ref` is the hospital's own number for an uploaded claim. Raises HTTPException
+    when the claim can't be saved."""
     # Claim IDs are unique across the organisation, including claims outside this
     # person's access, so the next one comes from all of them
     claim_id = _next_id(repo.base.claims_frame()["claim_id"], "CLM", 7)
     fields, lines, patient = _claim_fields(body, claim_id, repo, reference)
+    if source_ref:
+        fields["source_ref"] = source_ref
     try:
         claim = repo.add_claim(fields, lines)
     except OutOfScopeError as err:
@@ -120,6 +130,7 @@ def update_claim(
     reference: Reference,
     registrations: Registrations,
     corrections: OrgCorrections,
+    changes: OrgClaimChanges,
     user: SignedIn,
 ) -> ClaimCreated:
     """Correct a Draft claim entered in the app: the whole claim is given again, checked
@@ -142,9 +153,22 @@ def update_claim(
         raise HTTPException(status_code=404, detail=str(err)) from err
     except ValueError as err:
         raise HTTPException(status_code=409, detail=str(err)) from err
-    if corrections.clear_claim(claim_id):
+    folded = corrections.clear_claim(claim_id)
+    if folded:
         repo.apply_overrides(corrections.overrides())
         claim = repo.get_claim(claim_id)
+    changes.add(
+        claim_id,
+        [
+            *claim_changes.correction_changes(folded),
+            *claim_changes.edit_changes(
+                claim_changes.claim_values(before, repo),
+                claim_changes.claim_values(claim, repo),
+                user.username,
+                datetime.now(UTC),
+            ),
+        ],
+    )
     audit_note(request, changed=_changed_fields(before, claim))
     _record_registration(registrations, patient, body, user)
     validation = validation_engine.validate_claims(repo.claims_frame([claim_id]), rules.list())[0]
@@ -153,8 +177,8 @@ def update_claim(
 
 # Compared to tell the audit log what an edit changed (names only, never values: PHI)
 _EDITABLE = (
-    "payer_id", "other_payer_ids", "provider_id", "facility_id", "claim_type", "service_date",
-    "submission_date", "primary_icd10", "additional_icd10", "pa_required", "pa_obtained",
+    "payer_id", "other_payer_ids", "provider_id", "facility_id", "claim_type", "place_of_service",
+    "service_date", "submission_date", "primary_icd10", "additional_icd10", "pa_required", "pa_obtained",
     "pa_number", "total_charge", "billing",
 )
 
@@ -262,18 +286,20 @@ def submit_claim(
     claim = repo.get_claim(claim_id)
     if claim is None:
         raise HTTPException(status_code=404, detail=f"Claim {claim_id} not found")
+    if claim.status == ClaimStatus.HANDED_OFF:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"{claim_id} was handed off to your billing system. Sending it here too could "
+                "reach the payer twice; reopen it first if your billing system hasn't sent it."
+            ),
+        )
     if claim.status != ClaimStatus.DRAFT:
         raise HTTPException(
             status_code=409,
             detail=f"Only draft claims can be submitted; {claim_id} is {claim.status}",
         )
-    # Judge the claim as it goes out: today's date, not the planned one
-    validation = validation_engine.validate_claims(repo.submission_frame(claim_id), rules.list())[0]
-    blocking = [
-        f"{f.rule_id} {f.rule_name}"
-        for f in validation.findings
-        if f.severity in (Severity.ERROR, Severity.WARNING)
-    ]
+    blocking = _open_issues(claim_id, repo, rules)
     if blocking:
         raise HTTPException(
             status_code=422,
@@ -289,6 +315,72 @@ def submit_claim(
         raise HTTPException(status_code=409, detail=str(err)) from err
     validation = validation_engine.validate_claims(repo.claims_frame([claim_id]), rules.list())[0]
     return ClaimCreated(claim=claim, validation=validation)
+
+
+@router.post("/{claim_id}/hand-off", response_model=ClaimCreated, dependencies=WRITE)
+def hand_off_claim(
+    claim_id: ClaimId,
+    repo: Claims,
+    rules: Rules,
+    request: Request,
+    user: SignedIn,
+    body: HandOffRequest = HandOffRequest(),
+) -> ClaimCreated:
+    """Finish a Draft here because the hospital sends it from its own billing system. Nothing
+    goes to a payer and no 837 is created. The hospital may fix what's left over there, so
+    open errors and warnings don't block this, but they must be acknowledged and are kept
+    with the claim and in the audit log."""
+    claim = repo.get_claim(claim_id)
+    if claim is None:
+        raise HTTPException(status_code=404, detail=f"Claim {claim_id} not found")
+    if claim.status != ClaimStatus.DRAFT:
+        raise HTTPException(
+            status_code=409, detail=f"Only draft claims can be handed off; {claim_id} is {claim.status}"
+        )
+    open_issues = _open_issues(claim_id, repo, rules)
+    if open_issues and not body.acknowledge_open_issues:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Confirm you're handing off this claim with open issues: {'; '.join(open_issues)}",
+        )
+    audit_note(request, open_issues=open_issues)
+    try:
+        claim = repo.hand_off_claim(claim_id, user.username, open_issues)
+    except ValueError as err:
+        raise HTTPException(status_code=409, detail=str(err)) from err
+    validation = validation_engine.validate_claims(repo.claims_frame([claim_id]), rules.list())[0]
+    return ClaimCreated(claim=claim, validation=validation)
+
+
+@router.post("/{claim_id}/reopen", response_model=ClaimCreated, dependencies=WRITE)
+def reopen_claim(
+    claim_id: ClaimId, body: ReopenRequest, repo: Claims, rules: Rules, request: Request
+) -> ClaimCreated:
+    """Put a handed-off claim back to Draft, so it can be changed or sent from here. Someone
+    must confirm the billing system hasn't sent it, or the payer could receive it twice."""
+    if not body.confirmed_not_sent:
+        raise HTTPException(
+            status_code=422, detail="Confirm your billing system hasn't sent this claim before reopening it"
+        )
+    try:
+        claim = repo.reopen_claim(claim_id)
+    except LookupError as err:
+        raise HTTPException(status_code=404, detail=str(err)) from err
+    except ValueError as err:
+        raise HTTPException(status_code=409, detail=str(err)) from err
+    audit_note(request, confirmed_not_sent=True)
+    validation = validation_engine.validate_claims(repo.claims_frame([claim_id]), rules.list())[0]
+    return ClaimCreated(claim=claim, validation=validation)
+
+
+def _open_issues(claim_id: str, repo: ClaimsRepository, rules: Rules) -> list[str]:
+    """Rule errors and warnings on the claim as it leaves: today's date, not the planned one."""
+    validation = validation_engine.validate_claims(repo.submission_frame(claim_id), rules.list())[0]
+    return [
+        f"{f.rule_id} {f.rule_name}"
+        for f in validation.findings
+        if f.severity in (Severity.ERROR, Severity.WARNING)
+    ]
 
 
 @router.get("/{claim_id}", response_model=ClaimDetail)
@@ -352,6 +444,101 @@ def download_readable_837(claim_id: ClaimId, repo: Claims, request: Request) -> 
     return _pdf(readable_837_pdf(read_837(text)), f"{claim_id}_{claim.edi.transaction}_readable{_test_suffix(claim)}.pdf")
 
 
+@router.get("/{claim_id}/handoff", response_model=HandoffExport, dependencies=WRITE)
+def get_handoff_export(
+    claim_id: ClaimId, repo: Claims, corrections: OrgCorrections, changes: OrgClaimChanges, org_id: OrgId
+) -> HandoffExport:
+    """What a handed-off claim takes back to the billing system: what changed here, what's
+    still open, and whether its 837 is a test file. Nothing is exported by reading this."""
+    claim = _handed_off(claim_id, repo)
+    return _handoff_export(claim, repo, corrections, changes, org_id)
+
+
+@router.get(
+    "/{claim_id}/handoff/837",
+    response_class=PlainTextResponse,
+    dependencies=WRITE,
+    responses={200: {"content": {"text/plain": {}}, "description": "The X12 837 file"}},
+)
+def download_handoff_837(
+    claim_id: ClaimId, repo: Claims, request: Request, org_id: OrgId
+) -> PlainTextResponse:
+    """The handed-off claim, with its corrections, as an 837 for the billing system to import.
+    Only after hand-off, so the claim can't change under the file or also be sent from here.
+    It's a first-time claim (frequency 1): nothing has reached a payer. Each download is in
+    the audit log."""
+    claim = _handed_off(claim_id, repo)
+    if _is_self_pay(claim):
+        raise HTTPException(status_code=404, detail=f"{claim_id} is self-pay, so it has no 837 file")
+    number = repo.handoff_control_number(claim_id)
+    text, edi = _handoff_837(claim, repo, org_id, number)
+    audit_note(request, export=f"{edi.transaction} hand-off", edi_control_number=edi.control_number, test_file=edi.test)
+    suffix = "_TEST" if edi.test else ""
+    return PlainTextResponse(
+        text,
+        headers={"Content-Disposition": f'attachment; filename="{claim_id}_{edi.transaction}_handoff{suffix}.txt"'},
+    )
+
+
+@router.get(
+    "/{claim_id}/handoff/changes.pdf",
+    response_class=Response,
+    dependencies=WRITE,
+    responses={200: {"content": {"application/pdf": {}}, "description": "What changed on the claim"}},
+)
+def download_handoff_changes(
+    claim_id: ClaimId,
+    repo: Claims,
+    corrections: OrgCorrections,
+    changes: OrgClaimChanges,
+    request: Request,
+    org_id: OrgId,
+) -> Response:
+    """The list of what changed on a handed-off claim and what's still open."""
+    claim = _handed_off(claim_id, repo)
+    export = _handoff_export(claim, repo, corrections, changes, org_id)
+    audit_note(request, export="hand-off changes PDF", changes=[c.field for c in export.changes])
+    return _pdf(claim_changes_pdf(claim, export), f"{claim_id}_changes.pdf")
+
+
+def _handed_off(claim_id: str, repo: ClaimsRepository) -> ClaimDetail:
+    claim = repo.get_claim(claim_id)
+    if claim is None:
+        raise HTTPException(status_code=404, detail=f"Claim {claim_id} not found")
+    if claim.status != ClaimStatus.HANDED_OFF:
+        raise HTTPException(
+            status_code=409, detail=f"Only handed-off claims can be exported; {claim_id} is {claim.status}"
+        )
+    return claim
+
+
+def _is_self_pay(claim: ClaimDetail) -> bool:
+    return claim.payer is not None and claim.payer.payer_type == PayerType.SELF_PAY
+
+
+def _handoff_837(claim: ClaimDetail, repo: ClaimsRepository, org_id: str, number: int) -> tuple[str, EdiFile]:
+    return _build_837(claim, repo, org_id, number, billing_system_claim_number(claim.source_ref), handoff=True)
+
+
+def _handoff_export(claim: ClaimDetail, repo, corrections, changes, org_id: str) -> HandoffExport:
+    # A summary only: the control number is taken when the file is actually downloaded
+    edi = None
+    if not _is_self_pay(claim):
+        edi = _handoff_837(claim, repo, org_id, claim.handoff.control_number or 0)[1]
+    return HandoffExport(
+        claim_id=claim.claim_id,
+        source_ref=claim.source_ref,
+        changes=claim_changes.net_changes(
+            [
+                *changes.for_claim(claim.claim_id),
+                *claim_changes.correction_changes(corrections.for_claim(claim.claim_id)),
+            ]
+        ),
+        open_issues=claim.handoff.open_issues,
+        edi=edi,
+    )
+
+
 def _submitted_837(claim_id: str, repo: ClaimsRepository) -> tuple[ClaimDetail, str]:
     claim = repo.get_claim(claim_id)
     text = repo.edi_text(claim_id) if claim else None
@@ -372,7 +559,14 @@ def _pdf(content: bytes, filename: str) -> Response:
     )
 
 
-def _build_837(claim: ClaimDetail, repo: ClaimsRepository, org_id: str) -> tuple[str, EdiFile]:
+def _build_837(
+    claim: ClaimDetail,
+    repo: ClaimsRepository,
+    org_id: str,
+    control_number: int | None = None,
+    claim_number: str | None = None,
+    handoff: bool = False,
+) -> tuple[str, EdiFile]:
     if claim.billing is None:
         raise HTTPException(
             status_code=422, detail=f"{claim.claim_id} has no billing details for the 837 file"
@@ -380,7 +574,8 @@ def _build_837(claim: ClaimDetail, repo: ClaimsRepository, org_id: str) -> tuple
     payers = [claim.payer, *[repo.get_payer(p) for p in claim.other_payer_ids]]
     facility = repo.get_facility(claim.facility_id)
     parties = ClaimParties(payers=payers, facility=facility, settings=load_edi_settings(org_id))
-    return build_837(claim, parties, repo.next_control_number(), datetime.now())
+    number = repo.next_control_number() if control_number is None else control_number
+    return build_837(claim, parties, number, datetime.now(), claim_number, handoff)
 
 
 def _next_id(ids: pd.Series, prefix: str, digits: int) -> str:

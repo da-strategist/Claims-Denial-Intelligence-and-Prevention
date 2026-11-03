@@ -350,7 +350,8 @@ function DraftClaimView({ claimId, justCreated, onClose, onChanged, onEdit }) {
       ) : (
         <div className="space-y-4">
           <Notice tone="info">
-            Submitted — it’s now {claim.status} and listed under{' '}
+            {claim.status === 'Handed off' ? 'Handed off to your billing system' : `Submitted — it’s now ${claim.status}`}{' '}
+            and listed under{' '}
             <a className="font-medium text-accent hover:underline" href={routeHref('#/claims', { search: claim.claim_id })}>
               Claims
             </a>

@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
-import { mockApi, reply } from '../test/mockApi'
+import { mockApi, reply, sentBodies } from '../test/mockApi'
 import FixSuggestion from './FixSuggestion'
 import Pagination from './Pagination'
 import RiskScore from './RiskScore'
@@ -83,6 +83,98 @@ describe('SubmitClaim', () => {
     render(<SubmitClaim claim={draft} validation={{ status: 'pass' }} onSubmitted={onSubmitted} />)
     await userEvent.click(screen.getByRole('button', { name: 'Mark as submitted' }))
     expect(onSubmitted).toHaveBeenCalledWith(pending)
+  })
+
+  it('offers the billing system first by default, and lets open issues go there once acknowledged', async () => {
+    const handedOff = { claim: { ...draft, status: 'Handed off' }, validation: { status: 'error' } }
+    const fetchMock = mockApi({ 'POST /claims/CLM0120001/hand-off': () => handedOff })
+    const onSubmitted = vi.fn()
+    render(<SubmitClaim claim={draft} validation={{ status: 'error' }} onSubmitted={onSubmitted} />)
+    const [first, second] = screen.getAllByRole('button')
+    expect(first).toHaveTextContent('Hand off to billing system')
+    expect(second).toHaveTextContent('Mark as submitted')
+    expect(first).toBeDisabled()
+    await userEvent.click(screen.getByRole('checkbox'))
+    await userEvent.click(first)
+    expect(onSubmitted).toHaveBeenCalledWith(handedOff)
+    expect(sentBodies(fetchMock, 'POST /claims/CLM0120001/hand-off')).toEqual([{ acknowledge_open_issues: true }])
+  })
+
+  it('puts sending first when that is the organisation default', () => {
+    render(
+      <AuthContext.Provider value={{ user: { organisation: { default_claim_route: 'send' } } }}>
+        <SubmitClaim claim={draft} validation={{ status: 'pass' }} />
+      </AuthContext.Provider>,
+    )
+    expect(screen.getAllByRole('button')[0]).toHaveTextContent('Mark as submitted')
+  })
+
+  it('only reopens a handed-off claim once someone confirms it was not sent', async () => {
+    const handedOff = {
+      ...draft,
+      status: 'Handed off',
+      handoff: { handed_off_on: '2026-11-03', handed_off_by: 'jubril', open_issues: ['RULE-002 Missing Prior Authorization'] },
+    }
+    const reopened = { claim: draft, validation: { status: 'pass' } }
+    mockApi({
+      'POST /claims/CLM0120001/reopen': () => reopened,
+      'GET /claims/CLM0120001/handoff': () => ({ claim_id: 'CLM0120001', source_ref: null, changes: [], open_issues: [], edi: null }),
+    })
+    const onSubmitted = vi.fn()
+    render(<SubmitClaim claim={handedOff} validation={{ status: 'pass' }} onSubmitted={onSubmitted} />)
+    expect(screen.getByText('RULE-002 Missing Prior Authorization')).toBeInTheDocument()
+    await screen.findByText('Nothing was changed here.')
+    expect(screen.queryByRole('button', { name: 'Mark as submitted' })).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Reopen claim' }))
+    const confirm = screen.getByRole('button', { name: 'Reopen as draft' })
+    expect(confirm).toBeDisabled()
+    await userEvent.click(screen.getByRole('checkbox'))
+    await userEvent.click(confirm)
+    expect(onSubmitted).toHaveBeenCalledWith(reopened)
+  })
+
+  it('offers a handed-off claim’s 837 and list of changes, and says when it’s a test file', async () => {
+    const handedOff = {
+      ...draft,
+      status: 'Handed off',
+      handoff: { handed_off_on: '2026-11-03', handed_off_by: 'jubril', open_issues: [] },
+    }
+    mockApi({
+      'GET /claims/CLM0120001/handoff': () => ({
+        claim_id: 'CLM0120001',
+        source_ref: 'HOSP-77',
+        open_issues: [],
+        edi: { transaction: '837P', control_number: '000000000', generated_at: '2026-11-03T10:00:00', test: true, notes: ['Not set: submitter ID'] },
+        changes: [
+          {
+            field: 'pa_number',
+            label: 'Prior auth number',
+            old_value: null,
+            new_value: 'PA123',
+            source: 'AI Fix',
+            changed_by: 'jubril',
+            changed_at: '2026-11-03T09:00:00Z',
+          },
+        ],
+      }),
+    })
+    render(<SubmitClaim claim={handedOff} validation={{ status: 'pass' }} onSubmitted={vi.fn()} />)
+    expect(await screen.findByText('Prior auth number: — → PA123')).toBeInTheDocument()
+    expect(screen.getByText('Your claim number: HOSP-77')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Download 837P' })).toHaveAttribute('href', '/api/claims/CLM0120001/handoff/837')
+    expect(screen.getByRole('link', { name: 'List of changes (PDF)' })).toHaveAttribute('href', '/api/claims/CLM0120001/handoff/changes.pdf')
+    expect(screen.getByText(/marked as a test file.*submitter ID/)).toBeInTheDocument()
+  })
+
+  it('has only the list of changes for a self-pay claim', async () => {
+    const handedOff = { ...draft, status: 'Handed off', handoff: { handed_off_on: '2026-11-03', handed_off_by: 'jubril', open_issues: [] } }
+    mockApi({
+      'GET /claims/CLM0120001/handoff': () => ({ claim_id: 'CLM0120001', source_ref: null, changes: [], open_issues: [], edi: null }),
+    })
+    render(<SubmitClaim claim={handedOff} validation={{ status: 'pass' }} onSubmitted={vi.fn()} />)
+    expect(await screen.findByText(/billed to the patient/)).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /Download/ })).not.toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'List of changes (PDF)' })).toBeInTheDocument()
   })
 
   it('shows why the server refused', async () => {

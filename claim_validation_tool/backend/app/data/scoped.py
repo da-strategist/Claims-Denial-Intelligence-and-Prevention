@@ -106,12 +106,24 @@ class ScopedClaims:
         self._require(claim_id)
         return self.base.submit_claim(claim_id, edi=edi)
 
+    def hand_off_claim(self, claim_id: str, by: str, open_issues: list[str]) -> ClaimDetail:
+        self._require(claim_id)
+        return self.base.hand_off_claim(claim_id, by, open_issues)
+
+    def reopen_claim(self, claim_id: str) -> ClaimDetail:
+        self._require(claim_id)
+        return self.base.reopen_claim(claim_id)
+
     def apply_overrides(self, overrides: dict[str, dict[str, str]]) -> None:
         """Re-layer the organisation's corrections. `overrides` is always the whole
         correction store (it replaces the overlay), so it holds other people's claims too;
         what this person may correct is checked when the correction is added (AI Fix looks
         the claim up through this scoped view first)."""
         self.base.apply_overrides(overrides)
+
+    def handoff_control_number(self, claim_id: str) -> int:
+        self._require(claim_id)
+        return self.base.handoff_control_number(claim_id)
 
     def edi_text(self, claim_id: str) -> str | None:
         return self.base.edi_text(claim_id) if self._visible(self.base.get_claim(claim_id)) else None

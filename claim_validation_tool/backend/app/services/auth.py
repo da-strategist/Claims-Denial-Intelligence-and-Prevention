@@ -41,6 +41,7 @@ PERMISSION_LABELS = {
     Permission.AUDIT_READ: "read the audit log",
     Permission.USERS_MANAGE: "manage user accounts",
     Permission.DATA_EXPORT: "export the organisation's data",
+    Permission.ORG_SETTINGS: "change the organisation's settings",
     Permission.PLATFORM_MANAGE: "manage the platform",
 }
 
