@@ -173,13 +173,17 @@ uv run python -m app.orgs rotate-key        # after putting a new key first in R
 uv run python -m app.orgs key-status        # which key provider holds each organisation's key
 ```
 
+The hash check also catches the newest events being removed, using `logs/audit-head.json`
+(back it up with the rest of `logs/`, and restore them together). Restoring an older copy of
+both, or changes by someone holding the key, needs a copy kept outside the server to catch.
+
 The audit log keeps each closed year in its own file (`logs/audit-2026.jsonl`) and every
 event for at least `RCM_AUDIT_RETENTION_YEARS` (6). Years past that can be deleted, never
 automatically, with the API running or not:
 
 ```bash
 uv run python -m app.orgs audit-purge --dry-run   # what would go
-uv run python -m app.orgs audit-purge             # delete it; the hash check still covers what's left
+uv run python -m app.orgs audit-purge --by "Ana Diaz"  # delete it; recorded in the log, and the hash check still covers what's left
 ```
 
 Without the master key the data can't be read, so keep a copy somewhere separate (a

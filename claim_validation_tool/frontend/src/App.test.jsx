@@ -175,7 +175,7 @@ describe('Audit Log page', () => {
       ],
     })
     render(<App />)
-    expect(await screen.findByText(/Hash chain intact across 1,234 events/)).toBeInTheDocument()
+    expect(await screen.findByText(/Hash chain intact across 1,234 events, with none missing from the end/)).toBeInTheDocument()
     expect(screen.getByText(/kept for at least 6 years/)).toBeInTheDocument()
     expect(screen.queryByText(/were deleted/)).not.toBeInTheDocument()
     expect(screen.getByText('GET /api/patients')).toBeInTheDocument()
@@ -212,10 +212,11 @@ describe('Audit Log page', () => {
         retention_years: 6,
         purged_through_year: 2019,
         purged_at: '2026-01-05T09:00:00Z',
+        purged_by: 'Ana Diaz',
       }),
       'GET /audit': () => [],
     })
     render(<App />)
-    expect(await screen.findByText(/Events from 2019 and earlier were deleted/)).toBeInTheDocument()
+    expect(await screen.findByText(/Events from 2019 and earlier were deleted.*by Ana Diaz/)).toBeInTheDocument()
   })
 })

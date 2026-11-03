@@ -64,6 +64,9 @@ def encrypt_organisation(org_id: str) -> list[str]:
         path = folder / name
         if path.exists() and encrypt_file(path, cipher):
             done.append(f"encrypted {org_id}/{name}")
+    head = folder / "logs/audit-head.json"
+    if head.exists() and encrypt_file(head, cipher):
+        done.append(f"encrypted {org_id}/logs/{head.name}")
     for path in [p for _, p in closed_year_files(folder / AUDIT_FILE)] + [folder / AUDIT_FILE]:
         if path.exists() and encrypt_file(path, cipher, by_line=True):
             done.append(f"encrypted {org_id}/logs/{path.name}")

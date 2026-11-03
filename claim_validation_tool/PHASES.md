@@ -137,8 +137,12 @@ continuous claims:
   person's SSO ID, mark a break-glass administrator, then make sign-in SSO only.
 - **Audit-log retention.** Events are kept 6 years (HIPAA's documentation period); set
   `RCM_AUDIT_RETENTION_YEARS` higher if a state or contract requires it. Once a year, run
-  `python -m app.orgs audit-purge --dry-run`, then without `--dry-run`, if your policy is to
+  `python -m app.orgs audit-purge --dry-run`, then with `--by "Your Name"`, if your policy is to
   delete what's past retention. Back up the `logs/` folders with the rest of the data.
+- **Audit log copy outside the server.** The log catches removal by anyone without the
+  encryption key, but not an older copy restored whole, or someone holding the key. Copy
+  `logs/audit-head.json` or the log itself somewhere the server can't overwrite, such as
+  write-once storage, and compare during reviews.
 - **Compliance items still open**: a BAA/DPA with Anthropic and the clearinghouse.
 
 ## Planned feature updates: claim submission

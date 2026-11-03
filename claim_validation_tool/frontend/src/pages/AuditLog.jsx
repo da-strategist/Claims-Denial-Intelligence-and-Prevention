@@ -29,8 +29,8 @@ function ChainStatus() {
     <div className="space-y-1">
       {data.ok ? (
         <p role="status" className="text-sm text-emerald-700">
-          ✓ Hash chain intact across {data.events.toLocaleString()} events: nothing has been
-          edited or removed.
+          ✓ Hash chain intact across {data.events.toLocaleString()} events, with none missing
+          from the end.
         </p>
       ) : (
         <p role="alert" className="text-sm font-semibold text-red-700">
@@ -52,7 +52,8 @@ function Retention({ data }) {
         <>
           {' '}
           Events from {data.purged_through_year} and earlier were deleted on{' '}
-          {new Date(data.purged_at).toLocaleDateString()} under that policy; the check covers
+          {new Date(data.purged_at).toLocaleDateString()}
+          {data.purged_by && ` by ${data.purged_by}`} under that policy; the check covers
           everything since.
         </>
       )}

@@ -252,3 +252,4 @@ class AuditVerification(BaseModel):
         default=None, description="Events from this year and earlier were deleted under the retention policy"
     )
     purged_at: datetime | None = None
+    purged_by: str | None = None
