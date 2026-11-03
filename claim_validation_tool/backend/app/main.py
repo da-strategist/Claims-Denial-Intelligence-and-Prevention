@@ -6,7 +6,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.data import get_reference_data, get_repository, get_rule_repository
-from app.data.audit import AuditLog, get_audit_log, get_platform_audit_log
+from app.data.audit import AuditLog, get_audit_log, get_platform_audit_log, retention_years
 from app.data.orgs import OrgStatus, get_org_registry
 from app.data.key_providers import LOCAL
 from app.data.secure_files import MASTER_KEY_ENV, key_provider, production
@@ -48,6 +48,7 @@ def allowed_origins() -> list[str]:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     keys = key_provider()  # an unknown or unbuilt provider stops startup here
+    retention_years()  # and so does an audit retention period under 6 years
     if keys is None:
         if production():
             # Patient data is never written unencrypted in production

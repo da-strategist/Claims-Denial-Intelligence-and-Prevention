@@ -42,7 +42,8 @@ This tool validates healthcare claims against configurable rules, identifies den
   are saved in `new_claims.json` and replayed on startup), JSON-backed rule, correction, saved-draft
   (`drafts.py`) and patient registration (`registrations.py`) stores, reference data (CPT, ICD-10, contracts, CARC/RARC), and the
   assistant's knowledge base (`knowledge.py`: one citable source per reference-table row),
-  user accounts (`users.py`), and the hash-chained audit log (`audit.py`)
+  user accounts (`users.py`), and the hash-chained audit log (`audit.py`: one file per closed year, kept
+  `RCM_AUDIT_RETENTION_YEARS`, then deletable with `app.orgs audit-purge`)
 - `app/evals/` — the assistant's evaluation set and runner
 
 **Organisations (HIPAA data segregation, `DATA_SEGREGATION_PLAN.md`):** every store and cache

@@ -10,9 +10,14 @@
     uv run python -m app.orgs encrypt                     # encrypt every organisation's files
     uv run python -m app.orgs rotate-key                  # re-wrap data keys with the active key provider
     uv run python -m app.orgs key-status                  # which provider holds each organisation's key
+    uv run python -m app.orgs audit-purge --dry-run       # audit years past retention (add no flag to delete)
 
 `encrypt` turns on encryption at rest for files written before RCM_MASTER_KEY was set
 (stop the API and back up the orgs folder first). It is safe to run twice.
+
+`audit-purge` deletes the audit log years whose retention period (RCM_AUDIT_RETENTION_YEARS,
+at least 6) is over, for every organisation and the platform log. Nothing is deleted
+automatically; run it with --dry-run first. It is safe while the API is running.
 
 `migrate` moves a single-organisation install's files into backend/orgs/meridian/ and
 assigns every account without an organisation to it. It never overwrites a file and is
@@ -25,6 +30,7 @@ import os
 import sys
 from pathlib import Path
 
+from app.data.audit import get_audit_log, get_platform_audit_log, retention_years
 from app.data.corrections import DEFAULT_CORRECTIONS_FILE
 from app.data.drafts import DEFAULT_DRAFTS_FILE
 from app.data.new_claims import DEFAULT_NEW_CLAIMS_FILE
@@ -134,6 +140,8 @@ def main(argv: list[str] | None = None) -> int:
         "rotate-key", help="re-wrap every data key with the active key provider's current key"
     )
     commands.add_parser("key-status", help="which key provider holds each organisation's data key")
+    purge = commands.add_parser("audit-purge", help="delete audit log years past their retention period")
+    purge.add_argument("--dry-run", action="store_true", help="only show what would be deleted")
     args = parser.parse_args(argv)
     registry = get_org_registry()
     try:
@@ -177,6 +185,17 @@ def main(argv: list[str] | None = None) -> int:
                     if org.status != OrgStatus.DELETED:
                         held = data_key_provider(registry.folder(org.id)) or "no data key (unencrypted)"
                         print(f"{org.id:14} {held}")
+            case "audit-purge":
+                logs = [(o.id, get_audit_log(o.id)) for o in registry.list() if o.status != OrgStatus.DELETED]
+                logs.append(("platform", get_platform_audit_log()))
+                verb = "would delete" if args.dry_run else "deleted"
+                for name, log in logs:
+                    removed = log.purge(dry_run=args.dry_run)
+                    if removed:
+                        years = ", ".join(f"{year} ({count} events)" for year, count in removed)
+                        print(f"{name}: {verb} {years}")
+                    else:
+                        print(f"{name}: nothing older than {retention_years()} years")
             case "add":
                 org = registry.add(args.org_id, args.name, Path(args.data_dir).resolve())
                 print(f"created organisation {org.id} ({org.name})")

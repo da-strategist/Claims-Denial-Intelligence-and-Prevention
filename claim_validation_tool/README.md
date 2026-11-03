@@ -173,6 +173,15 @@ Without the master key the data can't be read, so keep a copy somewhere separate
 password manager or key vault). Production mode refuses to start without one. Details in
 `DATA_SEGREGATION_PLAN.md` §9.
 
+The audit log keeps each closed year in its own file (`logs/audit-2026.jsonl`) and every
+event for at least `RCM_AUDIT_RETENTION_YEARS` (6). Years past that can be deleted, never
+automatically, with the API running or not:
+
+```bash
+uv run python -m app.orgs audit-purge --dry-run   # what would go
+uv run python -m app.orgs audit-purge             # delete it; the hash check still covers what's left
+```
+
 **Data export.** An organisation's administrators download all its data, decrypted, as one
 zip with a manifest (Audit log page, **Export all data**). The download is in its audit log.
 
@@ -263,6 +272,7 @@ cd claim_validation_tool/frontend && npm test                 # components, page
 npm run lint                                                  # oxlint
 npm run build                                                 # production build
 ```
+| `RCM_AUDIT_RETENTION_YEARS` | `6` | Years audit events are kept before `audit-purge` may delete them; less than 6 is refused |
 
 Assistant evaluation, 17 billing questions with expected sources and answer facts
 (`backend/app/evals/assistant_cases.py`):
@@ -343,7 +353,7 @@ claim_validation_tool/
   config is ready but there's no server yet), the encryption master key sits in `.env` rather
   than a key service, local accounts rather than single sign-on, and no agreement (BAA/DPA)
   with Anthropic. Sessions live in memory, so a
-  restart signs everyone out, and the audit log has no rotation or retention policy.
+  restart signs everyone out.
 - AI Fix is rule-based; the assistant handles the ambiguous cases. Its knowledge is limited to
   the reference tables: there are no payer policy manuals, so it can't say which services a
   payer requires prior authorization for, or quote filing limits, and says so.

@@ -314,3 +314,23 @@ the platform (`PUT/DELETE /api/platform/organisations/{id}/sso`).
   break-glass controls on the Users page come with the first real provider, since nothing
   can use them before then.
 
+### 9.8 Audit log retention
+
+HIPAA requires its documentation to be kept six years (45 CFR 164.316(b)(2)); the audit log
+is kept at least that long (`RCM_AUDIT_RETENTION_YEARS`, default and minimum 6).
+
+- **One file per year.** When the first event of a new year is recorded, the year before
+  is closed into `logs/audit-<year>.jsonl` and the chain continues in `logs/audit.jsonl`.
+  If the clock goes back, events stay in the open file, so the files stay in order.
+  Reading, searching, `verify`, encryption, and export cover every year still kept.
+- **Deleting old years** is manual: `python -m app.orgs audit-purge [--dry-run]`, for every
+  organisation and the platform log. A year is due once the retention period has passed
+  since it ended (with 6 years, 2019 is kept through 2025). It's refused if the hash chain
+  doesn't verify, so evidence of tampering is never deleted.
+- **The chain after a purge.** `logs/audit-purged.json` records the last deleted event's
+  number and hash (no PHI), written before any file is deleted. `verify` starts from it, so
+  it still checks every event that's left, and the Audit Log page says which years were
+  deleted and when.
+- **Deleting an organisation** (9.3) deletes its audit log with the rest of its data. It's
+  the organisation's record, so give it the export (9.2) first; the platform log keeps the
+  record of the deletion itself.

@@ -25,14 +25,37 @@ function ChainStatus() {
   const { data, error } = useApi((options) => verifyAuditLog(options))
   if (error) return <p className="text-sm text-red-700">Could not verify the log — {error}</p>
   if (!data) return null
-  return data.ok ? (
-    <p role="status" className="text-sm text-emerald-700">
-      ✓ Hash chain intact across {data.events.toLocaleString()} events: nothing has been edited
-      or removed.
-    </p>
-  ) : (
-    <p role="alert" className="text-sm font-semibold text-red-700">
-      ✗ The log was altered at event {data.first_bad_seq}: events from there on can’t be trusted.
+  return (
+    <div className="space-y-1">
+      {data.ok ? (
+        <p role="status" className="text-sm text-emerald-700">
+          ✓ Hash chain intact across {data.events.toLocaleString()} events: nothing has been
+          edited or removed.
+        </p>
+      ) : (
+        <p role="alert" className="text-sm font-semibold text-red-700">
+          ✗ The log was altered at event {data.first_bad_seq}: events from there on can’t be
+          trusted.
+        </p>
+      )}
+      <Retention data={data} />
+    </div>
+  )
+}
+
+function Retention({ data }) {
+  if (!data.retention_years) return null
+  return (
+    <p className="text-xs text-gray-500">
+      Events are kept for at least {data.retention_years} years.
+      {data.purged_through_year && (
+        <>
+          {' '}
+          Events from {data.purged_through_year} and earlier were deleted on{' '}
+          {new Date(data.purged_at).toLocaleDateString()} under that policy; the check covers
+          everything since.
+        </>
+      )}
     </p>
   )
 }

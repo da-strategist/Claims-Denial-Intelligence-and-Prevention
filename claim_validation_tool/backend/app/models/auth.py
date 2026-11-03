@@ -240,3 +240,8 @@ class AuditVerification(BaseModel):
     first_bad_seq: int | None = Field(
         default=None, description="First event whose hash doesn't match (edited or removed)"
     )
+    retention_years: int = Field(description="How long events are kept before they may be deleted")
+    purged_through_year: int | None = Field(
+        default=None, description="Events from this year and earlier were deleted under the retention policy"
+    )
+    purged_at: datetime | None = None

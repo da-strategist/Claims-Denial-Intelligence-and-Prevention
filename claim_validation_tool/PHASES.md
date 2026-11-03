@@ -135,8 +135,11 @@ continuous claims:
 - **Single sign-on.** Add the identity provider the clients use (OpenID Connect covers
   Entra ID, Okta, and Google; DATA_SEGREGATION_PLAN.md §9.7) and its screens, link each
   person's SSO ID, mark a break-glass administrator, then make sign-in SSO only.
-- **Compliance items still open**: a BAA/DPA with Anthropic and the clearinghouse, and
-  audit-log retention.
+- **Audit-log retention.** Events are kept 6 years (HIPAA's documentation period); set
+  `RCM_AUDIT_RETENTION_YEARS` higher if a state or contract requires it. Once a year, run
+  `python -m app.orgs audit-purge --dry-run`, then without `--dry-run`, if your policy is to
+  delete what's past retention. Back up the `logs/` folders with the rest of the data.
+- **Compliance items still open**: a BAA/DPA with Anthropic and the clearinghouse.
 
 ## Planned feature updates: claim submission
 

@@ -94,7 +94,8 @@ def test_the_hash_chain_detects_edits_and_deletions(tmp_path):
     log = AuditLog(path)
     for n in range(1, 5):
         log.record(username="a", role=Role.ADMIN, action=f"GET /x/{n}", status_code=200)
-    assert log.verify().model_dump() == {"ok": True, "events": 4, "first_bad_seq": None}
+    check = log.verify()
+    assert (check.ok, check.events, check.first_bad_seq) == (True, 4, None)
     assert path.stat().st_mode & 0o777 == 0o600
 
     # Reopening continues the chain

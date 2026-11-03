@@ -18,6 +18,7 @@ import shutil
 import zipfile
 from datetime import UTC, datetime
 
+from app.data.audit import AuditLog, closed_year_files
 from app.data.emergency import get_emergency_access
 from app.data.orgs import OrgStatus, get_org_registry, org_cipher_for
 from app.data.secure_files import (
@@ -25,7 +26,6 @@ from app.data.secure_files import (
     EncryptionError,
     encrypt_file,
     rewrap_data_key,
-    iter_lines,
     read_text,
     shred,
     table_path,
@@ -41,7 +41,7 @@ PHI_FILES = [
     "claim_corrections.json",
     "patient_registrations.json",
 ]
-AUDIT_FILE = "logs/audit.jsonl"  # encrypted line by line
+AUDIT_FILE = "logs/audit.jsonl"  # encrypted line by line; closed years in audit-<year>.jsonl
 SETTINGS_FILES = ["rules.json", "edi_settings.json"]
 
 
@@ -59,11 +59,14 @@ def encrypt_organisation(org_id: str) -> list[str]:
         raise EncryptionError("Set RCM_MASTER_KEY first (`python -m app.orgs new-master-key`)")
     registry = get_org_registry()
     folder, done = registry.folder(org_id), []
-    for name in PHI_FILES + [AUDIT_FILE]:
+    for name in PHI_FILES:
         path = folder / name
-        if path.exists() and encrypt_file(path, cipher, by_line=name == AUDIT_FILE):
+        if path.exists() and encrypt_file(path, cipher):
             done.append(f"encrypted {org_id}/{name}")
     data_dir = registry.data_dir(org_id)
+    for path in [p for _, p in closed_year_files(folder / AUDIT_FILE)] + [folder / AUDIT_FILE]:
+        if path.exists() and encrypt_file(path, cipher, by_line=True):
+            done.append(f"encrypted {org_id}/logs/{path.name}")
     if not owns_data_dir(org_id):
         done.append(f"left {data_dir} as it is: it's outside {org_id}'s folder")
         return done
@@ -89,9 +92,12 @@ def export_organisation(org_id: str, exported_by: str) -> tuple[bytes, dict]:
         path = folder / name
         if path.exists():
             files[f"app/{name}"] = read_text(path, cipher).encode()
-    audit = folder / AUDIT_FILE
-    if audit.exists():
-        files["app/audit.jsonl"] = "".join(line + "\n" for line in iter_lines(audit, cipher)).encode()
+    audit = AuditLog(folder / AUDIT_FILE, cipher)
+    if lines := list(audit.lines()):  # every year still kept, in one file
+        files["app/audit.jsonl"] = "".join(line + "\n" for line in lines).encode()
+    purged = folder / "logs/audit-purged.json"
+    if purged.exists():  # where the chain starts after years deleted under the retention policy
+        files["app/audit-purged.json"] = purged.read_bytes()
     for table in ORGANISATION_TABLES:
         path = table_path(data_dir, table)
         if path.exists():

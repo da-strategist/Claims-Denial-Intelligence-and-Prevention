@@ -270,7 +270,9 @@ const SECTIONS = [
             Every request: who, what, which records, and the outcome. If the service’s operators
             ever need emergency access to your data, it appears at the top with their reason, and
             you can end it at any time; it is read-only and everything they open is logged. Filter by user, record, or
-            outcome; the hash check shows whether the log has been altered.
+            outcome; the hash check shows whether the log has been altered. Events are kept for at
+            least six years; if older years have been deleted under that policy, the page says
+            which.
           </Term>
           <Term name="Users">
             Add people, change their role, reset a password, or disable an account (which signs
