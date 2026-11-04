@@ -4,13 +4,14 @@ Two kinds of file:
 
 - CSV or Excel in the template's layout: one row per service line, rows grouped into
   claims by claim_ref. Billing details left blank come from the patient's registration,
-  as the New Claim form fills them in.
+  as the New Claim form fills them in. A patient without an ID is described by name.
 - X12 837P / 837I, from this app or another billing system: any number of claims. The
   patient is matched by name and date of birth (or member ID), the payer by its ID or
   name, the provider by NPI and the facility by name.
 
 Nothing here saves anything: each claim comes back as a request body to create, or as
-the reasons it couldn't be read.
+the reasons it couldn't be read. A patient described by name is settled when the claim is
+saved (services/patient_list.py), so two claims for a new patient in one file are one patient.
 """
 
 import csv
@@ -18,6 +19,7 @@ import io
 import re
 from dataclasses import dataclass, field
 from datetime import date, datetime
+from types import SimpleNamespace
 
 import pandas as pd
 from pydantic import ValidationError
@@ -26,6 +28,7 @@ from app.models import ClaimCreate, PatientQuery, PayerType
 from app.models.billing import RELATIONSHIP_CODES, Relationship
 from app.models.claim import PlaceOfService
 from app.services.edi_reader import Claim837, Party, Policy, read_837
+from app.services.patient_list import UNRESOLVED_PATIENT, IncomingPatient, find_patient
 
 # The template: required columns first, then optional ones
 REQUIRED_COLUMNS = (
@@ -38,6 +41,7 @@ OPTIONAL_COLUMNS = (
     "member_id", "group_number", "other_member_ids",
     "patient_birth_date", "address_line1", "address_line2", "city", "state", "zip_code",
     "type_of_bill", "admission_type", "admission_source", "patient_status",
+    "patient_first_name", "patient_last_name", "patient_sex",
 )
 LINE_COLUMNS = ("cpt_code", "icd10_pointer", "units", "modifier", "charge_amount", "revenue_code")
 HEADER_COLUMNS = tuple(c for c in REQUIRED_COLUMNS + OPTIONAL_COLUMNS if c not in LINE_COLUMNS)
@@ -50,6 +54,9 @@ TEMPLATE_ROWS = [
     },
     {"claim_ref": "A1", "cpt_code": "99214", "icd10_pointer": "I10", "units": "1"},
 ]
+
+# For a patient who isn't on the list yet: everything has to come from the claim
+_NOT_ON_LIST = SimpleNamespace(policies={}, address=None, birth_date=None)
 
 _RELATIONSHIPS = {code: relationship for relationship, code in RELATIONSHIP_CODES.items()}
 _DIAGNOSIS_QUALIFIERS = {"ABK", "ABF", "BK", "BF"}  # principal and other diagnoses
@@ -67,6 +74,7 @@ class ParsedClaim:
     body: ClaimCreate | None = None
     errors: list[str] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
+    incoming: IncomingPatient | None = None  # set when the patient is described, not identified
 
 
 def template_csv() -> str:
@@ -165,10 +173,30 @@ def _table_claim(rows: pd.DataFrame, repo, registrations, today: date, claim: Pa
 
     payer_id = header["payer_id"].upper()
     other_payer_ids = [p.upper() for p in _split(header["other_payer_ids"])]
-    patient = repo.get_patient(header["patient_id"].upper())
-    if patient is None:
-        raise ValueError(f"Patient {header['patient_id']} is not registered")
-    registration = registrations.get(patient, repo.get_payer(patient.primary_payer_id), today)
+    if header["patient_id"]:
+        patient = repo.get_patient(header["patient_id"].upper())
+        if patient is None:
+            raise ValueError(f"Patient {header['patient_id']} is not registered")
+        registration = registrations.get(patient, repo.get_payer(patient.primary_payer_id), today)
+    else:
+        if not (header["patient_first_name"] and header["patient_last_name"]):
+            raise ValueError("Give patient_id, or the patient's patient_first_name and patient_last_name")
+        claim.incoming = IncomingPatient(
+            first_name=header["patient_first_name"],
+            last_name=header["patient_last_name"],
+            birth_date=_date(header["patient_birth_date"], "patient_birth_date") if header["patient_birth_date"] else None,
+            payer_id=payer_id,
+            member_id=header["member_id"],
+            sex=header["patient_sex"].upper(),
+            zip_code=header["zip_code"],
+            primary_payer_id=None if other_payer_ids else payer_id,
+        )
+        patient, _ = find_patient(claim.incoming, repo, registrations, today)
+        registration = (
+            registrations.get(patient, repo.get_payer(patient.primary_payer_id), today)
+            if patient is not None
+            else _NOT_ON_LIST
+        )
 
     pa_number = header["pa_number"] or None
     pa_obtained = _bool(header["pa_obtained"], "pa_obtained") or bool(pa_number)
@@ -184,8 +212,12 @@ def _table_claim(rows: pd.DataFrame, repo, registrations, today: date, claim: Pa
             "line1": header["address_line1"], "line2": header["address_line2"] or None,
             "city": header["city"], "state": header["state"].upper(), "zip_code": header["zip_code"],
         }
-    else:
+    elif registration.address is not None:
         address = registration.address.model_dump(mode="json")
+    else:
+        raise ValueError("This patient isn't on your list yet, so the claim needs their address (address_line1)")
+    if not header["patient_birth_date"] and registration.birth_date is None:
+        raise ValueError("This patient isn't on your list yet, so the claim needs patient_birth_date")
     other_members = _split(header["other_member_ids"])
     other_policies = []
     for n, other_id in enumerate(other_payer_ids):
@@ -197,7 +229,7 @@ def _table_claim(rows: pd.DataFrame, repo, registrations, today: date, claim: Pa
             raise ValueError(f"Give the member ID for other payer {other_id} (other_member_ids)")
 
     return {
-        "patient_id": patient.patient_id,
+        "patient_id": UNRESOLVED_PATIENT if claim.incoming else patient.patient_id,
         "payer_id": payer_id,
         "other_payer_ids": other_payer_ids,
         "provider_id": header["provider_id"].upper(),
@@ -312,7 +344,30 @@ def _edi_claim(read: Claim837, kind: str, repo, registrations, today, external, 
     payer = _match_payer(read.policy.payer, repo, external)
     other_payers = [_match_payer(policy.payer, repo, external) for policy in read.other_policies]
     person = read.patient_party
-    patient, registration = _match_patient(person, read.policy.holder.id, payer, repo, registrations, today)
+    if not person.name:
+        raise ValueError("The claim doesn't name the patient")
+    policies = [read.policy, *read.other_policies]
+    payers = [payer, *other_payers]
+    claim.incoming = IncomingPatient(
+        first_name=person.first_name,
+        last_name=person.name,
+        birth_date=_date(person.birth_date, "patient date of birth") if person.birth_date else None,
+        payer_id=payer.payer_id,
+        member_id=read.policy.holder.id,
+        sex=person.sex,
+        zip_code=person.zip_code,
+        primary_payer_id=next((p.payer_id for p, policy in zip(payers, policies) if policy.responsibility == "P"), None),
+    )
+    patient, _ = find_patient(claim.incoming, repo, registrations, today)
+    registration = (
+        registrations.get(patient, repo.get_payer(patient.primary_payer_id), today)
+        if patient is not None
+        else _NOT_ON_LIST
+    )
+    address = _edi_address(person) or (registration.address.model_dump(mode="json") if registration.address else None)
+    if address is None or (not person.birth_date and registration.birth_date is None):
+        missing = "address" if address is None else "date of birth"
+        raise ValueError(f"This patient isn't on your list yet, so the claim needs their {missing}")
     provider = next((p for p in repo.list_providers() if p.npi == read.provider.id), None)
     if provider is None:
         raise ValueError(f"No provider has NPI {read.provider.id or '(none given)'}")
@@ -371,14 +426,12 @@ def _edi_claim(read: Claim837, kind: str, repo, registrations, today, external, 
         raise ValueError("The claim has no service date (DTP 472 or 434)")
     service_date = _date(service_date, "service date")
 
-    policies = [read.policy, *read.other_policies]
-    payers = [payer, *other_payers]
     billing_policies = [
         None if p.payer_type == PayerType.SELF_PAY else _edi_policy(policy, registration.policies.get(p.payer_id))
         for policy, p in zip(policies, payers)
     ]
     return {
-        "patient_id": patient.patient_id,
+        "patient_id": UNRESOLVED_PATIENT,
         "payer_id": payer.payer_id,
         "other_payer_ids": [p.payer_id for p in other_payers],
         "provider_id": provider.provider_id,
@@ -396,7 +449,7 @@ def _edi_claim(read: Claim837, kind: str, repo, registrations, today, external, 
             "patient_birth_date": _date(person.birth_date, "patient date of birth")
             if person.birth_date
             else registration.birth_date,
-            "patient_address": _edi_address(person) or registration.address.model_dump(mode="json"),
+            "patient_address": address,
             "policy": billing_policies[0],
             "other_policies": [p for p in billing_policies[1:] if p is not None],
             "institutional": {
@@ -430,35 +483,6 @@ def _match_payer(party: Party, repo, external: dict[str, str]):
     if payer is None:
         raise ValueError(f"No payer matches {party.name or '(no name)'} ({party.id or 'no ID'})")
     return payer
-
-
-def _match_patient(person: Party, member_id: str, payer, repo, registrations, today):
-    """The one registered patient with this name whose date of birth (or member ID with
-    this payer) matches."""
-    if not person.name:
-        raise ValueError("The claim doesn't name the patient")
-    name = f"{person.first_name} {person.name}".strip()
-    page = repo.list_patients(PatientQuery(search=name, page_size=50))
-    candidates = [
-        p
-        for p in page.items
-        if p.last_name.lower() == person.name.lower() and p.first_name.lower() == person.first_name.lower()
-    ]
-    matches = []
-    for patient in candidates:
-        registration = registrations.get(patient, repo.get_payer(patient.primary_payer_id), today)
-        policy = registration.policies.get(payer.payer_id)
-        if person.birth_date and registration.birth_date.isoformat() == person.birth_date:
-            matches.append((patient, registration))
-        elif not person.birth_date and policy is not None and policy.member_id == member_id:
-            matches.append((patient, registration))
-    if len(matches) == 1:
-        return matches[0]
-    if not candidates:
-        raise ValueError(f"No registered patient is named {name}")
-    if not matches:
-        raise ValueError(f"No registered patient named {name} has that date of birth")
-    raise ValueError(f"More than one registered patient matches {name}: enter this claim on the form")
 
 
 def _edi_diagnoses(segments: list[str]) -> list[str]:

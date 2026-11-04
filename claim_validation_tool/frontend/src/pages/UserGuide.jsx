@@ -185,8 +185,12 @@ const SECTIONS = [
             registration.
           </li>
           <li>
-            837 files are matched to registered patients by name and date of birth, to providers by
-            NPI, and to payers by ID or name. A claim that doesn’t match is listed with the reason.
+            837 files are matched to your patient list by name and date of birth, to providers by NPI,
+            and to payers by ID or name. A patient who isn’t on the list yet is added from the
+            claim, so they’re never refused for being new. If they might be someone already listed,
+            both records are kept and they appear under{' '}
+            <strong className="font-medium">patients to check</strong> on the Claims page. A claim
+            with an unknown provider or payer is listed with the reason.
           </li>
           <li>
             Choose <strong className="font-medium">Upload and check</strong>. Each claim is saved as
@@ -295,6 +299,14 @@ const SECTIONS = [
             administrator can’t be removed. Every change is in the audit log. Give new passwords
             in person or by phone, not by email. The same can be done on the server with{' '}
             <code className="font-mono text-xs">python -m app.users</code>.
+          </Term>
+          <Term name="API keys">
+            On the Users page: a key lets your billing or hospital system send claims and read back
+            errors and suggested fixes, without anyone signing in. Claims it sends appear here as
+            Drafts, and sending the same claim number again replaces the Draft. A key reaches only
+            that, can act across your whole organisation, and appears in the audit log as{' '}
+            <code className="font-mono text-xs">api.</code> plus its ID. It’s shown once; if one is
+            lost or leaked, revoke it and create another.
           </Term>
           <Term name="Export all data">
             On the Audit Log page: one zip with everything your organisation has here (claims,

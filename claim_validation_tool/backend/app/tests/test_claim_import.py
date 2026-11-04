@@ -7,6 +7,7 @@ import io
 import pandas as pd
 
 from app.data.audit import get_audit_log
+from app.data.repository import get_repository
 from app.models import Role
 from app.tests.conftest import sign_in
 from app.tests.test_claim_entry import NEW_CLAIM
@@ -223,10 +224,14 @@ def test_an_837_with_several_claims_and_one_unknown_patient(client, today):
     combined = "~".join([*head, *body(first.text), *body(second.text), *stranger, "SE*1*0001", "GE*1*1", "IEA*1*1"]) + "~"
     res = upload(client, combined, filename="batch.837").json()
     assert res["claims_found"] == 3
-    assert [c["claim"]["service_date"] for c in res["created"]] == ["2026-01-05", "2026-01-07"]
-    [failure] = res["failed"]
-    assert failure["where"] == "claim 3 in the file"
-    assert failure["errors"] == ["No registered patient is named ANNA NOBODY"]
+    assert res["failed"] == []
+    assert [c["claim"]["service_date"] for c in res["created"]][:2] == ["2026-01-05", "2026-01-07"]
+    # A new patient isn't refused, though this one shares a member ID with Donald Davis
+    stranger = res["created"][2]
+    assert stranger["where"] == "claim 3 in the file"
+    assert get_repository("meridian").get_patient(stranger["claim"]["patient_id"]).last_name == "NOBODY"
+    assert any("added to your patient list" in note for note in stranger["notes"])
+    assert any("may already be on your list" in note for note in stranger["notes"])
 
 
 def test_a_blank_facility_is_the_organisations_only_one(anon_client, today):

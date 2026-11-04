@@ -105,6 +105,19 @@ class RegistrationStore:
             entered = self._entered.get(patient.patient_id)
         return entered or sample_registration(patient, payer, today)
 
+    def with_policy(self, payer_id: str, member_id: str) -> list[str]:
+        """Patients whose saved details have this member ID with this payer."""
+        with self._lock:
+            return [
+                r.patient_id for r in self._entered.values()
+                if payer_id in r.policies and r.policies[payer_id].member_id == member_id
+            ]
+
+    def born_on(self, birth_date: date) -> list[str]:
+        """Patients whose saved details have this date of birth."""
+        with self._lock:
+            return [r.patient_id for r in self._entered.values() if r.birth_date == birth_date]
+
     def record_claim(
         self,
         patient: Patient,

@@ -86,6 +86,31 @@ class ScopedClaims:
         visible = set(self.claims_frame(claim_ids)["claim_id"])
         return [claim_id for claim_id in claim_ids if claim_id not in visible]
 
+    # The patient register is organisation-wide (see above), so these aren't scoped
+
+    def add_patient(self, details: dict, by: str, review: list[str]) -> str:
+        return self.base.add_patient(details, by, review)
+
+    def remove_patient(self, patient_id: str) -> None:
+        self.base.remove_patient(patient_id)
+
+    def update_patient(self, patient_id: str, changes: dict):
+        return self.base.update_patient(patient_id, changes)
+
+    def patient_added_from_claim(self, patient_id: str) -> bool:
+        return self.base.patient_added_from_claim(patient_id)
+
+    def patients_to_review(self) -> dict[str, list[str]]:
+        return self.base.patients_to_review()
+
+    def clear_patient_review(self, patient_id: str) -> bool:
+        return self.base.clear_patient_review(patient_id)
+
+    def claim_id_for_number(self, number: str) -> str | None:
+        """Organisation-wide, like claim IDs: a number already used outside this account's
+        access still can't be used again. Reading that claim stays scoped."""
+        return self.base.claim_id_for_number(number)
+
     def add_claim(self, fields: dict, lines: list[dict]) -> ClaimDetail:
         if not self.scope.allows(fields["facility_id"], fields["department_id"], fields["provider_id"]):
             raise OutOfScopeError("That provider, department, and facility are outside your access")

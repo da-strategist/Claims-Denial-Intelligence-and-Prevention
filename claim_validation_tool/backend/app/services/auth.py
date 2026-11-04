@@ -21,6 +21,7 @@ from typing import Annotated
 
 from fastapi import Depends, HTTPException, Request
 
+from app.data.api_keys import ApiKey, get_api_keys, key_id
 from app.data.emergency import get_emergency_access
 from app.data.orgs import OrgStatus, get_org_registry
 from app.data.secure_files import production
@@ -32,6 +33,9 @@ MAX_FAILED_LOGINS = 5
 LOCKOUT = timedelta(minutes=15)
 # A kept session's last request is saved at most this often (it's checked against the idle limit)
 SAVE_SEEN_EVERY = timedelta(seconds=60)
+# Routes for hospital systems: reached with an API key and nothing else, and the only routes
+# an API key reaches
+MACHINE_API_PREFIX = "/api/v1/"
 
 PERMISSION_LABELS = {
     Permission.CLAIMS_READ: "view claims",
@@ -162,6 +166,31 @@ class LoginThrottle:
             self._failures.pop(username, None)
 
 
+class ApiRateLimit:
+    """At most `per_minute` requests per API key, in a sliding minute."""
+
+    def __init__(self, per_minute: int) -> None:
+        self.per_minute = per_minute
+        self._recent: dict[str, list[datetime]] = {}
+        self._lock = Lock()
+
+    def wait_seconds(self, id_: str) -> int:
+        """0 and counts the request if it's allowed, or how long until one would be."""
+        now = _now()
+        with self._lock:
+            recent = [t for t in self._recent.get(id_, []) if now - t < timedelta(minutes=1)]
+            if len(recent) >= self.per_minute:
+                self._recent[id_] = recent
+                return max(1, int((recent[0] + timedelta(minutes=1) - now).total_seconds()) + 1)
+            self._recent[id_] = [*recent, now]
+            return 0
+
+
+@lru_cache(maxsize=1)
+def get_api_rate_limit() -> ApiRateLimit:
+    return ApiRateLimit(int(os.environ.get("RCM_API_RATE_PER_MINUTE", 120)))
+
+
 @lru_cache(maxsize=1)
 def get_session_store() -> SessionStore:
     path = os.environ.get("RCM_SESSIONS_FILE", "").strip()
@@ -193,6 +222,8 @@ def current_user(
     users: Annotated[UserStore, Depends(get_user_store)],
 ) -> User:
     """The signed-in, active user. Also noted on the request for the audit log."""
+    if request.url.path.startswith(MACHINE_API_PREFIX):
+        return _api_key_user(request)
     token = request.cookies.get(SESSION_COOKIE)
     session = sessions.touch(token) if token else None
     user = users.get(session.username) if session else None
@@ -209,6 +240,50 @@ def current_user(
 
 
 SignedIn = Annotated[User, Depends(current_user)]
+
+
+def _api_key_user(request: Request) -> User:
+    """The hospital system behind an API key, as an account that can do what a biller can
+    across its organisation. It exists for this request only, and only on /api/v1."""
+    scheme, _, token = request.headers.get("authorization", "").partition(" ")
+    token = token.strip() if scheme.lower() == "bearer" else ""
+    keys = get_api_keys()
+    key = keys.verify(token)
+    if key is None:
+        known = keys.get(key_id(token) or "")
+        if known is not None:  # a revoked or mistyped key: show it to the organisation it names
+            audit_note(request, attempted_username=f"api.{known.id}", audit_organisation=known.organisation_id)
+        raise HTTPException(
+            status_code=401,
+            detail="Send a valid API key: Authorization: Bearer <key>",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    user = _key_account(key)
+    problem = organisation_problem(user)
+    if problem:
+        audit_note(request, attempted_username=user.username, audit_organisation=key.organisation_id)
+        raise HTTPException(status_code=403, detail=problem)
+    request.state.user = user
+    wait = get_api_rate_limit().wait_seconds(key.id)
+    if wait:
+        raise HTTPException(
+            status_code=429,
+            detail=f"Too many requests for this API key; try again in {wait} seconds",
+            headers={"Retry-After": str(wait)},
+        )
+    return user
+
+
+def _key_account(key: ApiKey) -> User:
+    return User(
+        username=f"api.{key.id}",
+        display_name=f"API key: {key.name}",
+        role=Role.BILLER,
+        password_hash="",
+        created_at=key.created_at,
+        password_changed_at=key.created_at,
+        organisation_id=key.organisation_id,
+    )
 
 
 def with_emergency_access(user: User) -> User:

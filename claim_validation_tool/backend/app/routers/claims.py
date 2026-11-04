@@ -137,6 +137,19 @@ def update_claim(
     as when it was created, and replaces what was there (same ID, same patient). Its AI Fix
     corrections are folded in, since the form starts from the corrected values. Submitted
     claims can't change. The audit log records which fields changed."""
+    result, changed = replace_draft_claim(
+        claim_id, body, repo, rules, reference, registrations, corrections, changes, user
+    )
+    audit_note(request, changed=changed)
+    return result
+
+
+def replace_draft_claim(
+    claim_id: str, body: ClaimCreate, repo, rules, reference, registrations, corrections, changes, user
+) -> tuple[ClaimCreated, list[str]]:
+    """Replace a Draft with the whole claim given again, and validate it: shared by the form
+    and the claims API. Returns it with the names of the fields that changed. Raises
+    HTTPException when it can't be replaced."""
     before = repo.get_claim(claim_id)
     if before is None:
         raise HTTPException(status_code=404, detail=f"Claim {claim_id} not found")
@@ -169,10 +182,9 @@ def update_claim(
             ),
         ],
     )
-    audit_note(request, changed=_changed_fields(before, claim))
     _record_registration(registrations, patient, body, user)
     validation = validation_engine.validate_claims(repo.claims_frame([claim_id]), rules.list())[0]
-    return ClaimCreated(claim=claim, validation=validation)
+    return ClaimCreated(claim=claim, validation=validation), _changed_fields(before, claim)
 
 
 # Compared to tell the audit log what an edit changed (names only, never values: PHI)

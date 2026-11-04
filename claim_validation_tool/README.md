@@ -220,6 +220,40 @@ of a claim keeps one control number until it's reopened. The file is a first-tim
 number when the claim was uploaded with one. It's marked as a test file until the EDI settings
 are complete. Self-pay claims get the list only.
 
+### Claims API for hospital systems
+
+Administrators create a key on the Users page. Send it as `Authorization: Bearer <key>`. A key
+works on `/api/v1` only, and sign-in cookies don't work there. Nothing sent here goes to a payer.
+
+```bash
+# An 837P/837I, or a CSV/Excel file in the upload template's layout (up to 200 claims, 5 MB)
+curl -X POST "$API/api/v1/claims/file" -H "Authorization: Bearer $KEY" -H 'Content-Type: application/json' \
+  -d "{\"filename\": \"claims.837\", \"content\": \"$(base64 < claims.837)\"}"
+```
+
+Each checked claim comes back with `claim_id`, `claim_number`, `status`, `clean`, `open_issues`,
+`findings` and `suggestions`, and never patient details beyond `patient_id`. `POST /api/v1/claims`
+takes one claim as JSON: `claim_number`, this organisation's payer and provider IDs, and either
+`patient` (name and sex; the date of birth, address and member ID are in `billing`) or `patient_id`.
+
+**The patient list keeps itself up to date.** The hospital's register is the master; ours is a working
+copy (`patient_list.json`, encrypted, laid over `dim_patients`, which is never modified) holding only
+name, age, sex, ZIP code and primary payer, with date of birth, address and policies in the
+registrations file. A patient on a claim is never refused for being new, through the API or file
+upload: a clear match (same name and date of birth, or name and member ID) updates them, no match
+adds them, and an unclear match (same name with another date of birth, same member ID with this payer, or the same
+date of birth with the same first or last name) adds them with `patient_needs_review`. Those appear
+on the Claims page for staff; nothing is merged automatically, and merging isn't built yet. A patient is
+only listed if their claim saved. The list says what claims have told us, not whether coverage is active.
+Providers and payers still have to be set up: a claim naming an unknown one is refused.
+
+The hospital's claim number identifies the claim: send it again and the Draft is replaced and
+rechecked, so a corrected claim or a retry never makes a second one. Once the system sends the claim
+itself, `POST /api/v1/claims/{claim_id}/handoff` finishes it here (open issues need
+`{"acknowledge_open_issues": true}`); after that the number can't be replaced (409). Too many
+requests get 429 with `Retry-After`. Every request is in the audit log as `api.<key id>`, without
+the claim number, which can be a patient account number.
+
 ### Accounts
 
 The first administrator is created on the command line, as above. After that, administrators
@@ -274,7 +308,8 @@ secure, so the HTTPS-only cookie is still sent).
 | `ANTHROPIC_API_KEY` | unset | Enables Claude for the clarification assistant |
 | `RCM_ASSISTANT_MODEL` | `claude-sonnet-5-5` | Claude model the assistant uses |
 | `RCM_ASSISTANT_MODE` | | Set to `retrieval` to keep Claude off even with a key |
-| `RCM_USERS_FILE` | `backend/users.json` | Sign-in accounts |
+| `RCM_USERS_FILE` | `backend/users.json` | Sign-in accounts (API keys are kept beside it in `api_keys.json`, digests only) |
+| `RCM_API_RATE_PER_MINUTE` | `120` | Requests each API key may make per minute |
 | `RCM_AUDIT_FILE` | `backend/logs/audit.jsonl` | Platform audit log: requests that belong to no organisation (e.g. sign-in with an unknown username). Each organisation's own log is in its folder |
 | `RCM_AUDIT_RETENTION_YEARS` | `6` | Years audit events are kept before `audit-purge` may delete them; less than 6 is refused |
 | `RCM_SESSION_IDLE_MINUTES` | `15` | Sign out after this long without a request |
@@ -324,7 +359,8 @@ All routes are under `/api`; full schemas at `/docs`.
 | Audit | `GET /audit` (username, record_id, outcome, limit) · `GET /audit/verify` |
 | Users | `GET /users` · `POST /users` · `PATCH /users/{username}` · `POST /users/{username}/password` (administrators) |
 | Platform | `GET/POST /platform/organisations` · `POST /platform/organisations/{id}/suspend` · `…/reactivate` · `…/admins` · `…/baa` · `PUT/DELETE …/sso` · `…/delete` · `…/emergency-access` · `GET /platform/emergency-access` · `POST /platform/emergency-access/{id}/end` · `GET /platform/audit` (platform accounts) |
-| Organisation | `GET /organisation/export` (administrators: zip of all its data) · `PUT /organisation/settings` · `GET/PUT /organisation/edi-settings` |
+| Organisation | `GET /organisation/export` (administrators: zip of all its data) · `PUT /organisation/settings` · `GET/PUT /organisation/edi-settings` · `GET/POST /organisation/api-keys` · `DELETE /organisation/api-keys/{id}` |
+| Claims API for hospital systems (API key only) | `POST /v1/claims` · `POST /v1/claims/file` · `GET /v1/claims/{id}` · `POST /v1/claims/{id}/handoff` |
 | Emergency access (organisation side) | `GET /audit/emergency-access` · `POST /audit/emergency-access/{id}/end` (administrators) |
 | Claims | `GET /claims` (search, filter, sort, page) · `POST /claims` · `POST /claims/import` (CSV/Excel or 837 file → Draft claims) · `GET /claims/import/template.csv` · `GET /claims/{id}` · `PUT /claims/{id}` (edit a Draft) · `POST /claims/{id}/submit` · `GET /claims/{id}/837` · `GET /claims/{id}/claim-form.pdf` · `GET /claims/{id}/837-readable.pdf` · `GET /claims/{id}/handoff` · `GET /claims/{id}/handoff/837` · `GET /claims/{id}/handoff/changes.pdf` |
 | Saved drafts | `GET /drafts` · `POST /drafts` · `GET /drafts/{id}` · `PUT /drafts/{id}` · `DELETE /drafts/{id}` (billers and admins) |

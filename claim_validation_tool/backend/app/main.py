@@ -18,6 +18,7 @@ from app.routers import (
     assistant,
     audit,
     auth,
+    claim_api,
     claim_import,
     claims,
     dashboard,
@@ -107,6 +108,7 @@ app.include_router(audit.router)
 app.include_router(users.router)
 app.include_router(organisation.router)
 app.include_router(platform.router)
+app.include_router(claim_api.router)
 app.include_router(claim_import.router)  # before claims: /api/claims/import isn't a claim ID
 app.include_router(claims.router)
 app.include_router(drafts.router)
@@ -153,7 +155,12 @@ def _audit(request: Request, status_code: int) -> None:
     if user is not None and user.emergency_access_id:
         detail["emergency_access"] = user.emergency_access_id
     platform_route = request.url.path.startswith("/api/platform/")
-    log = get_platform_audit_log() if platform_route else _audit_log_for(user, username)
+    # A refused API key names its organisation, so that organisation sees the attempt
+    refused_key_org = detail.pop("audit_organisation", None)
+    if refused_key_org and get_org_registry().has_data(refused_key_org):
+        log = get_audit_log(refused_key_org)
+    else:
+        log = get_platform_audit_log() if platform_route else _audit_log_for(user, username)
     log.record(
         username=username,
         role=user.role if user else None,

@@ -159,6 +159,11 @@ export const getEdiSettings = (options) => request('/organisation/edi-settings',
 export const saveEdiSettings = (settings) =>
   request('/organisation/edi-settings', { method: 'PUT', body: settings })
 
+/** Keys for the hospital's own systems. A new key's token is only in createApiKey's reply. */
+export const listApiKeys = (options) => request('/organisation/api-keys', options)
+export const createApiKey = (name) => request('/organisation/api-keys', { method: 'POST', body: { name } })
+export const revokeApiKey = (id) => request(`/organisation/api-keys/${id}`, { method: 'DELETE' })
+
 /** Upload a CSV/Excel file in the template's layout, or an 837: each claim becomes a Draft. */
 export const importClaims = (filename, content) =>
   request('/claims/import', { method: 'POST', body: { filename, content } })
@@ -213,6 +218,11 @@ export const getHandoffExport = (claimId, options) =>
 export const handoff837Url = (claimId) => `${API_BASE}/claims/${encodeURIComponent(claimId)}/handoff/837`
 export const handoffChangesPdfUrl = (claimId) =>
   `${API_BASE}/claims/${encodeURIComponent(claimId)}/handoff/changes.pdf`
+
+/** Patients added from a claim who may be someone already on the list. */
+export const getPatientsToReview = (options) => request('/patients/to-review', options)
+export const markNotADuplicate = (patientId) =>
+  request(`/patients/${patientId}/not-a-duplicate`, { method: 'POST' })
 
 export const searchPatients = (params, options) => request('/patients', { ...options, params })
 

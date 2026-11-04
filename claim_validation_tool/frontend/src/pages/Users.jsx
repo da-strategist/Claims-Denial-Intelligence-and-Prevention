@@ -1,4 +1,5 @@
 import { useId, useMemo, useState } from 'react'
+import ApiKeysCard from '../components/ApiKeysCard'
 import EdiSettingsCard from '../components/EdiSettingsCard'
 import Icon from '../components/Icon'
 import PasswordFields from '../components/PasswordFields'
@@ -486,6 +487,7 @@ export default function Users() {
         <>
           <ClaimRouteSetting auth={auth} />
           <EdiSettingsCard />
+          <ApiKeysCard />
         </>
       )}
       {message && <Notice tone="info">{message}</Notice>}

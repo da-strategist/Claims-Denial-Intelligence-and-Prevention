@@ -165,8 +165,14 @@ Build order:
   both audited. One claim at a time; a batch export for validate-only hospitals is still to come.
 - [x] **Claim file settings.** Administrators keep the 837 identifiers on the Users page. Hand-off
   files need no clearinghouse, and a facility with a 5-digit ZIP on file can be given its ZIP+4.
-- [ ] **Standard API.** One API for hospital systems to send a claim and get back its errors
-  and suggested fixes, alongside file upload.
+- [x] **Standard API.** Hospital systems send a claim or an 837/CSV file with an API key and get
+  back its errors and suggested fixes (`/api/v1`). The hospital's claim number identifies the claim,
+  so sending it again replaces the Draft. Not yet tried with a real hospital system.
+- [x] **Self-updating patient list.** A patient on a claim is matched and updated, or added, never
+  refused for being new; an unclear match is flagged for staff, not merged. Still to do: merging
+  confirmed duplicates, and how long a patient stays on the list after their last claim.
+- [ ] **Eligibility check (is coverage active?).** Needs a 270/271 route, likely through the
+  clearinghouse. Where this sits in the build order is still being worked out.
 - [ ] **Payer outcomes.** Features 1 and 2 below, with 835 upload optional for validate-only
   hospitals so they can see whether denials fell.
 - [ ] **Clearinghouse connection.** Feature 5 below, once a vendor is chosen and the BAA signed.

@@ -3,8 +3,9 @@
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, HTTPException, Request, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 
+from app.data.api_keys import ApiKey, get_api_keys
 from app.data.org_lifecycle import export_organisation
 from app.data.orgs import get_org_registry
 from app.models import OrganisationSettings, PayerType, Permission, RecordStatus
@@ -25,6 +26,75 @@ def update_settings(body: OrganisationSettings, org_id: OrgId, request: Request)
     org = get_org_registry().set_default_claim_route(org_id, body.default_claim_route)
     audit_note(request, default_claim_route=org.default_claim_route.value)
     return OrganisationSettings(default_claim_route=org.default_claim_route)
+
+
+class ApiKeySummary(BaseModel):
+    """An API key as the Users page lists it (never the key itself)."""
+
+    id: str
+    name: str
+    created_at: datetime
+    created_by: str
+    last_used_at: datetime | None
+    revoked_at: datetime | None
+    revoked_by: str | None
+
+
+class ApiKeyCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=60, description="Which system uses it, e.g. Epic test")
+
+    @field_validator("name")
+    @classmethod
+    def _named(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("Name the system that will use this key")
+        return value.strip()
+
+
+class ApiKeyCreated(BaseModel):
+    key: ApiKeySummary
+    token: str = Field(description="The key itself. Shown this once and never again")
+
+
+def _key_summary(key: ApiKey) -> ApiKeySummary:
+    return ApiKeySummary.model_validate(key.model_dump())
+
+
+@router.get(
+    "/api-keys", response_model=list[ApiKeySummary], dependencies=[require(Permission.ORG_SETTINGS)]
+)
+def list_api_keys(org_id: OrgId) -> list[ApiKeySummary]:
+    """The organisation's API keys, including revoked ones."""
+    return [_key_summary(key) for key in get_api_keys().list(org_id)]
+
+
+@router.post(
+    "/api-keys",
+    response_model=ApiKeyCreated,
+    status_code=201,
+    dependencies=[require(Permission.ORG_SETTINGS)],
+)
+def create_api_key(body: ApiKeyCreate, org_id: OrgId, user: SignedIn, request: Request) -> ApiKeyCreated:
+    """A new key for one of the hospital's systems. It can send claims and read their results
+    across the organisation, on /api/v1 only."""
+    try:
+        key, token = get_api_keys().create(org_id, body.name, user.username)
+    except ValueError as err:
+        raise HTTPException(status_code=409, detail=str(err)) from err
+    audit_note(request, api_key=key.id, api_key_name=key.name)
+    return ApiKeyCreated(key=_key_summary(key), token=token)
+
+
+@router.delete(
+    "/api-keys/{key_id}", response_model=ApiKeySummary, dependencies=[require(Permission.ORG_SETTINGS)]
+)
+def revoke_api_key(key_id: str, org_id: OrgId, user: SignedIn, request: Request) -> ApiKeySummary:
+    """Stop a key working, straight away. It stays listed so the audit log can be traced."""
+    key = get_api_keys().revoke(org_id, key_id, user.username)
+    if key is None:
+        raise HTTPException(status_code=404, detail=f"No API key {key_id}")
+    audit_note(request, api_key_name=key.name)
+    return _key_summary(key)
 
 
 class EdiSettingsStatus(BaseModel):

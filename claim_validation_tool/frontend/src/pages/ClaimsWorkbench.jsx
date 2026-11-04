@@ -2,6 +2,7 @@ import { Fragment, useState } from 'react'
 import ClaimDetailPanel from '../components/ClaimDetailPanel'
 import ClaimFilters from '../components/ClaimFilters'
 import Icon from '../components/Icon'
+import PatientReviewCard from '../components/PatientReviewCard'
 import PageHeader, { AccessNote, Notice, Page } from '../components/PageHeader'
 import Pagination from '../components/Pagination'
 import RiskScore from '../components/RiskScore'
@@ -314,6 +315,7 @@ export default function ClaimsWorkbench() {
       >
         <ViewSwitch view={view} attentionCount={attention?.total} onChange={changeView} />
       </PageHeader>
+      <PatientReviewCard />
 
       <AccessNote />
 

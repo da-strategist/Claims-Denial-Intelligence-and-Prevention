@@ -18,6 +18,7 @@ import shutil
 import zipfile
 from datetime import UTC, datetime
 
+from app.data.api_keys import get_api_keys
 from app.data.audit import AuditLog, closed_year_files
 from app.data.emergency import get_emergency_access
 from app.data.orgs import OrgStatus, get_org_registry, org_cipher_for
@@ -41,6 +42,7 @@ PHI_FILES = [
     "claim_corrections.json",
     "claim_changes.json",
     "patient_registrations.json",
+    "patient_list.json",
 ]
 AUDIT_FILE = "logs/audit.jsonl"  # encrypted line by line; closed years in audit-<year>.jsonl
 SETTINGS_FILES = ["rules.json", "edi_settings.json"]
@@ -157,6 +159,9 @@ def delete_organisation(org_id: str, by: str = "platform") -> list[str]:
     members = [u.username for u in users.list() if u.organisation_id == org_id]
     users.remove(members)
     done.append(f"deleted {len(members)} account(s)")
+    revoked = get_api_keys().revoke_organisation(org_id, by)
+    if revoked:
+        done.append(f"revoked {revoked} API key(s)")
     if external:
         done.append(f"did not delete {data_dir}: it's outside the organisation's folder")
     registry.mark_deleted(org_id)

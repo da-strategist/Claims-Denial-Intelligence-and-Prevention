@@ -91,8 +91,9 @@ export default function ClaimUpload({ onClose, onImported, onOpenClaim }) {
       <p className="text-xs text-gray-500">
         In the template, rows with the same claim_ref make one claim; list its diagnoses in one cell,
         primary first, separated by |. Billing details you leave blank come from the patient’s
-        registration. 837 files are matched to registered patients by name and date of birth, to
-        providers by NPI, and to payers by ID or name.
+        registration. For a patient without an ID, use patient_first_name and patient_last_name. 837
+        files are matched to your patient list by name and date of birth, to providers by NPI, and to
+        payers by ID or name. A patient who isn’t on the list yet is added from the claim.
       </p>
 
       {error && <Notice>{error}</Notice>}

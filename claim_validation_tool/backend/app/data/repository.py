@@ -20,6 +20,7 @@ from cryptography.fernet import Fernet
 from app.data.corrections import get_correction_store
 from app.data.new_claims import NewClaimStore, get_new_claim_store
 from app.data.orgs import get_org_registry, org_cipher_for
+from app.data.patient_list import PatientListStore, get_patient_list
 from app.data.secure_files import read_text, table_path
 from app.models.aifix import CORRECTABLE_FIELDS
 from app.models.rule import RULE_FIELDS, parse_condition_value
@@ -36,6 +37,7 @@ from app.models import (
     Department,
     Facility,
     Page,
+    RecordStatus,
     Patient,
     PatientQuery,
     PatientSummary,
@@ -98,8 +100,10 @@ class ClaimsRepository:
         data_dir: Path = DEFAULT_DATA_DIR,
         new_claims: NewClaimStore | None = None,
         cipher: Fernet | None = None,
+        patient_list: PatientListStore | None = None,
     ) -> None:
         """`new_claims` saves claims entered in the app; they are replayed here on startup.
+        `patient_list` holds what claims have taught us about patients, laid over the table.
         `cipher` decrypts tables that have been encrypted (secure_files.py)."""
         self.data_dir = data_dir
         self.cipher = cipher
@@ -185,6 +189,11 @@ class ClaimsRepository:
         )
 
         # Claims entered in the app, replayed in order with the dates they were submitted
+        # After the source claims' flags above, which compare against the source table
+        self._patient_list = patient_list
+        for patient_id, record in (patient_list.records() if patient_list else {}).items():
+            self._lay_over_patient(patient_id, record["row"], record.get("added", False))
+
         self._new_claims = None
         for record in (new_claims.records() if new_claims else []):
             claim_id = record["fields"]["claim_id"]
@@ -367,6 +376,11 @@ class ClaimsRepository:
         assert claim is not None
         return claim
 
+    def claim_id_for_number(self, number: str) -> str | None:
+        """The newest claim carrying the hospital's own number, or None."""
+        matches = [claim_id for claim_id, ref in self._source_refs.items() if ref == number]
+        return max(matches) if matches else None
+
     def update_claim(self, fields: dict[str, Any], lines: list[dict[str, Any]]) -> ClaimDetail:
         """Replace a Draft claim entered in the app with corrected details (same ID, same
         patient). Its lines are replaced; the saved claim is updated so it survives
@@ -408,6 +422,9 @@ class ClaimsRepository:
         patient = self._patient(fields["patient_id"])
         if patient is None:
             raise ValueError(f"Patient {fields['patient_id']} is not registered")
+        # Kept with the claim: a later change of primary payer mustn't change an earlier
+        # claim's result when claims are replayed at startup
+        primary = fields.setdefault("patient_primary_payer_id", patient.primary_payer_id)
         prior, prior_preventable = self._prior_denials(
             fields["patient_id"], fields["submission_date"]
         )
@@ -422,8 +439,8 @@ class ClaimsRepository:
             ).days,
             "has_prior_denial": prior,
             "has_prior_preventable_denial": prior_preventable,
-            "payer_is_patient_primary": fields["payer_id"] == patient.primary_payer_id,
-            "patient_primary_on_claim": patient.primary_payer_id
+            "payer_is_patient_primary": fields["payer_id"] == primary,
+            "patient_primary_on_claim": primary
             in [fields["payer_id"], *fields.get("other_payer_ids", [])],
             "has_corrections": False,
             "is_overdue": False,
@@ -641,6 +658,75 @@ class ClaimsRepository:
             return None
         return self._patient_summary(self._patients.iloc[pos].to_dict())
 
+    def _lay_over_patient(self, patient_id: str, row: dict[str, Any], added: bool) -> None:
+        if added:
+            new = {column: "" for column in self._patients.columns}
+            new.update(risk_score=0.0, language="Unknown", status=RecordStatus.ACTIVE.value)
+            new.update(row, patient_id=patient_id)
+            frame = pd.DataFrame([new], columns=self._patients.columns).astype(self._patients.dtypes.to_dict())
+            self._patients = pd.concat([self._patients, frame], ignore_index=True)
+        else:
+            pos = self._patient_pos([patient_id])[0]
+            if pos == -1:
+                return
+            for column, value in row.items():
+                self._patients.iloc[pos, self._patients.columns.get_loc(column)] = value
+        self._refresh_patients()
+
+    def _refresh_patients(self) -> None:
+        self._patients["search_name"] = (
+            self._patients["first_name"] + " " + self._patients["last_name"]
+        ).str.lower()
+        self._patient_pos = pd.Index(self._patients["patient_id"]).get_indexer
+
+    def add_patient(self, details: dict[str, Any], by: str, review: list[str]) -> str:
+        """Add a patient first seen on a claim; returns their new ID. `review` lists anyone
+        they might be, for a person to check."""
+        with self._overlay_lock:
+            numbers = self._patients["patient_id"].str.removeprefix("PAT").astype("int64")
+            patient_id = f"PAT{int(numbers.max() if len(numbers) else 0) + 1:06d}"
+            self._lay_over_patient(patient_id, details, added=True)
+        if self._patient_list is not None:
+            self._patient_list.add(patient_id, details, by, review)
+        return patient_id
+
+    def remove_patient(self, patient_id: str) -> None:
+        """Take back a patient just added, when their claim couldn't be saved."""
+        with self._overlay_lock:
+            self._patients = self._patients[self._patients["patient_id"] != patient_id].reset_index(drop=True)
+            self._refresh_patients()
+        if self._patient_list is not None:
+            self._patient_list.restore(patient_id, None)
+
+    def update_patient(self, patient_id: str, changes: dict[str, Any]):
+        """Newer details from a claim, laid over the table. Returns how to undo it."""
+        with self._overlay_lock:
+            pos = self._patient_pos([patient_id])[0]
+            before = {column: self._patients.iloc[pos][column] for column in changes}
+            before = {k: v.item() if hasattr(v, "item") else v for k, v in before.items()}
+            self._lay_over_patient(patient_id, changes, added=False)
+        saved = self._patient_list.records().get(patient_id) if self._patient_list else None
+        if self._patient_list is not None:
+            self._patient_list.update(patient_id, changes)
+
+        def undo() -> None:
+            with self._overlay_lock:
+                self._lay_over_patient(patient_id, before, added=False)
+            if self._patient_list is not None:
+                self._patient_list.restore(patient_id, saved)
+
+        return undo
+
+    def patient_added_from_claim(self, patient_id: str) -> bool:
+        record = self._patient_list.records().get(patient_id) if self._patient_list else None
+        return bool(record and record.get("added"))
+
+    def patients_to_review(self) -> dict[str, list[str]]:
+        return self._patient_list.to_review() if self._patient_list else {}
+
+    def clear_patient_review(self, patient_id: str) -> bool:
+        return self._patient_list.clear_review(patient_id) if self._patient_list else False
+
     def person_names(self) -> list[tuple[str, str]]:
         """(first, last) names of every patient and provider, for masking them in free text."""
         names = list(zip(self._patients["first_name"], self._patients["last_name"]))
@@ -814,7 +900,9 @@ class ClaimsRepository:
 def get_repository(org_id: str) -> ClaimsRepository:
     """The organisation's claims: its own CSVs plus the claims it entered in the app."""
     data_dir = get_org_registry().data_dir(org_id)
-    repo = ClaimsRepository(data_dir, get_new_claim_store(org_id), org_cipher_for(org_id))
+    repo = ClaimsRepository(
+        data_dir, get_new_claim_store(org_id), org_cipher_for(org_id), get_patient_list(org_id)
+    )
     corrections = get_correction_store(org_id)
     # Drop corrections whose claim no longer exists (e.g. the new-claims file was removed),
     # so a new claim reusing the ID doesn't inherit them
