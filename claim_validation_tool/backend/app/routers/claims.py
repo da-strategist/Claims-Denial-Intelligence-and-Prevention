@@ -35,11 +35,13 @@ from app.services.claim_pdf import claim_changes_pdf, claim_form_pdf, readable_8
 from app.services.edi837 import ClaimParties, billing_system_claim_number, build_837
 from app.services.edi_reader import read_837
 from app.services.edi_settings import load_edi_settings
+from app.services.prior_auth import coverage_check, prior_auth_check
 from app.services.org_context import (
     OrgClaimChanges,
     OrgClaims,
     OrgCorrections,
     OrgId,
+    OrgPriorAuthLists,
     OrgReference,
     OrgRegistrations,
     OrgRules,
@@ -81,6 +83,7 @@ def create_claim(
     rules: Rules,
     reference: Reference,
     registrations: Registrations,
+    pa_lists: OrgPriorAuthLists,
     user: SignedIn,
 ) -> ClaimCreated:
     """Enter a Draft claim for a registered patient and validate it.
@@ -90,13 +93,13 @@ def create_claim(
     patient's registration so their next claim starts from them.
     """
     audit_note(request, patient_id=body.patient_id)
-    created = add_draft_claim(body, repo, rules, reference, registrations, user)
+    created = add_draft_claim(body, repo, rules, reference, registrations, pa_lists, user)
     audit_note(request, claim_id=created.claim.claim_id)
     return created
 
 
 def add_draft_claim(
-    body: ClaimCreate, repo, rules, reference, registrations, user, source_ref: str | None = None
+    body: ClaimCreate, repo, rules, reference, registrations, pa_lists, user, source_ref: str | None = None
 ) -> ClaimCreated:
     """Save a new Draft claim and validate it: shared by the form, the API and uploads.
     `source_ref` is the hospital's own number for an uploaded claim. Raises HTTPException
@@ -104,7 +107,7 @@ def add_draft_claim(
     # Claim IDs are unique across the organisation, including claims outside this
     # person's access, so the next one comes from all of them
     claim_id = _next_id(repo.base.claims_frame()["claim_id"], "CLM", 7)
-    fields, lines, patient = _claim_fields(body, claim_id, repo, reference)
+    fields, lines, patient = _claim_fields(body, claim_id, repo, reference, pa_lists)
     if source_ref:
         fields["source_ref"] = source_ref
     try:
@@ -129,6 +132,7 @@ def update_claim(
     rules: Rules,
     reference: Reference,
     registrations: Registrations,
+    pa_lists: OrgPriorAuthLists,
     corrections: OrgCorrections,
     changes: OrgClaimChanges,
     user: SignedIn,
@@ -138,14 +142,14 @@ def update_claim(
     corrections are folded in, since the form starts from the corrected values. Submitted
     claims can't change. The audit log records which fields changed."""
     result, changed = replace_draft_claim(
-        claim_id, body, repo, rules, reference, registrations, corrections, changes, user
+        claim_id, body, repo, rules, reference, registrations, pa_lists, corrections, changes, user
     )
     audit_note(request, changed=changed)
     return result
 
 
 def replace_draft_claim(
-    claim_id: str, body: ClaimCreate, repo, rules, reference, registrations, corrections, changes, user
+    claim_id: str, body: ClaimCreate, repo, rules, reference, registrations, pa_lists, corrections, changes, user
 ) -> tuple[ClaimCreated, list[str]]:
     """Replace a Draft with the whole claim given again, and validate it: shared by the form
     and the claims API. Returns it with the names of the fields that changed. Raises
@@ -157,7 +161,7 @@ def replace_draft_claim(
         raise HTTPException(
             status_code=409, detail=f"Only draft claims can be edited; {claim_id} is {before.status}"
         )
-    fields, lines, patient = _claim_fields(body, claim_id, repo, reference)
+    fields, lines, patient = _claim_fields(body, claim_id, repo, reference, pa_lists)
     try:
         claim = repo.update_claim(fields, lines)
     except OutOfScopeError as err:
@@ -215,7 +219,7 @@ def _record_registration(registrations, patient, body: ClaimCreate, user) -> Non
     )
 
 
-def _claim_fields(body: ClaimCreate, claim_id: str, repo, reference) -> tuple[dict, list[dict], Any]:
+def _claim_fields(body: ClaimCreate, claim_id: str, repo, reference, pa_lists) -> tuple[dict, list[dict], Any]:
     """Check a claim's details against the organisation's registries and code sets, and
     build its fact_claims fields and lines. Raises 422 on anything unknown or inactive."""
     patient = repo.get_patient(body.patient_id)
@@ -269,6 +273,9 @@ def _claim_fields(body: ClaimCreate, claim_id: str, repo, reference) -> tuple[di
     fields = {
         **header,
         "claim_id": claim_id,
+        # The payer's list decides; the claim can add to it, but can't talk its way out of it
+        "pa_required": body.pa_required
+        or bool(pa_lists.listed_codes(body.payer_id, [line.cpt_code for line in body.lines])),
         "department_id": provider.department_id,
         "primary_icd10": body.diagnoses[0],
         "additional_icd10": body.diagnoses[1:],
@@ -396,12 +403,15 @@ def _open_issues(claim_id: str, repo: ClaimsRepository, rules: Rules) -> list[st
 
 
 @router.get("/{claim_id}", response_model=ClaimDetail)
-def get_claim(claim_id: ClaimId, repo: Claims, user: SignedIn) -> ClaimDetail:
-    """Single claim with its lines, denials, payer, and provider, and the patient's
-    demographics for roles allowed to see them."""
+def get_claim(claim_id: ClaimId, repo: Claims, pa_lists: OrgPriorAuthLists, user: SignedIn) -> ClaimDetail:
+    """Single claim with its lines, denials, payer, and provider, what its checks did and
+    didn't cover, and the patient's demographics for roles allowed to see them."""
     claim = repo.get_claim(claim_id)
     if claim is None:
         raise HTTPException(status_code=404, detail=f"Claim {claim_id} not found")
+    claim = claim.model_copy(
+        update={"prior_auth_check": prior_auth_check(claim, pa_lists), "coverage_check": coverage_check(claim)}
+    )
     if not user.can(Permission.PATIENTS_READ):
         claim = claim.model_copy(update={"patient": None, "billing": None})
     return claim

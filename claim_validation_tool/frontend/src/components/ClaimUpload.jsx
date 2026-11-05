@@ -55,6 +55,7 @@ export default function ClaimUpload({ onClose, onImported, onOpenClaim }) {
           <p className="mt-1 text-sm text-gray-500">
             A CSV or Excel file in the template’s layout (one row per service line), or an 837P or 837I
             file. Each claim is saved as a draft and checked against the rules. Nothing is submitted.
+            The rules can’t confirm the patient’s coverage is active.
           </p>
         </div>
         <button type="button" className="btn-quiet btn-sm" onClick={onClose} aria-label="Close upload">

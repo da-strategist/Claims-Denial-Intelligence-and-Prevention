@@ -1,6 +1,7 @@
 import { useId, useMemo, useState } from 'react'
 import ApiKeysCard from '../components/ApiKeysCard'
 import EdiSettingsCard from '../components/EdiSettingsCard'
+import PriorAuthListsCard from '../components/PriorAuthListsCard'
 import Icon from '../components/Icon'
 import PasswordFields from '../components/PasswordFields'
 import PageHeader, { Notice, Page } from '../components/PageHeader'
@@ -488,6 +489,7 @@ export default function Users() {
           <ClaimRouteSetting auth={auth} />
           <EdiSettingsCard />
           <ApiKeysCard />
+          <PriorAuthListsCard />
         </>
       )}
       {message && <Notice tone="info">{message}</Notice>}

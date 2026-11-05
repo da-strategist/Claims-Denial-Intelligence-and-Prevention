@@ -16,6 +16,7 @@ from app.data.claim_changes import ClaimChangeLog, get_claim_change_log
 from app.data.corrections import CorrectionStore, get_correction_store
 from app.data.drafts import DraftStore, get_draft_store
 from app.data.knowledge import KnowledgeBase, get_knowledge_base
+from app.data.prior_auth_lists import PriorAuthListStore, get_prior_auth_lists
 from app.data.reference import ReferenceData, get_reference_data
 from app.data.registrations import RegistrationStore, get_registration_store
 from app.data.repository import get_repository
@@ -69,6 +70,10 @@ def _registrations(org_id: OrgId) -> RegistrationStore:
     return get_registration_store(org_id)
 
 
+def _prior_auth_lists(org_id: OrgId) -> PriorAuthListStore:
+    return get_prior_auth_lists(org_id)
+
+
 def _snapshot(org_id: OrgId) -> StatusSnapshot:
     return get_status_snapshot(org_id)
 
@@ -96,6 +101,7 @@ OrgCorrections = Annotated[CorrectionStore, Depends(_corrections)]
 OrgReference = Annotated[ReferenceData, Depends(_reference)]
 OrgDrafts = Annotated[DraftStore, Depends(_drafts)]
 OrgRegistrations = Annotated[RegistrationStore, Depends(_registrations)]
+OrgPriorAuthLists = Annotated[PriorAuthListStore, Depends(_prior_auth_lists)]
 OrgSnapshot = Annotated[StatusSnapshot, Depends(_snapshot)]
 OrgAudit = Annotated[AuditLog, Depends(_audit)]
 OrgKnowledge = Annotated[KnowledgeBase, Depends(_knowledge)]
@@ -112,7 +118,7 @@ def forget_organisation(org_id: str) -> None:
 
     for cache in (
         get_repository, get_new_claim_store, get_patient_list, get_rule_repository, get_correction_store, get_claim_change_log,
-        get_draft_store, get_registration_store, get_reference_data, get_status_snapshot,
+        get_draft_store, get_registration_store, get_reference_data, get_status_snapshot, get_prior_auth_lists,
         get_audit_log, get_knowledge_base, get_retriever, get_name_scrubber, org_cipher,
     ):
         cache.cache_clear()

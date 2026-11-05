@@ -2,17 +2,19 @@
 
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, HTTPException, Request, Response
+from fastapi import APIRouter, HTTPException, Request, Response, status
 from pydantic import BaseModel, Field, field_validator
 
 from app.data.api_keys import ApiKey, get_api_keys
 from app.data.org_lifecycle import export_organisation
 from app.data.orgs import get_org_registry
+from app.data.prior_auth_lists import PriorAuthList
 from app.models import OrganisationSettings, PayerType, Permission, RecordStatus
+from app.models.common import CptCode, PayerId
 from app.services.auth import SignedIn, audit_note, require
 from app.services.edi837 import facility_zip_gap
 from app.services.edi_settings import EdiSettings, cleaned, load_edi_settings, save_edi_settings
-from app.services.org_context import OrgClaims, OrgId
+from app.services.org_context import OrgClaims, OrgId, OrgPriorAuthLists
 
 router = APIRouter(prefix="/api/organisation", tags=["organisation"])
 
@@ -95,6 +97,63 @@ def revoke_api_key(key_id: str, org_id: OrgId, user: SignedIn, request: Request)
         raise HTTPException(status_code=404, detail=f"No API key {key_id}")
     audit_note(request, api_key_name=key.name)
     return _key_summary(key)
+
+
+class PriorAuthListBody(BaseModel):
+    """Every code on the payer's list. A code we don't recognise is kept: a real list covers
+    far more services than any one hospital's claims so far."""
+
+    cpt_codes: list[CptCode] = Field(min_length=1, max_length=20000)
+
+    @field_validator("cpt_codes", mode="before")
+    @classmethod
+    def _tidy(cls, codes: object) -> object:
+        return [str(code).strip().upper() for code in codes] if isinstance(codes, list) else codes
+
+
+@router.get(
+    "/prior-auth-lists", response_model=list[PriorAuthList], dependencies=[require(Permission.CLAIMS_READ)]
+)
+def list_prior_auth_lists(lists: OrgPriorAuthLists) -> list[PriorAuthList]:
+    """Which services each payer requires prior authorization for. The claim form reads this too."""
+    return lists.all()
+
+
+@router.put(
+    "/prior-auth-lists/{payer_id}",
+    response_model=PriorAuthList,
+    dependencies=[require(Permission.ORG_SETTINGS)],
+)
+def save_prior_auth_list(
+    payer_id: PayerId,
+    body: PriorAuthListBody,
+    lists: OrgPriorAuthLists,
+    repo: OrgClaims,
+    user: SignedIn,
+    request: Request,
+) -> PriorAuthList:
+    """Replace a payer's list. Claims saved or sent again from now on are checked against it;
+    claims already saved stay as they are."""
+    payer = repo.get_payer(payer_id)
+    if payer is None:
+        raise HTTPException(status_code=422, detail=f"Unknown payer {payer_id}")
+    if payer.payer_type == PayerType.SELF_PAY:
+        raise HTTPException(status_code=422, detail="Self-pay claims don't need prior authorization")
+    saved = lists.put(payer_id, body.cpt_codes, user.username)
+    audit_note(request, payer_id=payer_id, codes=len(saved.cpt_codes))
+    return saved
+
+
+@router.delete(
+    "/prior-auth-lists/{payer_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[require(Permission.ORG_SETTINGS)],
+)
+def remove_prior_auth_list(payer_id: PayerId, lists: OrgPriorAuthLists, request: Request) -> None:
+    """Stop using a payer's list: its claims go back to not assessed."""
+    if not lists.remove(payer_id):
+        raise HTTPException(status_code=404, detail=f"No prior authorization list for {payer_id}")
+    audit_note(request, payer_id=payer_id)
 
 
 class EdiSettingsStatus(BaseModel):

@@ -46,6 +46,7 @@ def other_orgs_ids(client, org, role=Role.ADMIN):
         "username": "biller2" if org == "lakeside" else "biller1",
         "org_id": org,  # platform routes: refused to organisation accounts
         "grant_id": "EA-0000abcd",
+        "payer_id": "PAY001",  # each organisation's own lists: see test_prior_auth_lists
         "key_id": get_api_keys().create(org, f"Owner's key {uuid4().hex}", "admin1")[0].id,
     }
 

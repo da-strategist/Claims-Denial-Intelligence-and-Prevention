@@ -26,6 +26,7 @@ import {
   getDraft,
   getPatientRegistration,
   listDrafts,
+  listPriorAuthLists,
   saveDraft,
   updateClaim,
 } from '../services/api'
@@ -207,6 +208,13 @@ function fromClaim(claim) {
   }
 }
 
+/** The form's services on the chosen payer's prior authorization list. */
+function listedForPriorAuth(paLists, form) {
+  const list = paLists?.find((item) => item.payer_id === form.payer_id)
+  if (!list) return []
+  return [...new Set(form.lines.map((line) => line.cpt_code))].filter((code) => list.cpt_codes.includes(code))
+}
+
 /** Request body. Lines point at diagnoses by position in the form; send the codes. */
 function toRequest(form, procedures, payers) {
   const paObtained = form.pa_required && form.pa_obtained
@@ -381,6 +389,7 @@ export default function NewClaim() {
   const [draft, setDraft] = useState({ id: null, savedAt: null, saving: false, error: null })
   const [uploadOpen, setUploadOpen] = useState(false)
   const drafts = useApi((options) => listDrafts(options))
+  const paLists = useApi((options) => listPriorAuthLists(options))
   const draftClaims = useClaims({ status: 'Draft', sort_by: 'service_date', sort_desc: true, page_size: 100 })
   const draftClaimIds = (draftClaims.data?.items ?? []).map((claim) => claim.claim_id)
   const draftValidations = useClaimValidations(draftClaimIds)
@@ -390,6 +399,9 @@ export default function NewClaim() {
   }
 
   const change = (changes) => setForm((prev) => ({ ...prev, ...changes }))
+  // The payer's list decides, as it does when the claim is saved
+  const paListed = listedForPriorAuth(paLists.data, form)
+  const paRequired = form.pa_required || paListed.length > 0
 
   const saveAsDraft = async () => {
     setDraft((prev) => ({ ...prev, saving: true, error: null }))
@@ -529,7 +541,7 @@ export default function NewClaim() {
     setError(null)
     if (editing) {
       try {
-        await updateClaim(editing, toRequest(form, lists.procedures, payers))
+        await updateClaim(editing, toRequest({ ...form, pa_required: paRequired }, lists.procedures, payers))
         setForm(emptyForm())
         setOpenClaim({ id: editing, justCreated: false })
         setEditing(null)
@@ -543,7 +555,7 @@ export default function NewClaim() {
       return
     }
     try {
-      const { claim } = await createClaim(toRequest(form, lists.procedures, payers))
+      const { claim } = await createClaim(toRequest({ ...form, pa_required: paRequired }, lists.procedures, payers))
       // The saved form is now a real claim; it no longer needs keeping
       if (draft.id) {
         await deleteDraft(draft.id).catch(() => {})
@@ -799,19 +811,26 @@ export default function NewClaim() {
                 </FormSection>
 
                 <FormSection title="Prior authorization">
-                  <ToggleField
-                    label="Prior auth required"
-                    checked={form.pa_required}
-                    onChange={(pa_required) => change({ pa_required })}
-                  />
-                  {form.pa_required && (
+                  {paListed.length > 0 ? (
+                    <p className="text-sm text-gray-800">
+                      Prior auth is required: {paListed.join(', ')} {paListed.length === 1 ? 'is' : 'are'} on this
+                      payer’s list.
+                    </p>
+                  ) : (
+                    <ToggleField
+                      label="Prior auth required"
+                      checked={form.pa_required}
+                      onChange={(pa_required) => change({ pa_required })}
+                    />
+                  )}
+                  {paRequired && (
                     <ToggleField
                       label="Prior auth obtained"
                       checked={form.pa_obtained}
                       onChange={(pa_obtained) => change({ pa_obtained })}
                     />
                   )}
-                  {form.pa_required && form.pa_obtained && (
+                  {paRequired && form.pa_obtained && (
                     <div className="sm:max-w-xs">
                       <Field label="Prior auth number" htmlFor={id('pa-number')}>
                         <input

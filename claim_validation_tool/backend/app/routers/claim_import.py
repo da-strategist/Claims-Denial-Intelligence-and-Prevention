@@ -19,7 +19,14 @@ from app.services import claim_import
 from app.services.auth import SignedIn, audit_note, require
 from app.services.edi_settings import load_edi_settings
 from app.services.patient_list import resolve_patient, save_lock
-from app.services.org_context import OrgClaims, OrgId, OrgReference, OrgRegistrations, OrgRules
+from app.services.org_context import (
+    OrgClaims,
+    OrgId,
+    OrgPriorAuthLists,
+    OrgReference,
+    OrgRegistrations,
+    OrgRules,
+)
 
 router = APIRouter(
     prefix="/api/claims/import", tags=["claims"], dependencies=[require(Permission.CLAIMS_WRITE)]
@@ -77,6 +84,7 @@ def import_claims(
     rules: OrgRules,
     reference: OrgReference,
     registrations: OrgRegistrations,
+    pa_lists: OrgPriorAuthLists,
     org_id: OrgId,
     user: SignedIn,
 ) -> ClaimImportResult:
@@ -99,7 +107,9 @@ def import_claims(
                     resolved = resolve_patient(item.incoming, repo, registrations, today, user.username)
                     body = body.model_copy(update={"patient_id": resolved.patient_id})
                 try:
-                    result = add_draft_claim(body, repo, rules, reference, registrations, user, source_ref=item.ref)
+                    result = add_draft_claim(
+                        body, repo, rules, reference, registrations, pa_lists, user, source_ref=item.ref
+                    )
                 except HTTPException:
                     if resolved is not None:
                         resolved.undo()

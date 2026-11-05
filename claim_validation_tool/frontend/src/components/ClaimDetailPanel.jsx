@@ -99,12 +99,24 @@ function Field({ label, children, className = '' }) {
   )
 }
 
+// Not required is only said when a payer's list says so: a blank on a claim proves nothing
+const PA_NOT_MARKED = {
+  not_needed: 'Not required — not on this payer’s list',
+  not_assessed: 'Not assessed — no list for this payer, or saved before its list',
+  not_applicable: 'Not applicable',
+}
+
+const COVERAGE = {
+  not_checked: 'Not checked — confirm with the payer',
+  not_applicable: 'Not applicable',
+}
+
 function ClaimFacts({ claim, detail, payers }) {
   const paLabel = claim.pa_required
     ? claim.pa_obtained
       ? `Obtained${claim.pa_number ? ` (${claim.pa_number})` : ''}`
       : 'Required — not obtained'
-    : 'Not required'
+    : (PA_NOT_MARKED[detail?.prior_auth_check] ?? '—')
   return (
     <dl className="grid grid-cols-2 gap-x-6 gap-y-3">
       <Field label="Patient">
@@ -153,6 +165,7 @@ function ClaimFacts({ claim, detail, payers }) {
         {claim.submission_date}
       </Field>
       <Field label="Prior auth">{paLabel}</Field>
+      <Field label="Coverage active?">{COVERAGE[detail?.coverage_check]}</Field>
       <Field label="Allowed">{currency.format(claim.total_allowed)}</Field>
       <Field label="Paid" className="2xl:hidden">
         {currency.format(claim.total_paid)}

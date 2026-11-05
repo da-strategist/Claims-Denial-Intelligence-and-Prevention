@@ -220,6 +220,21 @@ of a claim keeps one control number until it's reopened. The file is a first-tim
 number when the claim was uploaded with one. It's marked as a test file until the EDI settings
 are complete. Self-pay claims get the list only.
 
+### What a clean claim doesn't cover
+
+**Prior authorization.** An 837 carries an authorization number only when someone got one, so a
+claim can't show that it needed one. Administrators keep each payer's list of services needing
+prior authorization on the Users page (`prior_auth_lists.json`; no patient details). A claim for a listed
+service is marked as requiring it however it arrived, and the claim can't override that; the existing
+rule then flags it if there's no authorization. `prior_auth_check` reports `obtained`, `missing`,
+`not_needed` (a list exists and no service is on it), `not_assessed` (no list, or saved before it) or
+`not_applicable` (self-pay). `obtained` means the claim carries an authorization, not that the payer
+confirmed it. Only the primary payer's list and CPT/HCPCS codes are used, so inpatient
+admission authorizations without such a code aren't caught. Saved claims don't change when a list does.
+
+**Coverage.** `coverage_check` is always `not_checked` (`not_applicable` for self-pay). Confirming
+active coverage needs a 270/271 eligibility check with the payer, which isn't built.
+
 ### Claims API for hospital systems
 
 Administrators create a key on the Users page. Send it as `Authorization: Bearer <key>`. A key
@@ -232,7 +247,7 @@ curl -X POST "$API/api/v1/claims/file" -H "Authorization: Bearer $KEY" -H 'Conte
 ```
 
 Each checked claim comes back with `claim_id`, `claim_number`, `status`, `clean`, `open_issues`,
-`findings` and `suggestions`, and never patient details beyond `patient_id`. `POST /api/v1/claims`
+`coverage_check`, `prior_auth_check`, `findings` and `suggestions`, and never patient details beyond `patient_id`. `POST /api/v1/claims`
 takes one claim as JSON: `claim_number`, this organisation's payer and provider IDs, and either
 `patient` (name and sex; the date of birth, address and member ID are in `billing`) or `patient_id`.
 

@@ -45,7 +45,7 @@ PHI_FILES = [
     "patient_list.json",
 ]
 AUDIT_FILE = "logs/audit.jsonl"  # encrypted line by line; closed years in audit-<year>.jsonl
-SETTINGS_FILES = ["rules.json", "edi_settings.json"]
+SETTINGS_FILES = ["rules.json", "edi_settings.json", "prior_auth_lists.json"]
 
 
 

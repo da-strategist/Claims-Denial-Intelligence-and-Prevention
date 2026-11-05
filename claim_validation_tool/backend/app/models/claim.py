@@ -55,6 +55,23 @@ ADJUDICATED_STATUSES = (ClaimStatus.PAID, ClaimStatus.DENIED)
 NOT_WITH_PAYER_STATUSES = (ClaimStatus.DRAFT, ClaimStatus.HANDED_OFF)
 
 
+class PriorAuthCheck(StrEnum):
+    """What's known about a claim's prior authorization."""
+
+    OBTAINED = "obtained"
+    MISSING = "missing"  # required, and the claim has none: a rule flags it
+    NOT_NEEDED = "not_needed"  # none of its services are on the payer's list
+    NOT_ASSESSED = "not_assessed"  # no list for this payer, or saved before the list was
+    NOT_APPLICABLE = "not_applicable"  # self-pay
+
+
+class CoverageCheck(StrEnum):
+    """Whether the patient's coverage was confirmed active. No eligibility check exists yet."""
+
+    NOT_CHECKED = "not_checked"
+    NOT_APPLICABLE = "not_applicable"  # self-pay
+
+
 class ClaimRoute(StrEnum):
     """How a claim leaves this system. An organisation picks its default; either route stays
     available on every claim, and a claim can only take one."""
@@ -349,3 +366,5 @@ class ClaimDetail(Claim):
     source_ref: str | None = Field(
         default=None, description="The hospital's own number for this claim, from the file it was uploaded in"
     )
+    prior_auth_check: PriorAuthCheck | None = Field(default=None, description="Set when one claim is read")
+    coverage_check: CoverageCheck | None = Field(default=None, description="Set when one claim is read")

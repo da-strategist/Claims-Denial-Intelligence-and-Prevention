@@ -164,6 +164,13 @@ export const listApiKeys = (options) => request('/organisation/api-keys', option
 export const createApiKey = (name) => request('/organisation/api-keys', { method: 'POST', body: { name } })
 export const revokeApiKey = (id) => request(`/organisation/api-keys/${id}`, { method: 'DELETE' })
 
+/** Which services each payer requires prior authorization for. */
+export const listPriorAuthLists = (options) => request('/organisation/prior-auth-lists', options)
+export const savePriorAuthList = (payerId, cptCodes) =>
+  request(`/organisation/prior-auth-lists/${payerId}`, { method: 'PUT', body: { cpt_codes: cptCodes } })
+export const removePriorAuthList = (payerId) =>
+  request(`/organisation/prior-auth-lists/${payerId}`, { method: 'DELETE' })
+
 /** Upload a CSV/Excel file in the template's layout, or an 837: each claim becomes a Draft. */
 export const importClaims = (filename, content) =>
   request('/claims/import', { method: 'POST', body: { filename, content } })

@@ -308,6 +308,16 @@ const SECTIONS = [
             <code className="font-mono text-xs">api.</code> plus its ID. It’s shown once; if one is
             lost or leaked, revoke it and create another.
           </Term>
+          <Term name="Prior authorization lists">
+            On the Users page: the services each payer requires prior authorization for, from your own
+            payer lists. A claim for a listed service with no authorization on it is flagged, however it
+            arrived. It checks the claim carries an authorization, not that the payer has confirmed it.
+            Claims for a payer with no list show prior auth as not assessed.
+          </Term>
+          <Term name="Coverage active?">
+            Not checked. A claim with no errors can still be denied because the patient’s coverage had
+            ended, so confirm coverage with the payer as you do today.
+          </Term>
           <Term name="Export all data">
             On the Audit Log page: one zip with everything your organisation has here (claims,
             drafts, corrections, patient details, the audit log, your accounts without passwords),

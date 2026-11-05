@@ -196,6 +196,32 @@ describe('New Claim', () => {
     expect(screen.getByRole('button', { name: 'Mark as submitted' })).toBeDisabled()
   })
 
+  it('requires prior auth for a service on the payer’s list, and can’t be switched off', async () => {
+    const fetchMock = mockApi({
+      ...LISTS,
+      ...OPENED,
+      'GET /organisation/prior-auth-lists': () => [
+        { payer_id: 'PAY001', cpt_codes: ['99213'], updated_at: '2026-11-01T10:00:00Z', updated_by: 'admin1' },
+      ],
+      'POST /claims': () => reply(201, CREATED),
+    })
+    render(<NewClaim />)
+    await screen.findByRole('option', { name: 'Medicare FFS' })
+    await pickPatient()
+    await fillEncounter()
+    expect(await screen.findByText(/Prior auth is required: 99213 is on this payer/)).toBeInTheDocument()
+    expect(screen.queryByRole('switch', { name: 'Prior auth required' })).not.toBeInTheDocument()
+    await user.click(screen.getByRole('switch', { name: 'Prior auth obtained' }))
+    await user.type(screen.getByLabelText('Prior auth number'), 'PA-1')
+    await user.click(screen.getByRole('button', { name: 'Create & validate claim' }))
+    await screen.findByRole('heading', { name: 'Created CLM0120001' })
+    expect(sentBodies(fetchMock, 'POST /claims')[0]).toMatchObject({
+      pa_required: true,
+      pa_obtained: true,
+      pa_number: 'PA-1',
+    })
+  })
+
   it('refuses a diagnosis no service line treats', async () => {
     const fetchMock = mockApi(LISTS)
     render(<NewClaim />)

@@ -17,7 +17,16 @@ from pydantic import BaseModel, Field, StringConstraints, model_validator
 
 from app.data import repository as repository_module
 
-from app.models import ClaimCreate, ClaimStatus, HandOffRequest, Permission, Severity, Sex
+from app.models import (
+    ClaimCreate,
+    ClaimStatus,
+    CoverageCheck,
+    HandOffRequest,
+    Permission,
+    PriorAuthCheck,
+    Severity,
+    Sex,
+)
 from app.models.aifix import FixSuggestion
 from app.models.claim_import import ClaimImportRequest, ImportFailure, ImportFileType
 from app.models.common import ClaimId, PatientId
@@ -27,6 +36,7 @@ from app.routers.claim_import import read_claims_file
 from app.routers.claims import _open_issues, add_draft_claim, hand_off_claim, replace_draft_claim
 from app.services import aifix
 from app.services.auth import SignedIn, audit_note, require
+from app.services.prior_auth import coverage_check, prior_auth_check
 from app.services.patient_list import (
     UNRESOLVED_PATIENT,
     IncomingPatient,
@@ -40,6 +50,7 @@ from app.services.org_context import (
     OrgClaims,
     OrgCorrections,
     OrgId,
+    OrgPriorAuthLists,
     OrgReference,
     OrgRegistrations,
     OrgRules,
@@ -102,7 +113,17 @@ class ClaimCheck(BaseModel):
         description="True when the patient may be someone already on the list; a person will check"
     )
     status: ClaimStatus
-    clean: bool = Field(description="True when no rule error or warning is open")
+    clean: bool = Field(
+        description="True when no rule error or warning is open. It says nothing about what "
+        "coverage_check and prior_auth_check report as not checked"
+    )
+    coverage_check: CoverageCheck = Field(
+        description="not_checked: whether the patient's coverage was active wasn't confirmed with the payer"
+    )
+    prior_auth_check: PriorAuthCheck = Field(
+        description="not_assessed: no prior authorization list for this payer, or the claim was saved "
+        "before the list. obtained only means the claim carries an authorization, not that the payer confirmed it"
+    )
     open_issues: list[str] = Field(description="The rule errors and warnings still open")
     risk_score: int
     findings: list[RuleFinding]
@@ -125,6 +146,7 @@ class Sender:
         rules: OrgRules,
         reference: OrgReference,
         registrations: OrgRegistrations,
+        pa_lists: OrgPriorAuthLists,
         corrections: OrgCorrections,
         changes: OrgClaimChanges,
         fixes: AiFixDeps,
@@ -132,7 +154,8 @@ class Sender:
         user: SignedIn,
     ) -> None:
         self.repo, self.rules, self.reference, self.registrations = repo, rules, reference, registrations
-        self.corrections, self.changes, self.fixes, self.org_id, self.user = corrections, changes, fixes, org_id, user
+        self.pa_lists, self.corrections, self.changes = pa_lists, corrections, changes
+        self.fixes, self.org_id, self.user = fixes, org_id, user
 
     def save(self, number: str, body: ClaimCreate, incoming: IncomingPatient | None) -> tuple[str, str, bool]:
         """Create the claim, or replace the Draft with this number, keeping the patient list
@@ -153,12 +176,13 @@ class Sender:
             try:
                 if draft is None:
                     made = add_draft_claim(
-                        body, self.repo, self.rules, self.reference, self.registrations, self.user, source_ref=number
+                        body, self.repo, self.rules, self.reference, self.registrations, self.pa_lists, self.user,
+                        source_ref=number,
                     )
                     claim_id, action = made.claim.claim_id, "created"
                 else:
                     replace_draft_claim(
-                        existing, body, self.repo, self.rules, self.reference, self.registrations,
+                        existing, body, self.repo, self.rules, self.reference, self.registrations, self.pa_lists,
                         self.corrections, self.changes, self.user,
                     )
                     claim_id, action = existing, "replaced"
@@ -213,6 +237,8 @@ class Sender:
             patient_needs_review=claim.patient_id in self.repo.patients_to_review(),
             status=claim.status,
             clean=not open_issues,
+            coverage_check=coverage_check(claim),
+            prior_auth_check=prior_auth_check(claim, self.pa_lists),
             open_issues=open_issues,
             risk_score=fixes.validation.risk_score,
             findings=fixes.validation.findings,
