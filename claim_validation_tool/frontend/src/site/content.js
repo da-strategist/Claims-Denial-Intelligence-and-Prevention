@@ -22,7 +22,7 @@ export const TEAM = [
     name: 'Jubril Olalekan',
     role: 'Founder',
     bio: 'Health information management professional and data analyst. Spent three years at the Institute for Information and Communication Technology (IICT) in Nigeria helping design an electronic clinical coding system (ICD-10 and ICD-10-PCS), a disease surveillance module and an electronic health insurance system, and trained more than 100 healthcare professionals in clinical coding and health record workflows. Now brings coding and revenue cycle knowledge together with data engineering to catch claim errors before submission.',
-    photo: null,
+    photo: '/team/jubril-olalekan.jpg',
     linkedin: 'https://www.linkedin.com/in/jubril-olalekan',
   },
   {
