@@ -208,9 +208,26 @@ Features 3 and 4 can follow when real volume flows or a client asks.
    credentials, and a business associate agreement first; complete
    `backend/edi_settings.json` and validate a test file with them before going live.
 
-## Client-facing documentation (later)
+## Payer documents behind the rules
 
-- [ ] **Architecture and product document for client discussions.** A plain-language explanation of how the tool is built (frontend, backend, data per organisation, security and compliance, the assistant and what it shares with Claude, the claim routes), with a diagram, written for hospital IT, compliance and revenue cycle leads. Build it from `PROJECT_GUIDE.md`, `README.md` and `DATA_SEGREGATION_PLAN.md`.
+Administrators upload a payer's own documents (provider manual, prior authorization list,
+policy bulletin), so rules and the assistant can point to the payer's actual words.
+
+- [x] **Stage 1: documents as evidence.** Upload a PDF or text document per payer on the Rules
+  page, with its effective date (each organisation's own, encrypted with its key, in its data
+  export). A rule can cite a document, page and passage; flagged claims and AI Fix show that
+  source, and the assistant searches the documents and cites them by page. A document a rule
+  cites can't be deleted until the rule stops citing it.
+- [ ] **Stage 2: draft rules suggested from a document.** Claude reads an uploaded document and
+  proposes rules, each with the passage it came from; an administrator accepts, edits or rejects
+  each one, and nothing goes live on its own. Proposals the rule builder can't express (time
+  limits, frequency per patient) are listed as needing a new kind of check. A newer version of a
+  document flags the rules based on the older one for review. Questions for the pilot: which
+  payers' documents hospitals have, and in what form.
+
+## Client-facing documentation
+
+- [x] **Architecture and product document for client discussions** (`CLIENT_OVERVIEW.md`). A plain-language explanation of how the tool is built (frontend, backend, data per organisation, security and compliance, the assistant and what it shares with Claude, the claim routes), with a diagram, written for hospital IT, compliance and revenue cycle leads. Build it from `PROJECT_GUIDE.md`, `README.md` and `DATA_SEGREGATION_PLAN.md`.
 
 ## Summary
 

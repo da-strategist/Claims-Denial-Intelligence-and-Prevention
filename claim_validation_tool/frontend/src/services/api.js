@@ -171,6 +171,17 @@ export const savePriorAuthList = (payerId, cptCodes) =>
 export const removePriorAuthList = (payerId) =>
   request(`/organisation/prior-auth-lists/${payerId}`, { method: 'DELETE' })
 
+/** Payer documents (manuals, policies, prior authorization lists): the evidence behind rules. */
+export const listPayerDocuments = (options) => request('/payer-documents', options)
+export const uploadPayerDocument = (document) =>
+  request('/payer-documents', { method: 'POST', body: document })
+export const deletePayerDocument = (documentId) =>
+  request(`/payer-documents/${encodeURIComponent(documentId)}`, { method: 'DELETE' })
+export const getPayerDocumentPage = (documentId, page, options) =>
+  request(`/payer-documents/${encodeURIComponent(documentId)}/pages/${page}`, options)
+export const payerDocumentFileUrl = (documentId) =>
+  `${API_BASE}/payer-documents/${encodeURIComponent(documentId)}/file`
+
 /** Upload a CSV/Excel file in the template's layout, or an 837: each claim becomes a Draft. */
 export const importClaims = (filename, content) =>
   request('/claims/import', { method: 'POST', body: { filename, content } })

@@ -5,6 +5,7 @@ their own ranges (CLM9000001, PAT900001, PROV901 …) and names, so anything of 
 showing up in a Meridian response is easy to spot, and vice versa.
 """
 
+import base64
 import json
 import re
 from uuid import uuid4
@@ -48,6 +49,11 @@ def other_orgs_ids(client, org, role=Role.ADMIN):
         "grant_id": "EA-0000abcd",
         "payer_id": "PAY001",  # each organisation's own lists: see test_prior_auth_lists
         "key_id": get_api_keys().create(org, f"Owner's key {uuid4().hex}", "admin1")[0].id,
+        "document_id": client.post("/api/payer-documents", json={
+            "payer_id": "PAY001", "title": "Owner's manual", "filename": "manual.txt",
+            "content": base64.b64encode(b"Prior authorization is required for MRI.").decode(),
+        }).json()["id"],
+        "page": "1",
     }
 
 

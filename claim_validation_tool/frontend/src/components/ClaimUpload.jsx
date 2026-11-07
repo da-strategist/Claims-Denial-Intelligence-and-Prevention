@@ -4,19 +4,11 @@ import Icon from './Icon'
 import RiskScore from './RiskScore'
 import { ValidationBadge } from './StatusBadge'
 import { claimImportTemplateUrl, importClaims } from '../services/api'
+import { readBase64 } from '../utils/files'
 import { currency } from '../utils/format'
 
 const ACCEPT = '.csv,.xlsx,.837,.txt,.edi,.x12'
 
-/** The file's bytes as base64, for the JSON upload. */
-function readBase64(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => resolve(String(reader.result).split(',')[1] ?? '')
-    reader.onerror = () => reject(new Error('Could not read the file'))
-    reader.readAsDataURL(file)
-  })
-}
 
 const FILE_TYPES = { csv: 'CSV', xlsx: 'Excel', '837P': '837P', '837I': '837I' }
 

@@ -363,6 +363,7 @@ dependencies = [
     { name = "numpy" },
     { name = "openpyxl" },
     { name = "pandas" },
+    { name = "pypdf" },
     { name = "reportlab" },
     { name = "requests" },
     { name = "uvicorn" },
@@ -371,7 +372,6 @@ dependencies = [
 [package.dev-dependencies]
 dev = [
     { name = "httpx2" },
-    { name = "pypdf" },
     { name = "pytest" },
 ]
 
@@ -383,6 +383,7 @@ requires-dist = [
     { name = "numpy", specifier = ">=2.4.4" },
     { name = "openpyxl", specifier = ">=3.1.5" },
     { name = "pandas", specifier = ">=3.0.2" },
+    { name = "pypdf", specifier = ">=6.21.1" },
     { name = "reportlab", specifier = ">=5.0.1" },
     { name = "requests", specifier = ">=2.33.1" },
     { name = "uvicorn", specifier = ">=0.34.0" },
@@ -391,7 +392,6 @@ requires-dist = [
 [package.metadata.requires-dev]
 dev = [
     { name = "httpx2", specifier = ">=2.13.1" },
-    { name = "pypdf", specifier = ">=6.21.1" },
     { name = "pytest", specifier = ">=9.1.1" },
 ]
 

@@ -19,6 +19,7 @@ from functools import lru_cache
 from typing import Protocol
 
 from app.data.knowledge import KnowledgeBase, Source, get_knowledge_base
+from app.data.payer_documents import document_sources, get_payer_documents
 from app.data.repository import get_repository
 from app.models import (
     AssistantAnswer,
@@ -39,11 +40,11 @@ MAX_SOURCES = 8
 TOPIC_SOURCES: dict[ClarificationTopic, set[SourceType]] = {
     ClarificationTopic.MEDICAL_NECESSITY: {SourceType.COVERAGE_POLICY},
     ClarificationTopic.NCCI_MODIFIERS: {SourceType.NCCI_EDIT, SourceType.MUE},
-    ClarificationTopic.PAYER_PRIOR_AUTH: {SourceType.PAYER, SourceType.PAYER_CONTRACT},
+    ClarificationTopic.PAYER_PRIOR_AUTH: {SourceType.PAYER, SourceType.PAYER_CONTRACT, SourceType.PAYER_DOCUMENT},
     ClarificationTopic.APPEAL: {SourceType.CARC, SourceType.RARC},
 }
 TOPIC_BOOST = 1.5
-PAYER_SCOPED = {SourceType.PAYER, SourceType.PAYER_CONTRACT}
+PAYER_SCOPED = {SourceType.PAYER, SourceType.PAYER_CONTRACT, SourceType.PAYER_DOCUMENT}
 
 
 # --- What may be shared ---------------------------------------------------------------
@@ -288,6 +289,13 @@ def _claim_match(source: Source, facts: ClaimFacts) -> tuple[float, str] | None:
             if source.reference_id in cpts:
                 return 1.0, f"Medicare rate for billed CPT {source.reference_id}"
             return None
+        case SourceType.PAYER_DOCUMENT:
+            if data["payer_id"] != facts.payer_id:
+                return None
+            if named := sorted(cpts & data["codes"]):
+                return 3.0, f"The billed payer's document mentions CPT {', '.join(named)}"
+            # Every page names the payer: only the question's wording can pick a page
+            return 0.0, "The billed payer's document"
     return None
 
 
@@ -297,6 +305,11 @@ def _named_match(source: Source, asked: set[str], question: str) -> tuple[float,
     if not named:
         return None
     codes = ", ".join(key.split(":", 1)[1] for key in named)
+    if source.source_type == SourceType.PAYER_DOCUMENT:
+        # Naming the payer makes its pages eligible; the wording or a code picks the page
+        if any(not key.startswith("payer:") for key in named):
+            return 3.0, f"Named in the question: {codes}"
+        return 0.0, f"A document of {codes}, named in the question"
     if source.source_type == SourceType.PAYER_CONTRACT:
         # A payer has a contract per service category; only the category asked about counts
         category = source.data["cpt_category"]
@@ -336,9 +349,9 @@ class Retriever:
             # Payer records apply only to their own payer, so wording alone never brings one in
             payer_scoped = source.source_type in PAYER_SCOPED
             if relative >= 0.4 and not (payer_scoped and not reasons):  # weaker overlap is noise
-                score += 2.0 * relative
-                if not reasons:
+                if not score:
                     reasons.append("Matches the question's wording")
+                score += 2.0 * relative
             if score and source.source_type in boosted:
                 score *= TOPIC_BOOST
             if score:
@@ -369,7 +382,9 @@ and pre-submission edits.
 
 Answer using ONLY the numbered reference sources provided. They come from the organization's \
 reference tables: CARC/RARC codes, NCCI procedure-to-procedure edits, MUE limits, LCD/NCD \
-coverage policies, payer profiles and contracts, and the Medicare fee schedule.
+coverage policies, payer profiles and contracts, and the Medicare fee schedule; and from \
+payer documents the organization uploaded (provider manuals, policies, prior authorization \
+lists), each source being one page. When you rely on a payer document, name it and its page.
 
 - Cite every factual statement with its source label in square brackets, e.g. [S1] or [S1][S3].
 - Apply the sources to the claim facts when they are given: say which codes on this claim \
@@ -446,8 +461,9 @@ class RetrievalWriter:
 
 NO_SOURCES = (
     "No reference record matches this question. The knowledge base holds CARC/RARC codes, "
-    "NCCI edits, MUE limits, LCD/NCD coverage policies, payer profiles and contracts, and the "
-    "Medicare fee schedule; try naming a code, procedure, or payer."
+    "NCCI edits, MUE limits, LCD/NCD coverage policies, payer profiles and contracts, the "
+    "Medicare fee schedule, and the payer documents uploaded on the Rules page; try naming a "
+    "code, procedure, or payer."
 )
 
 _CITATION = re.compile(r"\[(S\d+(?:\s*[,;]\s*S\d+)*)\]")
@@ -517,9 +533,20 @@ def get_name_scrubber(org_id: str) -> NameScrubber:
     return NameScrubber(get_repository(org_id).person_names())
 
 
-@lru_cache(maxsize=None)
 def get_retriever(org_id: str) -> Retriever:
-    return Retriever(get_knowledge_base(org_id))
+    """The reference tables plus the organisation's payer documents, rebuilt when a document
+    is added or removed."""
+    return _retriever(org_id, get_payer_documents(org_id).version)
+
+
+@lru_cache(maxsize=64)
+def _retriever(org_id: str, documents_version: int) -> Retriever:
+    knowledge = get_knowledge_base(org_id)
+    documents = document_sources(get_payer_documents(org_id))
+    return Retriever(KnowledgeBase((*knowledge.sources, *documents), knowledge.payer_names))
+
+
+get_retriever.cache_clear = _retriever.cache_clear  # cleared with the other per-organisation caches
 
 
 @lru_cache(maxsize=1)

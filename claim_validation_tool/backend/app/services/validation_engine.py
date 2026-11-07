@@ -135,6 +135,7 @@ def _finding(rule: Rule) -> RuleFinding:
         category=rule.category,
         message=rule.description,
         recommended_action=rule.recommended_action,
+        source=rule.source,
     )
 
 

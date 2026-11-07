@@ -194,7 +194,8 @@ def test_every_api_route_requires_sign_in(anon_client):
     open_routes = {"/api/health", "/api/auth/login", "/api/auth/sso/{org_id}/start", "/api/auth/sso/{org_id}/callback"}
     examples = {"claim_id": "CLM0000001", "rule_id": "RULE-001", "patient_id": "PAT000001",
                 "draft_id": "DRF-0000abcd", "username": "admin1", "grant_id": "EA-0000abcd",
-                "org_id": "meridian", "key_id": "00000000", "payer_id": "PAY001"}
+                "org_id": "meridian", "key_id": "00000000", "payer_id": "PAY001",
+                "document_id": "DOC-001", "page": "1"}
     checked = 0
     for method, path in api_routes():
         if path in open_routes:

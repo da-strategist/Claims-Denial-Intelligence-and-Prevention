@@ -128,6 +128,27 @@ aren't checked, because their synthetic lines would flag about two thirds of the
 whose rules were saved before these rules existed get them added once (`seed_version` in
 `rules.json`); a rule an administrator deletes later stays deleted.
 
+### Payer documents behind the rules
+
+Administrators upload a payer's own documents on the Rules page: a provider manual, policy
+or prior authorization list, as PDF or text (up to 15 MB), with its payer and effective date.
+The text of each page is read on upload (a text file is read in parts of about 3,000
+characters); a scanned PDF with no text is kept but can't be searched.
+
+- **Rules cite them.** A rule's **Source** names a document, a page and the passage it's based
+  on. Claims the rule flags show that source with a link to the document, and AI Fix lists it
+  among its citations. A document a rule cites can't be deleted (409) until no rule cites it.
+- **The assistant searches them.** Each page is a source keyed by its payer and the codes it
+  mentions. Only the claim's own payer's documents (or a payer named in the question) are
+  used, and the question's wording or a billed code picks the page; answers name the
+  document and page. Page text is sent to Claude like the other reference sources; it holds
+  no patient details.
+- **Kept per organisation.** `payer_documents.json` and the `payer_documents/` folder, encrypted
+  with the organisation's key (contract terms can be confidential) and included in its data
+  export. Uploads, downloads and deletions are in the audit log by document ID.
+
+Drafting rules from a document is Stage 2 in `PHASES.md`.
+
 ### Risk score (0–100)
 
 25 points per rule error, 10 per warning, 20 for prior patient denials (+5 if preventable),
@@ -423,6 +444,7 @@ All routes are under `/api`; full schemas at `/docs`.
 | Saved drafts | `GET /drafts` · `POST /drafts` · `GET /drafts/{id}` · `PUT /drafts/{id}` · `DELETE /drafts/{id}` (billers and admins) |
 | Validation | `GET /validate/{id}` · `POST /validate` (up to 200 claims) |
 | Rules | `GET/POST /rules` · `GET/PUT/PATCH/DELETE /rules/{id}` · `GET /rules/fields` · `POST /rules/test` |
+| Payer documents | `GET/POST /payer-documents` · `GET/DELETE /payer-documents/{id}` · `GET /payer-documents/{id}/file` · `GET /payer-documents/{id}/pages/{page}` |
 | AI Fix | `GET /aifix/{id}` · `POST /aifix/{id}/apply` · `DELETE /aifix/{id}/corrections` |
 | Dashboard | `GET /dashboard` (months, payer_id, department_id) |
 | Reference | `/patients`, `/patients/{id}`, `/patients/{id}/registration`, `/payers`, `/departments`, `/providers`, `/facilities`, `/codes/procedures`, `/codes/diagnoses` |
@@ -477,5 +499,6 @@ claim_validation_tool/
   with Anthropic. Sessions live in memory, so a
   restart signs everyone out.
 - AI Fix is rule-based; the assistant handles the ambiguous cases. Its knowledge is limited to
-  the reference tables: there are no payer policy manuals, so it can't say which services a
-  payer requires prior authorization for, or quote filing limits, and says so.
+  the reference tables and the payer documents an organisation uploads: without a payer's
+  manual it can't say which services that payer requires prior authorization for, or quote
+  filing limits, and says so.

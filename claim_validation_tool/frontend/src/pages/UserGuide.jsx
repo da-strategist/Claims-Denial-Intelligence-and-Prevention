@@ -283,6 +283,13 @@ const SECTIONS = [
             Create, edit, switch off, or test rules. Changes apply to every claim immediately;
             switching off a rule also stops it blocking submission.
           </Term>
+          <Term name="Payer documents">
+            On the Rules page, upload a payer’s manual, policy or prior authorization list (PDF or text).
+            In a rule, under Source, choose the document, the page, and the passage the rule is based on:
+            claims it flags then show that source, and so does AI Fix. The assistant also searches the
+            documents and names the page it used. A document a rule cites can’t be deleted until the rule
+            stops citing it.
+          </Term>
           <Term name="Audit Log">
             Every request: who, what, which records, and the outcome. If the service’s operators
             ever need emergency access to your data, it appears at the top with their reason, and

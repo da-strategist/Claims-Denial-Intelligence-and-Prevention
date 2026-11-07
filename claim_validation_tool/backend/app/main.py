@@ -27,6 +27,7 @@ from app.routers import (
     jab,
     organisation,
     patients,
+    payer_documents,
     payers,
     reference,
     rules,
@@ -115,6 +116,7 @@ app.include_router(drafts.router)
 app.include_router(payers.router)
 app.include_router(departments.router)
 app.include_router(rules.router)
+app.include_router(payer_documents.router)
 app.include_router(validation.router)
 app.include_router(aifix.router)
 app.include_router(dashboard.router)

@@ -254,6 +254,15 @@ class RuleDefinition(BaseModel):
     condition_logic: ConditionLogic = ConditionLogic.AND
 
 
+class RuleSource(BaseModel):
+    """Where a rule comes from: a page of one of the organisation's payer documents."""
+
+    document_id: str = Field(pattern=r"^DOC-\d{3,}$")
+    page: int | None = Field(default=None, ge=1, description="Page of a PDF, or part of a text file")
+    excerpt: str = Field(default="", max_length=1000, description="The passage the rule is based on")
+    document_title: str = Field(default="", description="Filled in from the document when saved")
+
+
 class RuleCreate(RuleDefinition):
     name: str = Field(min_length=1, max_length=120)
     description: str = ""
@@ -261,6 +270,7 @@ class RuleCreate(RuleDefinition):
     severity: Severity
     enabled: bool = True
     recommended_action: str = ""
+    source: RuleSource | None = None
 
 
 class RuleUpdate(BaseModel):
@@ -275,6 +285,7 @@ class RuleUpdate(BaseModel):
     scope: RuleScope | None = None
     conditions: list[Condition] | None = Field(default=None, min_length=1)
     condition_logic: ConditionLogic | None = None
+    source: RuleSource | None = None
 
 
 class Rule(RuleCreate):
@@ -313,6 +324,7 @@ class RuleFinding(BaseModel):
     category: RuleCategory
     message: str
     recommended_action: str
+    source: RuleSource | None = None
 
 
 class RiskFactor(BaseModel):
