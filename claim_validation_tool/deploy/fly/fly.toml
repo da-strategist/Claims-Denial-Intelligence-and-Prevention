@@ -9,8 +9,8 @@ primary_region = "iad"
 
 [env]
   RCM_COOKIE_SECURE = "1"
-  RCM_ALLOWED_ORIGINS = "https://claustrarcm.vercel.app,https://claustrarcm-demo.vercel.app"
-  RCM_PUBLIC_URL = "https://claustrarcm.vercel.app"
+  RCM_ALLOWED_ORIGINS = "https://claustrarcm-demo.vercel.app"
+  RCM_PUBLIC_URL = "https://claustrarcm-demo.vercel.app"
   # The machine stops when idle: keep sessions on the volume in case it restarts
   RCM_SESSIONS_FILE = "/data/sessions.json"
 
