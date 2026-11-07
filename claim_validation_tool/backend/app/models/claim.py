@@ -1,6 +1,6 @@
 """Claim models — mirror fact_claims.csv and fact_claim_lines.csv."""
 
-from datetime import date
+from datetime import date, datetime
 from enum import StrEnum
 from typing import Annotated, Literal, TypeVar
 
@@ -43,12 +43,41 @@ PipeList = Annotated[list[T], BeforeValidator(_split_pipe)]
 class ClaimStatus(StrEnum):
     DRAFT = "Draft"  # entered and validated, not yet sent to the payer
     PENDING = "Pending"  # submitted, awaiting the payer's decision
+    HANDED_OFF = "Handed off"  # finished here; the hospital sends it from its own billing system
     PAID = "Paid"
     DENIED = "Denied"
 
 
 # The payer has decided these; denial and collection rates count only them
 ADJUDICATED_STATUSES = (ClaimStatus.PAID, ClaimStatus.DENIED)
+
+# Not with a payer as far as this system knows: left out of accounts receivable and the queue
+NOT_WITH_PAYER_STATUSES = (ClaimStatus.DRAFT, ClaimStatus.HANDED_OFF)
+
+
+class PriorAuthCheck(StrEnum):
+    """What's known about a claim's prior authorization."""
+
+    OBTAINED = "obtained"
+    MISSING = "missing"  # required, and the claim has none: a rule flags it
+    NOT_NEEDED = "not_needed"  # none of its services are on the payer's list
+    NOT_ASSESSED = "not_assessed"  # no list for this payer, or saved before the list was
+    NOT_APPLICABLE = "not_applicable"  # self-pay
+
+
+class CoverageCheck(StrEnum):
+    """Whether the patient's coverage was confirmed active. No eligibility check exists yet."""
+
+    NOT_CHECKED = "not_checked"
+    NOT_APPLICABLE = "not_applicable"  # self-pay
+
+
+class ClaimRoute(StrEnum):
+    """How a claim leaves this system. An organisation picks its default; either route stays
+    available on every claim, and a claim can only take one."""
+
+    VALIDATE_ONLY = "validate_only"  # check and correct here, send from the hospital's billing system
+    SEND = "send"  # send through this system once every rule passes
 
 
 class ClaimType(StrEnum):
@@ -58,6 +87,7 @@ class ClaimType(StrEnum):
 
 class PlaceOfService(StrEnum):
     OFFICE = "11"
+    INPATIENT_HOSPITAL = "21"
     OUTPATIENT_HOSPITAL = "22"
     EMERGENCY_ROOM = "23"
 
@@ -235,6 +265,58 @@ ClaimSortField = Literal[
 ]
 
 
+class ClaimHandoff(BaseModel):
+    """A claim finished here, to be sent from the hospital's own billing system."""
+
+    handed_off_on: date
+    handed_off_by: str
+    open_issues: list[str] = Field(
+        default_factory=list, description="Rule errors and warnings still open when it was handed off"
+    )
+    control_number: int | None = Field(
+        default=None, description="The 837 export's control number, kept so every download matches"
+    )
+
+
+class ClaimChangeSource(StrEnum):
+    AI_FIX = "AI Fix"
+    EDIT = "Edited"
+
+
+class ClaimChange(BaseModel):
+    """One value that differs from what was first entered or uploaded."""
+
+    field: str
+    label: str
+    old_value: str | None
+    new_value: str | None
+    source: ClaimChangeSource
+    changed_by: str | None
+    changed_at: datetime
+
+
+class HandoffExport(BaseModel):
+    """What the hospital takes back to its billing system. The file itself is downloaded."""
+
+    claim_id: ClaimId
+    source_ref: str | None
+    changes: list[ClaimChange]
+    open_issues: list[str]
+    edi: EdiFile | None = Field(description="The 837 export; none for self-pay, billed to the patient")
+
+
+class HandOffRequest(BaseModel):
+    acknowledge_open_issues: bool = Field(
+        default=False, description="Required when rule errors or warnings are still open"
+    )
+
+
+class ReopenRequest(BaseModel):
+    confirmed_not_sent: bool = Field(
+        default=False, description="Someone confirmed the billing system hasn't sent this claim"
+    )
+
+
 class ClaimQuery(BaseModel):
     """Search, filter, sort, and pagination parameters for listing claims."""
 
@@ -278,3 +360,11 @@ class ClaimDetail(Claim):
         default=None, description="Captured with claims entered in the app; PHI"
     )
     edi: EdiFile | None = Field(default=None, description="The 837 created at submission")
+    handoff: ClaimHandoff | None = Field(
+        default=None, description="Set while the claim is handed off to the hospital's billing system"
+    )
+    source_ref: str | None = Field(
+        default=None, description="The hospital's own number for this claim, from the file it was uploaded in"
+    )
+    prior_auth_check: PriorAuthCheck | None = Field(default=None, description="Set when one claim is read")
+    coverage_check: CoverageCheck | None = Field(default=None, description="Set when one claim is read")

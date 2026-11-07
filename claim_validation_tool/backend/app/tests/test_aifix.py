@@ -143,7 +143,7 @@ def test_high_charge_review_cites_contract_rates(client):
             "conditions": [{"field": "total_charge", "operator": "greaterThan", "value": "1000"}],
         },
     )
-    suggestion = by_id(fixes(client))["RULE-010"]
+    suggestion = by_id(fixes(client))["RULE-014"]
     assert suggestion["action"] == "manual"
     # E&M $1,000 at 90% + Surgery $1,500 at 95%
     assert "$2,325.00" in suggestion["reasoning"]
@@ -161,12 +161,12 @@ def test_diagnosis_fix_rejects_invalid_codes(client):
             "conditions": [{"field": "primary_icd10", "operator": "contains", "value": "K21"}],
         },
     )
-    suggestion = by_id(fixes(client))["RULE-010"]
+    suggestion = by_id(fixes(client))["RULE-014"]
     assert suggestion["clarification_topic"] == "medical_necessity"
-    res = apply(client, "RULE-010", {"primary_icd10": "not-a-code"})
+    res = apply(client, "RULE-014", {"primary_icd10": "not-a-code"})
     assert res.status_code == 422
     assert res.json()["detail"] == "Primary ICD-10 must be an ICD-10 code such as E11.65 or I10"
-    assert apply(client, "RULE-010", {"primary_icd10": "K21.9"}).status_code == 200
+    assert apply(client, "RULE-014", {"primary_icd10": "K21.9"}).status_code == 200
 
 
 @pytest.mark.parametrize(
@@ -191,7 +191,7 @@ def test_aging_rules_get_payer_follow_up(client, condition, title, summary, reas
         "/api/rules",
         json={"name": "Aging", "category": "Billing", "severity": "warning", "conditions": [condition]},
     )
-    suggestion = by_id(fixes(client))["RULE-010"]
+    suggestion = by_id(fixes(client))["RULE-014"]
     assert (suggestion["title"], suggestion["summary"]) == (title, summary)
     assert suggestion["reasoning"].startswith(reasoning)
     assert suggestion["action"] == "manual"
@@ -215,7 +215,7 @@ def test_custom_rule_gets_generic_suggestion(client):
             "conditions": [{"field": "claim_type", "operator": "equals", "value": "Institutional"}],
         },
     )
-    suggestion = by_id(fixes(client))["RULE-010"]
+    suggestion = by_id(fixes(client))["RULE-014"]
     assert suggestion["action"] == "manual"
     assert suggestion["steps"] == ["Confirm the bill type"]
 
@@ -300,7 +300,7 @@ def test_fix_that_changes_nothing_is_refused(client):
             "conditions": [{"field": "primary_icd10", "operator": "contains", "value": "K21"}],
         },
     )
-    res = apply(client, "RULE-010", {"primary_icd10": "K21.0"})  # the claim's current code
+    res = apply(client, "RULE-014", {"primary_icd10": "K21.0"})  # the claim's current code
     assert res.status_code == 422
     assert res.json()["detail"] == (
         "Nothing to change: Primary ICD-10 is already K21.0. Enter a different value to apply."

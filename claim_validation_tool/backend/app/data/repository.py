@@ -17,9 +17,11 @@ from typing import Any
 import pandas as pd
 from cryptography.fernet import Fernet
 
+from app.data.coding_edits import NO_FLAGS, CodingEdits
 from app.data.corrections import get_correction_store
 from app.data.new_claims import NewClaimStore, get_new_claim_store
 from app.data.orgs import get_org_registry, org_cipher_for
+from app.data.patient_list import PatientListStore, get_patient_list
 from app.data.secure_files import read_text, table_path
 from app.models.aifix import CORRECTABLE_FIELDS
 from app.models.rule import RULE_FIELDS, parse_condition_value
@@ -30,11 +32,13 @@ from app.models import (
     ClaimDetail,
     ClaimLine,
     ClaimQuery,
+    ClaimHandoff,
     ClaimStatus,
     Denial,
     Department,
     Facility,
     Page,
+    RecordStatus,
     Patient,
     PatientQuery,
     PatientSummary,
@@ -97,8 +101,10 @@ class ClaimsRepository:
         data_dir: Path = DEFAULT_DATA_DIR,
         new_claims: NewClaimStore | None = None,
         cipher: Fernet | None = None,
+        patient_list: PatientListStore | None = None,
     ) -> None:
         """`new_claims` saves claims entered in the app; they are replayed here on startup.
+        `patient_list` holds what claims have taught us about patients, laid over the table.
         `cipher` decrypts tables that have been encrypted (secure_files.py)."""
         self.data_dir = data_dir
         self.cipher = cipher
@@ -113,11 +119,20 @@ class ClaimsRepository:
         ).dt.days
         self._add_prior_denial_flags()
 
-        # Only manually entered claims can be pending, or carry more than one diagnosis
-        # or payer on the header; the source data is single-payer and adjudicated
+        # Only manually entered claims can be pending, or carry more than one payer on the
+        # header; the source data is single-payer and adjudicated. Source data may list
+        # further diagnoses ("A|B", as CMS claims do); otherwise there are none
         self._claims["is_overdue"] = False
-        self._claims["additional_icd10"] = ""
+        if "additional_icd10" not in self._claims:
+            self._claims["additional_icd10"] = ""
         self._claims["other_payer_ids"] = ""
+        # Coding checks on service lines (coding_edits.py) run on claims entered or uploaded
+        # here, before they go out. Source claims were adjudicated long ago; their synthetic
+        # lines would flag most of them, so they aren't checked
+        self._coding = CodingEdits.load(data_dir)
+        for column, value in NO_FLAGS.items():
+            self._claims[column] = value
+        self._checked_ids: set[str] = set()
         self._pending_ids: set[str] = set()
         self._draft_ids: set[str] = set()
         # What claims entered in the app carry beyond the source columns (billing details
@@ -125,14 +140,18 @@ class ClaimsRepository:
         self._billing: dict[str, dict[str, Any]] = {}
         self._revenue_codes: dict[str, list[str | None]] = {}
         self._edi: dict[str, EdiFile] = {}
+        self._handoffs: dict[str, ClaimHandoff] = {}
+        self._source_refs: dict[str, str] = {}
 
         # AI Fix corrections are layered over these columns; keep the originals to restore
         self._claims["has_corrections"] = False
         self._original = self._claims[list(CORRECTABLE_FIELDS)].copy()
         self._corrected_ids: set[str] = set()
         self._overlay_lock = Lock()
-        # Bumped whenever the overlay changes, so caches of claim-derived results can expire
+        # Bumped whenever the overlay changes, so caches of claim-derived results can expire;
+        # each recent bump keeps the claims it touched, so a cache can update just those
         self.version = 0
+        self._changes: dict[int, frozenset[str]] = {}
 
         self._claim_pos = pd.Index(self._claims["claim_id"]).get_indexer
         self._lines_by_claim = self._lines.groupby("claim_id", sort=False).indices
@@ -178,6 +197,11 @@ class ClaimsRepository:
         )
 
         # Claims entered in the app, replayed in order with the dates they were submitted
+        # After the source claims' flags above, which compare against the source table
+        self._patient_list = patient_list
+        for patient_id, record in (patient_list.records() if patient_list else {}).items():
+            self._lay_over_patient(patient_id, record["row"], record.get("added", False))
+
         self._new_claims = None
         for record in (new_claims.records() if new_claims else []):
             claim_id = record["fields"]["claim_id"]
@@ -186,6 +210,8 @@ class ClaimsRepository:
                 self.submit_claim(claim_id, on=date.fromisoformat(record["submitted_on"]))
             if record.get("edi"):
                 self._edi[claim_id] = EdiFile.model_validate(record["edi"]["summary"])
+            if record.get("handoff"):
+                self._apply_handoff(claim_id, ClaimHandoff.model_validate(record["handoff"]))
         self._new_claims = new_claims
 
     # --- Corrections overlay ------------------------------------------------
@@ -204,6 +230,7 @@ class ClaimsRepository:
                 for field in CORRECTABLE_FIELDS:
                     self._claims.loc[pos, field] = self._original.loc[pos, field]
                 self._claims.loc[pos, "has_corrections"] = False
+                self._recheck_coding(pos)
             for claim_id, fields in overrides.items():
                 pos = self._claim_pos([claim_id])[0]
                 if pos == -1:
@@ -214,8 +241,10 @@ class ClaimsRepository:
                         value = parse_condition_value(RULE_FIELDS[field], fields[field])
                     self._claims.loc[pos, field] = value
                 self._claims.loc[pos, "has_corrections"] = True
+                self._recheck_coding(pos)
+            changed = self._corrected_ids | overrides.keys()
             self._corrected_ids = set(overrides)
-            self.version += 1
+            self._bump(changed)
 
     # --- Claims -------------------------------------------------------------
 
@@ -235,7 +264,10 @@ class ClaimsRepository:
         if statuses is not None:
             df = df.assign(risk_score=df["claim_id"].map(statuses["risk_score"]).fillna(0))
             if query.needs_attention is not None:
-                at_risk = df["claim_id"].map(statuses["status"]).isin(AT_RISK_STATUSES)
+                # A handed-off claim is out of the queue, whatever was still open on it
+                at_risk = df["claim_id"].map(statuses["status"]).isin(AT_RISK_STATUSES) & (
+                    df["status"] != ClaimStatus.HANDED_OFF
+                )
                 df = df[at_risk if query.needs_attention else ~at_risk]
         df = df.sort_values(
             [query.sort_by, "claim_id"],
@@ -272,8 +304,33 @@ class ClaimsRepository:
                 "provider": self._providers.get(row["provider_id"]),
                 "billing": self._billing.get(claim_id),
                 "edi": self._edi.get(claim_id),
+                "handoff": self._handoffs.get(claim_id),
+                "source_ref": self._source_refs.get(claim_id),
             }
         )
+
+    # Bumps kept for changed_since; a cache further behind than this validates everything
+    KEPT_CHANGES = 500
+
+    def _bump(self, claim_ids: set[str]) -> None:
+        """Record a change to these claims. Caller holds the lock."""
+        self.version += 1
+        self._changes[self.version] = frozenset(claim_ids)
+        self._changes.pop(self.version - self.KEPT_CHANGES, None)
+
+    def changed_since(self, version: int) -> tuple[int, set[str] | None]:
+        """The current version and the claims changed after `version`, or None if that's
+        no longer known (too many changes since). Ages open claims first, like a read."""
+        self._age_open_claims()
+        with self._overlay_lock:
+            if version > self.version or version < self.version - self.KEPT_CHANGES + 1:
+                return self.version, None
+            changed: set[str] = set()
+            for bump in range(version + 1, self.version + 1):
+                if bump not in self._changes:  # bumped without saying what changed
+                    return self.version, None
+                changed |= self._changes[bump]
+            return self.version, changed
 
     def claims_frame(self, claim_ids: list[str] | None = None) -> pd.DataFrame:
         """Typed claim rows (plus derived columns) for the validation engine.
@@ -297,7 +354,7 @@ class ClaimsRepository:
         if the claim_id is taken or the patient isn't registered.
         """
         claim_id = fields["claim_id"]
-        row = self._claim_row(fields)
+        row = self._claim_row(fields, lines)
         with self._overlay_lock:
             if self._claim_pos([claim_id])[0] != -1:
                 raise ValueError(f"Claim {claim_id} already exists")
@@ -310,6 +367,7 @@ class ClaimsRepository:
             )
             self._claim_pos = pd.Index(self._claims["claim_id"]).get_indexer
             self._append_lines(claim_id, lines)
+            self._checked_ids.add(claim_id)
             self._claims_per_patient[fields["patient_id"]] = (
                 self._claims_per_patient.get(fields["patient_id"], 0) + 1
             )
@@ -317,9 +375,11 @@ class ClaimsRepository:
                 self._pending_ids.add(claim_id)
             elif fields["status"] == ClaimStatus.DRAFT:
                 self._draft_ids.add(claim_id)
-            self.version += 1
+            self._bump({claim_id})
         if fields.get("billing"):
             self._billing[claim_id] = fields["billing"]
+        if fields.get("source_ref"):
+            self._source_refs[claim_id] = fields["source_ref"]
         self._revenue_codes[claim_id] = [line.get("revenue_code") for line in lines]
         if self._new_claims is not None:
             self._new_claims.add(fields, lines)
@@ -327,13 +387,20 @@ class ClaimsRepository:
         assert claim is not None
         return claim
 
+    def claim_id_for_number(self, number: str) -> str | None:
+        """The newest claim carrying the hospital's own number, or None."""
+        matches = [claim_id for claim_id, ref in self._source_refs.items() if ref == number]
+        return max(matches) if matches else None
+
     def update_claim(self, fields: dict[str, Any], lines: list[dict[str, Any]]) -> ClaimDetail:
         """Replace a Draft claim entered in the app with corrected details (same ID, same
         patient). Its lines are replaced; the saved claim is updated so it survives
         restarts. Raises LookupError if there's no such claim, ValueError if it can't be
         edited (submitted, from the source data, or a different patient)."""
         claim_id = fields["claim_id"]
-        row = self._claim_row(fields)
+        # An edit gives the claim's details again; the hospital's number for it stays
+        fields = {**fields, "source_ref": self._source_refs.get(claim_id)}
+        row = self._claim_row(fields, lines)
         with self._overlay_lock:
             pos = self._claim_pos([claim_id])[0]
             if pos == -1:
@@ -353,7 +420,7 @@ class ClaimsRepository:
                 self._original.at[pos, field] = new.at[0, field]
             self._lines = self._lines[self._lines["claim_id"] != claim_id].reset_index(drop=True)
             self._append_lines(claim_id, lines)
-            self.version += 1
+            self._bump({claim_id})
         self._billing[claim_id] = fields.get("billing")
         self._revenue_codes[claim_id] = [line.get("revenue_code") for line in lines]
         self._new_claims.replace(fields, lines)
@@ -361,11 +428,14 @@ class ClaimsRepository:
         assert claim is not None
         return claim
 
-    def _claim_row(self, fields: dict[str, Any]) -> dict[str, Any]:
-        """A fact_claims row for a claim entered in the app."""
+    def _claim_row(self, fields: dict[str, Any], lines: list[dict[str, Any]]) -> dict[str, Any]:
+        """A fact_claims row for a claim entered in the app, with its coding checks."""
         patient = self._patient(fields["patient_id"])
         if patient is None:
             raise ValueError(f"Patient {fields['patient_id']} is not registered")
+        # Kept with the claim: a later change of primary payer mustn't change an earlier
+        # claim's result when claims are replayed at startup
+        primary = fields.setdefault("patient_primary_payer_id", patient.primary_payer_id)
         prior, prior_preventable = self._prior_denials(
             fields["patient_id"], fields["submission_date"]
         )
@@ -380,12 +450,29 @@ class ClaimsRepository:
             ).days,
             "has_prior_denial": prior,
             "has_prior_preventable_denial": prior_preventable,
-            "payer_is_patient_primary": fields["payer_id"] == patient.primary_payer_id,
-            "patient_primary_on_claim": patient.primary_payer_id
+            "payer_is_patient_primary": fields["payer_id"] == primary,
+            "patient_primary_on_claim": primary
             in [fields["payer_id"], *fields.get("other_payer_ids", [])],
             "has_corrections": False,
             "is_overdue": False,
+            **self._coding.check(
+                lines,
+                [fields.get("primary_icd10") or "", *fields.get("additional_icd10", [])],
+                fields["service_date"],
+            ).flags(),
         }
+
+    def _recheck_coding(self, pos: int) -> None:
+        """Run the coding checks again on a claim whose diagnosis was corrected (AI Fix).
+        Caller holds the lock."""
+        row = self._claims.iloc[pos]
+        if row["claim_id"] not in self._checked_ids:
+            return
+        lines = self._rows(self._lines, self._lines_by_claim.get(row["claim_id"]))
+        diagnoses = [str(row["primary_icd10"]), *str(row["additional_icd10"]).split("|")]
+        flags = self._coding.check(lines, diagnoses, str(row["service_date"])).flags()
+        for column, value in flags.items():
+            self._claims.at[pos, column] = value
 
     def submission_frame(self, claim_id: str) -> pd.DataFrame:
         """The claim as it would be if submitted today, for the final rule check.
@@ -428,18 +515,9 @@ class ClaimsRepository:
                 raise ValueError(f"Only draft claims can be submitted; {claim_id} is {row['status']}")
             if row["service_date"] > day.isoformat():
                 raise ValueError("A claim can't be submitted before its service date")
-            self._claims.loc[pos, "status"] = ClaimStatus.PENDING.value
-            self._claims.loc[pos, "submission_date"] = day.isoformat()
-            self._claims.loc[pos, "days_to_submission"] = (
-                day - date.fromisoformat(row["service_date"])
-            ).days
-            self._claims.loc[pos, "days_in_ar"] = 0
-            prior, prior_preventable = self._prior_denials(row["patient_id"], day.isoformat())
-            self._claims.loc[pos, "has_prior_denial"] = prior
-            self._claims.loc[pos, "has_prior_preventable_denial"] = prior_preventable
-            self._draft_ids.discard(claim_id)
+            self._leave_draft(pos, row, day, ClaimStatus.PENDING)
             self._pending_ids.add(claim_id)
-            self.version += 1
+            self._bump({claim_id})
         if edi is not None:
             self._edi[claim_id] = edi[1]
         if self._new_claims is not None and on is None:
@@ -449,12 +527,90 @@ class ClaimsRepository:
         assert claim is not None
         return claim
 
+    def hand_off_claim(self, claim_id: str, by: str, open_issues: list[str]) -> ClaimDetail:
+        """Mark a Draft as finished here, to be sent from the hospital's billing system. It
+        won't age in AR or turn overdue, because nothing here is waiting on a payer.
+
+        Raises LookupError for an unknown claim, ValueError if it isn't a Draft or its
+        service date is still in the future.
+        """
+        handoff = ClaimHandoff(handed_off_on=_today(), handed_off_by=by, open_issues=open_issues)
+        self._apply_handoff(claim_id, handoff)
+        if self._new_claims is not None:
+            self._new_claims.set_handoff(claim_id, handoff.model_dump(mode="json"))
+        claim = self.get_claim(claim_id)
+        assert claim is not None
+        return claim
+
+    def reopen_claim(self, claim_id: str) -> ClaimDetail:
+        """Put a handed-off claim back to Draft. Raises LookupError for an unknown claim,
+        ValueError if it isn't handed off."""
+        with self._overlay_lock:
+            pos = self._claim_pos([claim_id])[0]
+            if pos == -1:
+                raise LookupError(f"Claim {claim_id} not found")
+            status = self._claims.at[pos, "status"]
+            if status != ClaimStatus.HANDED_OFF:
+                raise ValueError(f"Only handed-off claims can be reopened; {claim_id} is {status}")
+            self._claims.loc[pos, "status"] = ClaimStatus.DRAFT.value
+            self._draft_ids.add(claim_id)
+            self._handoffs.pop(claim_id, None)
+            self._bump({claim_id})
+        if self._new_claims is not None:
+            self._new_claims.set_handoff(claim_id, None)
+        claim = self.get_claim(claim_id)
+        assert claim is not None
+        return claim
+
+    def _apply_handoff(self, claim_id: str, handoff: ClaimHandoff) -> None:
+        with self._overlay_lock:
+            pos = self._claim_pos([claim_id])[0]
+            if pos == -1:
+                raise LookupError(f"Claim {claim_id} not found")
+            row = self._claims.iloc[pos]
+            if row["status"] != ClaimStatus.DRAFT:
+                raise ValueError(f"Only draft claims can be handed off; {claim_id} is {row['status']}")
+            if row["service_date"] > handoff.handed_off_on.isoformat():
+                raise ValueError("A claim can't be handed off before its service date")
+            self._leave_draft(pos, row, handoff.handed_off_on, ClaimStatus.HANDED_OFF)
+            self._handoffs[claim_id] = handoff
+            self._bump({claim_id})
+
+    def _leave_draft(self, pos: int, row: pd.Series, day: date, status: ClaimStatus) -> None:
+        """Move a Draft on to `status` as of `day`. Caller holds the lock."""
+        self._claims.loc[pos, "status"] = status.value
+        self._claims.loc[pos, "submission_date"] = day.isoformat()
+        self._claims.loc[pos, "days_to_submission"] = (
+            day - date.fromisoformat(row["service_date"])
+        ).days
+        self._claims.loc[pos, "days_in_ar"] = 0
+        prior, prior_preventable = self._prior_denials(row["patient_id"], day.isoformat())
+        self._claims.loc[pos, "has_prior_denial"] = prior
+        self._claims.loc[pos, "has_prior_preventable_denial"] = prior_preventable
+        self._draft_ids.discard(row["claim_id"])
+
     def next_control_number(self) -> int:
         """Interchange control number for the next 837 (1, 2, … without a store)."""
         if self._new_claims is not None:
             return self._new_claims.next_control_number()
         self._control = getattr(self, "_control", 0) + 1
         return self._control
+
+    def handoff_control_number(self, claim_id: str) -> int:
+        """The control number of a handed-off claim's 837 export, taken on first download so
+        every download of the same claim matches. Reopening the claim gives up the number.
+        Raises ValueError if the claim isn't handed off."""
+        with self._overlay_lock:
+            handoff = self._handoffs.get(claim_id)
+            if handoff is None:
+                raise ValueError(f"{claim_id} isn't handed off")
+            if handoff.control_number is not None:
+                return handoff.control_number
+            handoff = handoff.model_copy(update={"control_number": self.next_control_number()})
+            self._handoffs[claim_id] = handoff
+            if self._new_claims is not None:
+                self._new_claims.set_handoff(claim_id, handoff.model_dump(mode="json"))
+            return handoff.control_number
 
     def edi_text(self, claim_id: str) -> str | None:
         """The 837 a claim was submitted with, if it was submitted from the app."""
@@ -530,6 +686,75 @@ class ClaimsRepository:
             return None
         return self._patient_summary(self._patients.iloc[pos].to_dict())
 
+    def _lay_over_patient(self, patient_id: str, row: dict[str, Any], added: bool) -> None:
+        if added:
+            new = {column: "" for column in self._patients.columns}
+            new.update(risk_score=0.0, language="Unknown", status=RecordStatus.ACTIVE.value)
+            new.update(row, patient_id=patient_id)
+            frame = pd.DataFrame([new], columns=self._patients.columns).astype(self._patients.dtypes.to_dict())
+            self._patients = pd.concat([self._patients, frame], ignore_index=True)
+        else:
+            pos = self._patient_pos([patient_id])[0]
+            if pos == -1:
+                return
+            for column, value in row.items():
+                self._patients.iloc[pos, self._patients.columns.get_loc(column)] = value
+        self._refresh_patients()
+
+    def _refresh_patients(self) -> None:
+        self._patients["search_name"] = (
+            self._patients["first_name"] + " " + self._patients["last_name"]
+        ).str.lower()
+        self._patient_pos = pd.Index(self._patients["patient_id"]).get_indexer
+
+    def add_patient(self, details: dict[str, Any], by: str, review: list[str]) -> str:
+        """Add a patient first seen on a claim; returns their new ID. `review` lists anyone
+        they might be, for a person to check."""
+        with self._overlay_lock:
+            numbers = self._patients["patient_id"].str.removeprefix("PAT").astype("int64")
+            patient_id = f"PAT{int(numbers.max() if len(numbers) else 0) + 1:06d}"
+            self._lay_over_patient(patient_id, details, added=True)
+        if self._patient_list is not None:
+            self._patient_list.add(patient_id, details, by, review)
+        return patient_id
+
+    def remove_patient(self, patient_id: str) -> None:
+        """Take back a patient just added, when their claim couldn't be saved."""
+        with self._overlay_lock:
+            self._patients = self._patients[self._patients["patient_id"] != patient_id].reset_index(drop=True)
+            self._refresh_patients()
+        if self._patient_list is not None:
+            self._patient_list.restore(patient_id, None)
+
+    def update_patient(self, patient_id: str, changes: dict[str, Any]):
+        """Newer details from a claim, laid over the table. Returns how to undo it."""
+        with self._overlay_lock:
+            pos = self._patient_pos([patient_id])[0]
+            before = {column: self._patients.iloc[pos][column] for column in changes}
+            before = {k: v.item() if hasattr(v, "item") else v for k, v in before.items()}
+            self._lay_over_patient(patient_id, changes, added=False)
+        saved = self._patient_list.records().get(patient_id) if self._patient_list else None
+        if self._patient_list is not None:
+            self._patient_list.update(patient_id, changes)
+
+        def undo() -> None:
+            with self._overlay_lock:
+                self._lay_over_patient(patient_id, before, added=False)
+            if self._patient_list is not None:
+                self._patient_list.restore(patient_id, saved)
+
+        return undo
+
+    def patient_added_from_claim(self, patient_id: str) -> bool:
+        record = self._patient_list.records().get(patient_id) if self._patient_list else None
+        return bool(record and record.get("added"))
+
+    def patients_to_review(self) -> dict[str, list[str]]:
+        return self._patient_list.to_review() if self._patient_list else {}
+
+    def clear_patient_review(self, patient_id: str) -> bool:
+        return self._patient_list.clear_review(patient_id) if self._patient_list else False
+
     def person_names(self) -> list[tuple[str, str]]:
         """(first, last) names of every patient and provider, for masking them in free text."""
         names = list(zip(self._patients["first_name"], self._patients["last_name"]))
@@ -593,15 +818,15 @@ class ClaimsRepository:
             return
         today = _today()
         with self._overlay_lock:
-            changed = self._age_drafts(today)
-            changed = self._age_pending(today) or changed
+            changed = self._age_drafts(today) | self._age_pending(today)
             if changed:
-                self.version += 1
+                self._bump(changed)
 
-    def _age_drafts(self, today: date) -> bool:
-        """Move past planned submission dates up to today. Caller holds the lock."""
+    def _age_drafts(self, today: date) -> set[str]:
+        """Move past planned submission dates up to today; returns the claims moved.
+        Caller holds the lock."""
         if not self._draft_ids:
-            return False
+            return set()
         rows = self._claims.iloc[self._claim_pos(sorted(self._draft_ids))]
         late = rows[rows["submission_date"] < today.isoformat()]
         for index, row in late.iterrows():
@@ -612,12 +837,13 @@ class ClaimsRepository:
             ).days
             self._claims.loc[index, "has_prior_denial"] = prior
             self._claims.loc[index, "has_prior_preventable_denial"] = prior_preventable
-        return not late.empty
+        return set(late["claim_id"])
 
-    def _age_pending(self, today: date) -> bool:
-        """Days in AR and the overdue flag for pending claims. Caller holds the lock."""
+    def _age_pending(self, today: date) -> set[str]:
+        """Days in AR and the overdue flag for pending claims; returns the claims changed.
+        Caller holds the lock."""
         if not self._pending_ids:
-            return False
+            return set()
         positions = self._claim_pos(sorted(self._pending_ids))
         rows = self._claims.iloc[positions]
         days = rows["submission_date"].map(
@@ -629,11 +855,12 @@ class ClaimsRepository:
             else None
         )
         overdue = limits.notna() & (days > limits.fillna(0))
-        if days.equals(rows["days_in_ar"]) and overdue.equals(rows["is_overdue"]):
-            return False
+        moved = (days != rows["days_in_ar"]) | (overdue != rows["is_overdue"])
+        if not moved.any():
+            return set()
         self._claims.loc[rows.index, "days_in_ar"] = days.astype("int64")
         self._claims.loc[rows.index, "is_overdue"] = overdue.astype(bool)
-        return True
+        return set(rows.loc[moved, "claim_id"])
 
     def _add_prior_denial_flags(self) -> None:
         """Flag claims whose patient had a denial issued before this claim was submitted.
@@ -701,7 +928,9 @@ class ClaimsRepository:
 def get_repository(org_id: str) -> ClaimsRepository:
     """The organisation's claims: its own CSVs plus the claims it entered in the app."""
     data_dir = get_org_registry().data_dir(org_id)
-    repo = ClaimsRepository(data_dir, get_new_claim_store(org_id), org_cipher_for(org_id))
+    repo = ClaimsRepository(
+        data_dir, get_new_claim_store(org_id), org_cipher_for(org_id), get_patient_list(org_id)
+    )
     corrections = get_correction_store(org_id)
     # Drop corrections whose claim no longer exists (e.g. the new-claims file was removed),
     # so a new claim reusing the ID doesn't inherit them

@@ -36,7 +36,7 @@ export const EMPTY_FILTERS = {
   service_date_to: '',
 }
 
-export const CLAIM_STATUSES = ['Draft', 'Pending', 'Paid', 'Denied']
+export const CLAIM_STATUSES = ['Draft', 'Pending', 'Handed off', 'Paid', 'Denied']
 
 export const RULE_CATEGORIES = [
   'Coding',
@@ -87,6 +87,7 @@ export const CLAIM_TYPES = ['Professional', 'Institutional']
 
 export const PLACES_OF_SERVICE = [
   { value: '11', label: '11 · Office' },
+  { value: '21', label: '21 · Inpatient hospital' },
   { value: '22', label: '22 · Outpatient hospital' },
   { value: '23', label: '23 · Emergency room' },
 ]

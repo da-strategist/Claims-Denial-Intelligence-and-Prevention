@@ -14,7 +14,7 @@ from . import ocr
 
 # Bump whenever chunking or metadata extraction changes: documents ingested
 # with an older version are re-ingested at startup (services/ingest.py).
-CHUNKER_VERSION = 4  # 2: font-based headings; 3: "Issued by"/"Program"/org title-line metadata; 4: plan period ranges
+CHUNKER_VERSION = 5  # 2: font-based headings; 3: "Issued by"/"Program"/org title-line metadata; 4: plan period ranges; 5: two-column pages
 
 
 def _generate_chunk_id(document_id: str, index: int) -> str:
@@ -28,12 +28,17 @@ _HEADING_SIZE_RATIO = 1.15
 _BOLD_HEADING_MAX_WORDS = 12
 
 
-def _font_headings(page) -> list[str]:
-    """Lines set in a heading font (larger than body text, or all bold)."""
+def _body_size(page) -> float | None:
     sizes = Counter(round(c["size"], 1) for c in page.chars if c["text"].strip())
-    if not sizes:
+    return sizes.most_common(1)[0][0] if sizes else None
+
+
+def _font_headings(page, body_size: float | None = None) -> list[str]:
+    """Lines set in a heading font (larger than body text, or all bold).
+    `body_size` comes from the whole page when `page` is a cropped region."""
+    body_size = body_size or _body_size(page)
+    if not body_size:
         return []
-    body_size = sizes.most_common(1)[0][0]
     headings = []
     for line in page.extract_text_lines():
         chars = [c for c in line["chars"] if c["text"].strip()]
@@ -49,20 +54,145 @@ def _font_headings(page) -> list[str]:
     return headings
 
 
+# Two-column pages: read line by line across the page, the two columns' lines
+# interleave ("Policy Year: August 15, 2025 to August 14, imaging (MRI, CT…").
+_GUTTER_MIN_WIDTH = 12  # points of empty space between the columns
+_MIN_SPLIT_ROWS = 4  # rows with text on both sides of the gutter
+_PROSE_FILL = 0.55  # columns of running text fill most of their width
+
+
+def _rows(words: list[dict], tolerance: float = 3) -> list[dict]:
+    rows: list[dict] = []
+    for w in sorted(words, key=lambda w: (w["top"], w["x0"])):
+        if rows and abs(rows[-1]["top"] - w["top"]) <= tolerance:
+            rows[-1]["words"].append(w)
+            rows[-1]["bottom"] = max(rows[-1]["bottom"], w["bottom"])
+        else:
+            rows.append({"top": w["top"], "bottom": w["bottom"], "words": [w]})
+    return rows
+
+
+def _spans(row: dict) -> list[tuple[float, float]]:
+    """Stretches of a row's text: words closer than a gutter are one stretch
+    (a title across the page is one line, even at its word gaps)."""
+    spans: list[list[float]] = []
+    for w in sorted(row["words"], key=lambda w: w["x0"]):
+        if spans and w["x0"] - spans[-1][1] < _GUTTER_MIN_WIDTH:
+            spans[-1][1] = max(spans[-1][1], w["x1"])
+        else:
+            spans.append([w["x0"], w["x1"]])
+    return [(a, b) for a, b in spans]
+
+
+def _column_regions(page) -> list[tuple[float, float, float, float]] | None:
+    """Regions to read in order on a page set in two columns: full-width
+    stretches (titles, tables across the page) as they come, and each
+    two-column stretch as its left column then its right column. None when
+    the page is not in two columns (it is then read as before).
+
+    Two columns means a vertical gap at least _GUTTER_MIN_WIDTH wide that
+    no line crosses, with text on both sides in several rows, and both sides
+    filled like running text, so a label/amount list or a table with a wide
+    gap is not split apart. Ruled tables are never split.
+    """
+    width = page.width
+    tables = [t.bbox for t in page.find_tables()]
+
+    def in_table(w: dict) -> tuple | None:
+        return next((b for b in tables if b[0] - 1 <= w["x0"] and w["x1"] <= b[2] + 1
+                     and b[1] - 1 <= w["top"] and w["bottom"] <= b[3] + 1), None)
+
+    rows = _rows(page.extract_words())
+    for r in rows:
+        r["spans"] = _spans(r)
+    body = [r for r in rows if not any(in_table(w) for w in r["words"])]
+    if len(body) < _MIN_SPLIT_ROWS * 2:
+        return None
+
+    # the gutter: the widest run of x positions crossed by the fewest lines
+    # (no line has a gap narrower than _GUTTER_MIN_WIDTH there)
+    lo, hi = int(width * 0.25), int(width * 0.75)
+    crossed = [sum(any(a - 1 <= x <= b + 1 for a, b in r["spans"]) for r in body)
+               for x in range(lo, hi)]
+    least = min(crossed)
+    run_start, best = None, (0, 0)
+    for i, c in enumerate(crossed + [least + 1]):
+        if c == least and run_start is None:
+            run_start = i
+        elif c != least and run_start is not None:
+            best = max(best, (i - run_start, run_start))
+            run_start = None
+    run, start = best
+    if run < 2 or least > len(body) * 0.2:
+        return None
+    gutter = lo + start + run / 2
+
+    def side(r: dict) -> tuple[list, list] | None:
+        """(left words, right words), or None if the row crosses the gutter
+        (or a table that does)."""
+        if any(a - 1 <= gutter <= b + 1 for a, b in r["spans"]):
+            return None
+        if any((b := in_table(w)) and b[0] < gutter < b[2] for w in r["words"]):
+            return None
+        return ([w for w in r["words"] if w["x1"] < gutter],
+                [w for w in r["words"] if w["x0"] > gutter])
+
+    sides = [side(r) for r in rows]
+    split = [s for s in sides if s and s[0] and s[1]]
+    if len(split) < _MIN_SPLIT_ROWS:
+        return None
+    left_edge = min(s[0][0]["x0"] for s in split)
+    right_edge = max(s[1][-1]["x1"] for s in split)
+    left_fill = sorted((s[0][-1]["x1"] - left_edge) / (gutter - left_edge) for s in split)
+    right_fill = sorted((s[1][-1]["x1"] - s[1][0]["x0"]) / (right_edge - gutter) for s in split)
+    if min(left_fill[len(split) // 2], right_fill[len(split) // 2]) < _PROSE_FILL:
+        return None
+
+    # consecutive rows of the same kind form a stretch; stretches meet halfway
+    # between rows so nothing on the page falls outside a region
+    stretches: list[list] = []
+    for r, s in zip(rows, sides):
+        kind = "columns" if s else "full"
+        if stretches and stretches[-1][0] == kind:
+            stretches[-1][2] = r["bottom"]
+        else:
+            stretches.append([kind, r["top"], r["bottom"]])
+    regions = []
+    for i, (kind, top, bottom) in enumerate(stretches):
+        y0 = 0 if i == 0 else (stretches[i - 1][2] + top) / 2
+        y1 = page.height if i == len(stretches) - 1 else (bottom + stretches[i + 1][1]) / 2
+        if kind == "full":
+            regions.append((0, y0, width, y1))
+        else:
+            regions += [(0, y0, gutter, y1), (gutter, y0, width, y1)]
+    return regions
+
+
+def _page_text(page) -> tuple[str, list[str]]:
+    """A page's text and font headings, column by column on two-column pages."""
+    regions = _column_regions(page)
+    if regions is None:
+        return (page.extract_text() or "").strip(), _font_headings(page)
+    body_size = _body_size(page)
+    parts = [page.crop(r) for r in regions]
+    text = "\n".join(t for p in parts if (t := (p.extract_text() or "").strip()))
+    return text, [h for p in parts for h in _font_headings(p, body_size)]
+
+
 def extract_text_from_pdf(pdf_path: Path) -> list[dict]:
     """Extract text page-by-page using pdfplumber, fallback to pypdf.
 
     Each page is {"page_number", "text", "headings"}; headings are lines whose
-    font marks them as headings (pdfplumber only; empty with pypdf).
+    font marks them as headings (pdfplumber only; empty with pypdf). Pages
+    set in two columns are read one column at a time (_column_regions).
     """
     pages: list[dict] = []
     try:
         import pdfplumber
         with pdfplumber.open(pdf_path) as pdf:
             for i, page in enumerate(pdf.pages, start=1):
-                text = page.extract_text() or ""
-                pages.append({"page_number": i, "text": text.strip(),
-                              "headings": _font_headings(page)})
+                text, headings = _page_text(page)
+                pages.append({"page_number": i, "text": text, "headings": headings})
     except Exception:
         try:
             from pypdf import PdfReader

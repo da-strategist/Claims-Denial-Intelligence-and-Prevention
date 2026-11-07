@@ -141,13 +141,66 @@ const SECTIONS = [
             can’t be edited once it’s submitted.
           </li>
           <li>
-            Once nothing is flagged, choose <strong className="font-medium">Mark as submitted</strong>.
+            If you send claims from your own billing system, choose{' '}
+            <strong className="font-medium">Hand off to billing system</strong>. Nothing goes to the
+            payer from here. If issues are still open you can tick the box to fix them over there;
+            they stay listed on the claim. The claim then offers its 837 file to import and a{' '}
+            <strong className="font-medium">List of changes</strong> PDF, showing each value as it was
+            and as it is now. An uploaded claim keeps your claim number (claim_ref, or the number in
+            your 837) in the file, and the file is a first-time claim, not a replacement. To change it
+            or send it from here instead, choose{' '}
+            <strong className="font-medium">Reopen claim</strong> and confirm your system hasn’t sent it.
+          </li>
+          <li>
+            To send from ClaustraRCM, once nothing is flagged, choose{' '}
+            <strong className="font-medium">Mark as submitted</strong>.
             The claim becomes Pending and moves to Claims, and its 837 claim file is created; use{' '}
             <strong className="font-medium">Download 837</strong> on the claim to get it, or the{' '}
             <strong className="font-medium">CMS-1500/UB-04 PDF</strong> and{' '}
             <strong className="font-medium">Readable 837 PDF</strong> to read or print it. A file
             marked <strong className="font-medium">Test file</strong> can’t go to a payer until an
-            administrator completes the EDI settings.
+            administrator completes the claim file settings on the Users page.
+          </li>
+        </Steps>
+      </>
+    ),
+  },
+  {
+    id: 'upload-claims',
+    title: 'Uploading claims from a file',
+    permission: 'claims:write',
+    body: () => (
+      <>
+        <Steps>
+          <li>
+            On <strong className="font-medium">New Claim</strong>, choose{' '}
+            <strong className="font-medium">Upload claims</strong>. Use a CSV or Excel file in the
+            template’s layout (<strong className="font-medium">Download CSV template</strong>), or an
+            837P or 837I file from another billing system.
+          </li>
+          <li>
+            In the template, each row is a service line and rows with the same claim_ref make one
+            claim. List the claim’s diagnoses in one cell, primary first, separated by |. Billing
+            details left blank (date of birth, address, member ID) come from the patient’s
+            registration.
+          </li>
+          <li>
+            837 files are matched to your patient list by name and date of birth, to providers by NPI,
+            and to payers by ID or name. A patient who isn’t on the list yet is added from the
+            claim, so they’re never refused for being new. If they might be someone already listed,
+            both records are kept and they appear under{' '}
+            <strong className="font-medium">patients to check</strong> on the Claims page. A claim
+            with an unknown provider or payer is listed with the reason.
+          </li>
+          <li>
+            Choose <strong className="font-medium">Upload and check</strong>. Each claim is saved as
+            a draft claim and checked against the rules, exactly as if it had been typed in. Claims
+            that couldn’t be read are listed with what to fix; the rest are saved. Nothing is
+            submitted.
+          </li>
+          <li>
+            Open a claim from the results or the Drafts panel to fix what’s flagged, then submit it
+            as usual.
           </li>
         </Steps>
       </>
@@ -184,7 +237,7 @@ const SECTIONS = [
     body: () => (
       <>
         <p className="text-[15px] text-gray-700">
-          A claim can’t be submitted while it has any <strong className="font-medium">error</strong>{' '}
+          A claim can’t be submitted from ClaustraRCM while it has any <strong className="font-medium">error</strong>{' '}
           or <strong className="font-medium">warning</strong>; this applies to claims entered here
           and through the API. The rules are checked again as you submit, using today’s date,
           so a draft left too long can pick up a Timely Filing warning.
@@ -213,6 +266,7 @@ const SECTIONS = [
         <Term name={<ClaimStatusBadge status="Draft" />}>Created, not yet submitted.</Term>
         <Term name={<ClaimStatusBadge status="Pending" />}>Submitted, waiting for the payer.</Term>
         <Term name={<ClaimStatusBadge status="Pending" overdue />}>Waiting longer than this payer usually takes to pay.</Term>
+        <Term name={<ClaimStatusBadge status="Handed off" />}>Finished here; your billing system sends it. A handed-off claim can’t also be submitted from here.</Term>
         <Term name={<ClaimStatusBadge status="Paid" />}>Paid by the payer.</Term>
         <Term name={<ClaimStatusBadge status="Denied" />}>Refused by the payer; the claim shows why and how to appeal.</Term>
       </dl>
@@ -233,7 +287,9 @@ const SECTIONS = [
             Every request: who, what, which records, and the outcome. If the service’s operators
             ever need emergency access to your data, it appears at the top with their reason, and
             you can end it at any time; it is read-only and everything they open is logged. Filter by user, record, or
-            outcome; the hash check shows whether the log has been altered.
+            outcome; the hash check shows whether the log has been altered. Events are kept for at
+            least six years; if older years have been deleted under that policy, the page says
+            which.
           </Term>
           <Term name="Users">
             Add people, change their role, reset a password, or disable an account (which signs
@@ -243,6 +299,24 @@ const SECTIONS = [
             administrator can’t be removed. Every change is in the audit log. Give new passwords
             in person or by phone, not by email. The same can be done on the server with{' '}
             <code className="font-mono text-xs">python -m app.users</code>.
+          </Term>
+          <Term name="API keys">
+            On the Users page: a key lets your billing or hospital system send claims and read back
+            errors and suggested fixes, without anyone signing in. Claims it sends appear here as
+            Drafts, and sending the same claim number again replaces the Draft. A key reaches only
+            that, can act across your whole organisation, and appears in the audit log as{' '}
+            <code className="font-mono text-xs">api.</code> plus its ID. It’s shown once; if one is
+            lost or leaked, revoke it and create another.
+          </Term>
+          <Term name="Prior authorization lists">
+            On the Users page: the services each payer requires prior authorization for, from your own
+            payer lists. A claim for a listed service with no authorization on it is flagged, however it
+            arrived. It checks the claim carries an authorization, not that the payer has confirmed it.
+            Claims for a payer with no list show prior auth as not assessed.
+          </Term>
+          <Term name="Coverage active?">
+            Not checked. A claim with no errors can still be denied because the patient’s coverage had
+            ended, so confirm coverage with the payer as you do today.
           </Term>
           <Term name="Export all data">
             On the Audit Log page: one zip with everything your organisation has here (claims,

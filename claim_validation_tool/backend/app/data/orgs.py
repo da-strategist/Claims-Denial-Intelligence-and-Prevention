@@ -23,6 +23,8 @@ from typing import Annotated
 
 from pydantic import BaseModel, Field, StringConstraints
 
+from app.models.claim import ClaimRoute
+
 DEFAULT_ORGS_DIR = Path(__file__).resolve().parents[2] / "orgs"
 
 OrgId = Annotated[str, StringConstraints(pattern=r"^[a-z][a-z0-9-]{1,31}$")]
@@ -66,6 +68,7 @@ class Organisation(BaseModel):
     created_at: datetime
     baa: BusinessAssociateAgreement | None = None
     sso: SsoSettings | None = None
+    default_claim_route: ClaimRoute = ClaimRoute.VALIDATE_ONLY
     deleted_at: datetime | None = None
 
 
@@ -121,6 +124,13 @@ class OrgRegistry:
     def set_sso(self, org_id: str, sso: SsoSettings | None) -> Organisation:
         with self._lock:
             org = self._require(org_id).model_copy(update={"sso": sso})
+            self._orgs[org_id] = org
+            self._save()
+            return org
+
+    def set_default_claim_route(self, org_id: str, route: ClaimRoute) -> Organisation:
+        with self._lock:
+            org = self._require(org_id).model_copy(update={"default_claim_route": route})
             self._orgs[org_id] = org
             self._save()
             return org

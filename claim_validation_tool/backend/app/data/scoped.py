@@ -86,6 +86,31 @@ class ScopedClaims:
         visible = set(self.claims_frame(claim_ids)["claim_id"])
         return [claim_id for claim_id in claim_ids if claim_id not in visible]
 
+    # The patient register is organisation-wide (see above), so these aren't scoped
+
+    def add_patient(self, details: dict, by: str, review: list[str]) -> str:
+        return self.base.add_patient(details, by, review)
+
+    def remove_patient(self, patient_id: str) -> None:
+        self.base.remove_patient(patient_id)
+
+    def update_patient(self, patient_id: str, changes: dict):
+        return self.base.update_patient(patient_id, changes)
+
+    def patient_added_from_claim(self, patient_id: str) -> bool:
+        return self.base.patient_added_from_claim(patient_id)
+
+    def patients_to_review(self) -> dict[str, list[str]]:
+        return self.base.patients_to_review()
+
+    def clear_patient_review(self, patient_id: str) -> bool:
+        return self.base.clear_patient_review(patient_id)
+
+    def claim_id_for_number(self, number: str) -> str | None:
+        """Organisation-wide, like claim IDs: a number already used outside this account's
+        access still can't be used again. Reading that claim stays scoped."""
+        return self.base.claim_id_for_number(number)
+
     def add_claim(self, fields: dict, lines: list[dict]) -> ClaimDetail:
         if not self.scope.allows(fields["facility_id"], fields["department_id"], fields["provider_id"]):
             raise OutOfScopeError("That provider, department, and facility are outside your access")
@@ -106,12 +131,24 @@ class ScopedClaims:
         self._require(claim_id)
         return self.base.submit_claim(claim_id, edi=edi)
 
+    def hand_off_claim(self, claim_id: str, by: str, open_issues: list[str]) -> ClaimDetail:
+        self._require(claim_id)
+        return self.base.hand_off_claim(claim_id, by, open_issues)
+
+    def reopen_claim(self, claim_id: str) -> ClaimDetail:
+        self._require(claim_id)
+        return self.base.reopen_claim(claim_id)
+
     def apply_overrides(self, overrides: dict[str, dict[str, str]]) -> None:
         """Re-layer the organisation's corrections. `overrides` is always the whole
         correction store (it replaces the overlay), so it holds other people's claims too;
         what this person may correct is checked when the correction is added (AI Fix looks
         the claim up through this scoped view first)."""
         self.base.apply_overrides(overrides)
+
+    def handoff_control_number(self, claim_id: str) -> int:
+        self._require(claim_id)
+        return self.base.handoff_control_number(claim_id)
 
     def edi_text(self, claim_id: str) -> str | None:
         return self.base.edi_text(claim_id) if self._visible(self.base.get_claim(claim_id)) else None

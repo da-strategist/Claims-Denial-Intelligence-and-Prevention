@@ -50,7 +50,8 @@ def test_out_of_scope_claims_are_not_found_on_every_route(client):
     sign_in(client, Role.BILLER)
     checked = 0
     for method, path in api_routes():
-        if "{claim_id}" not in path:
+        # /api/v1 takes an API key, not a session; keys see their whole organisation
+        if "{claim_id}" not in path or path.startswith("/api/v1/"):
             continue
         url = path.replace("{claim_id}", "CLM0000002")
         res = client.request(method, url, json={})

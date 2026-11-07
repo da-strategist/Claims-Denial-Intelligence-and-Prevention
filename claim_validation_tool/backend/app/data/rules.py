@@ -12,7 +12,7 @@ from pathlib import Path
 from threading import Lock
 
 from app.data.orgs import org_file
-from app.data.seed_rules import DEFAULT_RULES
+from app.data.seed_rules import DEFAULT_RULES, SEED_ADDITIONS, SEED_VERSION
 from app.models import Rule, RuleCreate, RuleUpdate
 
 DEFAULT_RULES_FILE = Path(__file__).resolve().parents[2] / "rules.json"
@@ -24,9 +24,16 @@ class RuleRepository:
         self._rules: dict[str, Rule] = {}
         self._next_number = 1
         self._lock = Lock()  # sync routes run in a threadpool
+        self._seed_version = SEED_VERSION
 
         if path is not None and path.exists():
             self._load(path)
+            # Saved before some seed rules existed: add those once. A file that has them
+            # stays as its administrators left it (deleted or disabled)
+            for version in sorted(v for v in SEED_ADDITIONS if v > self._seed_version):
+                self._seed_version = version
+                for rule in SEED_ADDITIONS[version]:
+                    self.create(rule)
         else:
             for rule in seed:
                 self.create(rule)
@@ -83,6 +90,7 @@ class RuleRepository:
         self._rules = {rule.id: rule for rule in rules}
         # Never reuse the ID of a deleted rule
         self._next_number = data["next_number"]
+        self._seed_version = data.get("seed_version", 1)
 
     def _save(self) -> None:
         """Write all rules to `path` atomically. Caller holds the lock."""
@@ -90,6 +98,7 @@ class RuleRepository:
             return
         payload = {
             "next_number": self._next_number,
+            "seed_version": self._seed_version,
             "rules": [rule.model_dump(mode="json") for rule in self._rules.values()],
         }
         tmp = self.path.with_suffix(".tmp")

@@ -2,7 +2,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from app.models import ApplyFixRequest, ApplyFixResult, ClaimFixes, Permission, User
+from app.models import ApplyFixRequest, ApplyFixResult, ClaimFixes, ClaimStatus, Permission, User
 from app.models.common import ClaimId
 from app.services import aifix
 from app.services.aifix import FixSuggester, SuggestionError, get_suggester
@@ -31,6 +31,13 @@ class Deps:
 AiFixDeps = Annotated[Deps, Depends()]
 
 
+def _refuse_if_handed_off(claim_id: str, claims: OrgClaims) -> None:
+    """The billing system now holds the claim, so changing it here would make them differ."""
+    claim = claims.get_claim(claim_id)
+    if claim is not None and claim.status == ClaimStatus.HANDED_OFF:
+        raise HTTPException(status_code=409, detail=f"{claim_id} was handed off; reopen it to change it")
+
+
 @router.get("/{claim_id}", response_model=ClaimFixes)
 def get_fixes(claim_id: ClaimId, deps: AiFixDeps) -> ClaimFixes:
     """Validation result, fix suggestions with citations, and applied corrections for a claim."""
@@ -48,6 +55,7 @@ def apply_fix(
     user: Annotated[User, WRITE],
 ) -> ApplyFixResult:
     """Apply an accepted suggestion to the claim and re-validate it."""
+    _refuse_if_handed_off(claim_id, deps.args[0])
     try:
         before, applied, after = aifix.apply_fix(
             claim_id, request.suggestion_id, request.values, *deps.args, applied_by=user.username
@@ -62,6 +70,7 @@ def apply_fix(
 @router.delete("/{claim_id}/corrections", response_model=ClaimFixes, dependencies=[WRITE])
 def undo_corrections(claim_id: ClaimId, deps: AiFixDeps) -> ClaimFixes:
     """Undo every correction on the claim, restoring its source values."""
+    _refuse_if_handed_off(claim_id, deps.args[0])
     fixes = aifix.undo_corrections(claim_id, *deps.args)
     if fixes is None:
         raise HTTPException(status_code=404, detail=f"Claim {claim_id} not found")

@@ -1,8 +1,10 @@
-"""Reference tables the AI Fix suggester cites: CARC/RARC codes, payer contracts, ICD-10 and CPT codes."""
+"""Reference tables the AI Fix suggester cites: CARC/RARC codes, payer contracts, ICD-10 and CPT
+codes, and the NCCI, MUE and LCD/NCD tables behind the coding checks."""
 
 from dataclasses import dataclass
 from functools import lru_cache
 
+from app.data.coding_edits import CodingEdits
 from app.data.repository import ClaimsRepository, _read_table, get_repository
 
 
@@ -13,6 +15,7 @@ class ReferenceData:
     contracts: dict[tuple[str, str], dict]  # (payer_id, cpt_category) -> contract row
     icd10: dict[str, dict]  # icd10_code -> {description, body_system, ...}
     cpt: dict[str, dict]  # cpt_code -> {description, category, ...}
+    coding: CodingEdits  # NCCI, MUE and LCD/NCD tables, for the coding checks' findings
 
     @classmethod
     def load(cls, repo: ClaimsRepository) -> "ReferenceData":
@@ -30,6 +33,7 @@ class ReferenceData:
             },
             icd10=by_key("dim_icd10_codes", "icd10_code"),
             cpt=by_key("dim_cpt_codes", "cpt_code"),
+            coding=CodingEdits.load(repo.data_dir),
         )
 
     def icd10_siblings(self, code: str) -> list[str]:

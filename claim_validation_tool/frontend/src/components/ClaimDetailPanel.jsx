@@ -19,7 +19,7 @@ function Section({ title, children }) {
   )
 }
 
-function Findings({ validation, suggestions, onApply }) {
+function Findings({ validation, suggestions, onApply, readOnlyReason }) {
   if (!validation) return <p className="text-sm text-gray-500">Validating…</p>
   if (validation.findings.length === 0) {
     return (
@@ -51,7 +51,7 @@ function Findings({ validation, suggestions, onApply }) {
           )}
           {suggestions?.[finding.rule_id] && (
             <div className="mt-3">
-              <FixSuggestion suggestion={suggestions[finding.rule_id]} onApply={onApply} />
+              <FixSuggestion suggestion={suggestions[finding.rule_id]} onApply={onApply} readOnlyReason={readOnlyReason} />
             </div>
           )}
         </li>
@@ -99,12 +99,24 @@ function Field({ label, children, className = '' }) {
   )
 }
 
+// Not required is only said when a payer's list says so: a blank on a claim proves nothing
+const PA_NOT_MARKED = {
+  not_needed: 'Not required — not on this payer’s list',
+  not_assessed: 'Not assessed — no list for this payer, or saved before its list',
+  not_applicable: 'Not applicable',
+}
+
+const COVERAGE = {
+  not_checked: 'Not checked — confirm with the payer',
+  not_applicable: 'Not applicable',
+}
+
 function ClaimFacts({ claim, detail, payers }) {
   const paLabel = claim.pa_required
     ? claim.pa_obtained
       ? `Obtained${claim.pa_number ? ` (${claim.pa_number})` : ''}`
       : 'Required — not obtained'
-    : 'Not required'
+    : (PA_NOT_MARKED[detail?.prior_auth_check] ?? '—')
   return (
     <dl className="grid grid-cols-2 gap-x-6 gap-y-3">
       <Field label="Patient">
@@ -113,6 +125,7 @@ function ClaimFacts({ claim, detail, payers }) {
           : claim.patient_id}
       </Field>
       <Field label="Patient ID">{claim.patient_id}</Field>
+      {detail?.source_ref && <Field label="Your claim number">{detail.source_ref}</Field>}
       {detail?.billing && (
         <>
           <Field label="Date of birth">{detail.billing.patient_birth_date}</Field>
@@ -148,8 +161,11 @@ function ClaimFacts({ claim, detail, payers }) {
         </Field>
       )}
       <Field label="Place of service">{claim.place_of_service}</Field>
-      <Field label="Submitted">{claim.submission_date}</Field>
+      <Field label={(detail?.status ?? claim.status) === 'Handed off' ? 'Handed off' : 'Submitted'}>
+        {claim.submission_date}
+      </Field>
       <Field label="Prior auth">{paLabel}</Field>
+      <Field label="Coverage active?">{COVERAGE[detail?.coverage_check]}</Field>
       <Field label="Allowed">{currency.format(claim.total_allowed)}</Field>
       <Field label="Paid" className="2xl:hidden">
         {currency.format(claim.total_paid)}
@@ -331,13 +347,17 @@ export default function ClaimDetailPanel({
   onClaimChanged,
   stacked = false,
 }) {
-  const { data: detail, loading, error } = useClaimDetail(claim.claim_id)
+  const { data: detail, loading, error, reload: reloadDetail } = useClaimDetail(claim.claim_id)
   const fixes = useClaimFixes(claim.claim_id)
   const payers = usePayerLookup()
   const [result, setResult] = useState(null)
   const [undoError, setUndoError] = useState(null)
   // Roles without claims:write see the suggestions but can't apply, undo, or submit
   const canEdit = useCan('claims:write')
+  // The billing system holds a handed-off claim, so it's only changed here after reopening
+  const current = detail ?? claim
+  const handedOff = current.status === 'Handed off'
+  const canFix = canEdit && !handedOff
 
   const validation = fixes.data?.validation ?? pageValidation
   const suggestions = suggestionsByTarget(fixes.data)
@@ -375,7 +395,7 @@ export default function ClaimDetailPanel({
         <Section
           title={
             findingCount
-              ? `${findingCount} ${findingCount === 1 ? 'problem' : 'problems'} to resolve`
+              ? `${findingCount} ${findingCount === 1 ? 'problem' : 'problems'} ${handedOff ? 'found' : 'to resolve'}`
               : 'Validation'
           }
         >
@@ -386,14 +406,16 @@ export default function ClaimDetailPanel({
           <Findings
             validation={validation}
             suggestions={suggestions}
-            onApply={canEdit ? handleApply : null}
+            onApply={canFix ? handleApply : null}
+            readOnlyReason={handedOff && canEdit ? 'Reopen this claim to apply a fix here.' : undefined}
           />
           {/* Last: fix the problems above, then submit */}
           {canEdit && (
             <SubmitClaim
-              claim={claim}
+              claim={current}
               validation={validation}
               onSubmitted={() => {
+                reloadDetail()
                 fixes.reload()
                 onClaimChanged?.()
               }}
@@ -404,7 +426,7 @@ export default function ClaimDetailPanel({
           <Section title="Corrections applied">
             <Corrections
               corrections={fixes.data.corrections}
-              onUndo={canEdit ? handleUndo : null}
+              onUndo={canFix ? handleUndo : null}
             />
             {undoError && <p className="text-sm text-red-700">Could not undo — {undoError}</p>}
           </Section>
@@ -428,7 +450,7 @@ export default function ClaimDetailPanel({
             <Denials
               denials={detail.denials}
               suggestions={suggestions}
-              onApply={canEdit ? handleApply : null}
+              onApply={canFix ? handleApply : null}
             />
           </Section>
         )}

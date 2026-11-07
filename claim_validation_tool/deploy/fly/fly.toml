@@ -1,0 +1,39 @@
+# Fly.io app for the hosted demo API (synthetic data only). Deploy with deploy/fly/deploy.sh.
+# Secrets (not in this file): RCM_MASTER_KEY, ANTHROPIC_API_KEY.
+# The frontend is on Vercel, which forwards /api here (frontend/vercel.json).
+app = "claustrarcm-demo-api"
+primary_region = "iad"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  RCM_COOKIE_SECURE = "1"
+  RCM_ALLOWED_ORIGINS = "https://claustrarcm-demo.vercel.app"
+  RCM_PUBLIC_URL = "https://claustrarcm-demo.vercel.app"
+  # The machine stops when idle: keep sessions on the volume in case it restarts
+  RCM_SESSIONS_FILE = "/data/sessions.json"
+
+[[mounts]]
+  source = "rcm_data"
+  destination = "/data"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  # One machine, paid only while running: suspended when idle (memory kept, so it resumes
+  # in about a second; a cold start loads every organisation, about a minute)
+  auto_stop_machines = "suspend"
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [[http_service.checks]]
+    grace_period = "60s"
+    interval = "30s"
+    timeout = "5s"
+    method = "GET"
+    path = "/docs"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "2gb"

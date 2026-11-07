@@ -32,6 +32,9 @@ from app.services.identity_providers import (
     get_sso_states,
 )
 
+# The claims app; the public website is at "/"
+APP_PATH = "/app"
+
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 Sessions = Annotated[SessionStore, Depends(get_session_store)]
@@ -56,7 +59,9 @@ def _current(user: User, sessions: SessionStore, created) -> CurrentUser:
     grant = get_emergency_access().active_for(user.username) if user.emergency_access_id else None
     return CurrentUser(
         username=user.username,
-        organisation=OrganisationSummary(id=org.id, name=org.name) if org else None,
+        organisation=OrganisationSummary(id=org.id, name=org.name, default_claim_route=org.default_claim_route)
+        if org
+        else None,
         emergency=EmergencySummary(id=grant.id, reason=grant.reason, expires_at=grant.expires_at)
         if grant
         else None,
@@ -182,7 +187,7 @@ def sso_callback(
         )
     if organisation_problem(user):
         raise HTTPException(status_code=403, detail=organisation_problem(user))
-    response = RedirectResponse(os.environ.get("RCM_PUBLIC_URL", "") + "/", status_code=status.HTTP_302_FOUND)
+    response = RedirectResponse(os.environ.get("RCM_PUBLIC_URL", "") + APP_PATH, status_code=status.HTTP_302_FOUND)
     _start_session(response, user, sessions)
     request.state.user = user
     return response

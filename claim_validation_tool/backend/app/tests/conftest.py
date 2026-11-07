@@ -5,12 +5,16 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
+from app.data.api_keys import get_api_keys
 from app.data.audit import get_audit_log, get_platform_audit_log
 from app.data.emergency import get_emergency_access
 from app.data.orgs import get_org_registry
+from app.data.claim_changes import get_claim_change_log
 from app.data.corrections import get_correction_store
 from app.data.drafts import get_draft_store
 from app.data.new_claims import get_new_claim_store
+from app.data.patient_list import get_patient_list
+from app.data.prior_auth_lists import get_prior_auth_lists
 from app.data.registrations import get_registration_store
 from app.data.knowledge import get_knowledge_base
 from app.data.reference import get_reference_data
@@ -24,6 +28,7 @@ from app.models import ORGANISATION_ROLES, Role
 from app.services.assistant import get_answer_writer, get_name_scrubber, get_retriever
 from app.services.auth import (
     SESSION_COOKIE,
+    get_api_rate_limit,
     get_login_throttle,
     get_session_store,
 )
@@ -167,8 +172,11 @@ def anon_client(monkeypatch, tmp_path) -> TestClient:
         get_repository,
         get_rule_repository,
         get_correction_store,
+        get_claim_change_log,
         get_draft_store,
         get_new_claim_store,
+        get_patient_list,
+        get_prior_auth_lists,
         get_registration_store,
         get_reference_data,
         get_status_snapshot,
@@ -179,6 +187,8 @@ def anon_client(monkeypatch, tmp_path) -> TestClient:
         get_user_store,
         get_session_store,
         get_login_throttle,
+        get_api_keys,
+        get_api_rate_limit,
         get_audit_log,
         org_cipher,
         get_sso_states,

@@ -313,8 +313,18 @@ amounts; zero wrong-plan amounts.
        the same place is refused (409, `content_hash`). Paragraph scoring now
        counts the section heading (eval answer text 37 → 38/38).
    `test_answer_layout.py`; 388 backend + 98 frontend tests.
-4. [ ] Realistic synthetic test set (insurer nuances, scanned copies,
-       two-plan users, conflicts) with questions/answers for the user's review.
+4. [x] **Validation set** (`synthetic_data/validation/`, PDFs in
+       `data/validation/`, not ingested at startup): six fictional plans in
+       different styles — SBC tables (Cedar Valley), employer EPO booklet in
+       two plan years (Harborview 2025/2026), Medicare Advantage EOC
+       (Pinecrest), two-column student brochure with footnotes (Lakeshore),
+       catastrophic plan plus an image-only scanned copy (Meridian) — and 90
+       questions (38 look-up, 25 nuance, 11 not-in-the-document, 6 scanned,
+       10 several-plan) written from the plan text before running the app.
+       `ground_truth.py` checks every expected phrase is in the documents;
+       `REVIEW_SHEET.md` / `review_sheet.csv` for the user's review;
+       scorer `backend/app/tests/validation_eval.py` (not run yet — waits for
+       the review; never used to tune the app).
 5. [ ] Run it against the pass marks and report.
 
 ### Phase B: Data & evaluation — done (see Done above)

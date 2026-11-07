@@ -27,6 +27,7 @@ from reportlab.platypus import (
     TableStyle,
 )
 
+from app.models import ClaimDetail, HandoffExport
 from app.services.edi_reader import FILING_CODES, RELATIONSHIPS, RESPONSIBILITY, Claim837, Party
 
 INK = colors.HexColor("#1d1d1f")
@@ -92,10 +93,10 @@ def _grid(rows: list[list], widths: list[float], spans: list[tuple] = ()) -> Tab
     return table
 
 
-def _page_decorations(claim: Claim837, footer: str) -> Callable:
+def _page_decorations(test: bool, footer: str) -> Callable:
     def draw(canvas, doc) -> None:
         canvas.saveState()
-        if claim.test:
+        if test:
             canvas.setFillColor(colors.Color(0.85, 0.45, 0.1, alpha=0.12))
             canvas.setFont("Helvetica-Bold", 54)
             canvas.translate(LETTER[0] / 2, LETTER[1] / 2)
@@ -112,13 +113,17 @@ def _page_decorations(claim: Claim837, footer: str) -> Callable:
 
 
 def _build(story: list, claim: Claim837, title: str, footer: str) -> bytes:
+    return _render(story, claim.claim_id, claim.test, title, footer)
+
+
+def _render(story: list, claim_id: str, test: bool, title: str, footer: str) -> bytes:
     buffer = BytesIO()
     doc = SimpleDocTemplate(
         buffer, pagesize=LETTER, leftMargin=0.5 * inch, rightMargin=0.5 * inch,
         topMargin=0.5 * inch, bottomMargin=0.6 * inch, title=title,
-        author="ClaustraRCM", subject=f"Claim {claim.claim_id}",
+        author="ClaustraRCM", subject=f"Claim {claim_id}",
     )
-    decorate = _page_decorations(claim, footer)
+    decorate = _page_decorations(test, footer)
     doc.build(story, onFirstPage=decorate, onLaterPages=decorate)
     return buffer.getvalue()
 
@@ -382,3 +387,51 @@ def readable_837_pdf(claim: Claim837) -> bytes:
         Preformatted("\n".join(segment + "~" for segment in claim.segments), RAW, maxLineLength=110),
     ]
     return _build(story, claim, f"{claim.transaction} readable copy — {claim.claim_id}", _footer(claim))
+
+
+def claim_changes_pdf(claim: ClaimDetail, export: HandoffExport) -> bytes:
+    """What changed on a handed-off claim and what's still open: the page a biller works from
+    in the billing system, so it stays readable without the 837."""
+    handoff = claim.handoff
+    facts = [
+        f"Claim {claim.claim_id}",
+        f"your number {export.source_ref}" if export.source_ref else None,
+        f"patient {claim.patient_id}",
+        f"service date {claim.service_date}",
+    ]
+    story = [
+        Paragraph("Changes to this claim", TITLE),
+        Paragraph(escape(" · ".join(f for f in facts if f)), SMALL),
+        Paragraph(escape(f"Handed off on {handoff.handed_off_on} by {handoff.handed_off_by}"), SMALL),
+        Spacer(1, 8),
+        Paragraph("What changed since it was first entered or uploaded", HEADING),
+    ]
+    if export.changes:
+        head = [Paragraph(f"<b>{title}</b>", CELL) for title in ("Field", "Was", "Now", "How", "By", "When")]
+        rows = [
+            [Paragraph(_text(cell), CELL) for cell in (
+                c.label, c.old_value, c.new_value, c.source.value, c.changed_by, c.changed_at.date().isoformat(),
+            )]
+            for c in export.changes
+        ]
+        table = Table([head, *rows], colWidths=[w * PAGE_WIDTH for w in (0.24, 0.2, 0.2, 0.09, 0.14, 0.13)], repeatRows=1)
+        table.setStyle(TableStyle([
+            ("LINEBELOW", (0, 0), (-1, -1), 0.25, RULE),
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 3),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 3),
+        ]))
+        story.append(table)
+    else:
+        story.append(Paragraph("Nothing changed: this claim is as it was first entered or uploaded.", CELL))
+    story.append(Paragraph("Still open when it was handed off", HEADING))
+    if export.open_issues:
+        story += [Paragraph(f"• {_text(issue)}", CELL) for issue in export.open_issues]
+        story.append(Spacer(1, 4))
+        story.append(Paragraph("These weren't fixed here. Resolve them in your billing system before sending.", SMALL))
+    else:
+        story.append(Paragraph("Nothing: every enabled rule passed.", CELL))
+    return _render(
+        story, claim.claim_id, False, f"Changes to claim {claim.claim_id}",
+        f"{claim.claim_id} · contains patient information · nothing was sent to a payer from ClaustraRCM",
+    )

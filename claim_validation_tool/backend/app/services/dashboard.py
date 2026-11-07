@@ -13,6 +13,7 @@ from app.models import (
     AT_RISK_STATUSES,
     AgingBucket,
     ClaimStatus,
+    NOT_WITH_PAYER_STATUSES,
     Dashboard,
     DashboardQuery,
     DraftSummary,
@@ -151,8 +152,8 @@ def _ratio(numerator: float, denominator: float) -> float:
 
 
 def _submitted(claims: pd.DataFrame) -> pd.DataFrame:
-    """Claims sent to a payer: drafts aren't in accounts receivable yet."""
-    return claims[claims["status"] != ClaimStatus.DRAFT]
+    """Claims sent to a payer: drafts and handed-off claims aren't in accounts receivable."""
+    return claims[~claims["status"].isin(NOT_WITH_PAYER_STATUSES)]
 
 
 def _measures(claims: pd.DataFrame, denials: pd.DataFrame, status: pd.Series) -> dict[str, float]:
@@ -160,7 +161,7 @@ def _measures(claims: pd.DataFrame, denials: pd.DataFrame, status: pd.Series) ->
     adjudicated = claims["status"].isin(ADJUDICATED_STATUSES)
     submitted = _submitted(claims)
     # Needs attention counts submitted claims, like the Claims queue; drafts are listed apart
-    submitted_status = status[(claims["status"] != ClaimStatus.DRAFT).to_numpy()]
+    submitted_status = status[(~claims["status"].isin(NOT_WITH_PAYER_STATUSES)).to_numpy()]
     return {
         "claims": len(claims),
         "charges": float(claims["total_charge"].sum()),
@@ -322,7 +323,7 @@ def _ar_aging(claims: pd.DataFrame) -> list[AgingBucket]:
 def _payers(claims: pd.DataFrame, payers: dict[str, Payer]) -> list[PayerSummary]:
     # Rates only over claims they apply to (NaN rows are skipped by mean)
     adjudicated = claims["status"].isin(ADJUDICATED_STATUSES)
-    submitted = claims["status"] != ClaimStatus.DRAFT
+    submitted = ~claims["status"].isin(NOT_WITH_PAYER_STATUSES)
     grouped = (
         claims.assign(
             denied=(claims["status"] == ClaimStatus.DENIED).astype(float).where(adjudicated),

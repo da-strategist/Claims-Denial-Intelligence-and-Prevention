@@ -91,11 +91,42 @@ copy for reading and printing, not the red-ink OCR form payers scan), and a **re
 that names each part of the file, shows where every value sits, and ends with the raw file.
 Test files carry a "TEST FILE" mark on every page.
 
-The organisation's identifiers live in `backend/edi_settings.json` (git-ignored): submitter,
+Administrators keep the organisation's identifiers under **Claim file settings** on the Users
+page (`GET/PUT /organisation/edi-settings`, saved as `edi_settings.json` in its folder, audited by
+field name). Files going back to a hospital's own billing system need no clearinghouse, and name
+the hospital as receiver unless one is set. A facility whose address on file has a 5-digit ZIP
+can be given its ZIP+4 there. The identifiers: submitter,
 clearinghouse (receiver), billing provider (name, NPI, 9-digit EIN, address with ZIP+4), and
 each payer's electronic payer ID. Until every one is set, `mode` is `production`, and the
 facility address has a ZIP+4, files are marked as test files (ISA15 = T) and the claim lists
 what's missing. See `app/services/edi_settings.py` for the file's shape.
+
+### Coding checks on service lines
+
+Four seed rules check a claim's lines against the organisation's reference tables, the same
+ones the assistant cites. Diagnoses are judged per line, by the diagnosis each line points to,
+as payers do:
+
+| Rule | Flags a claim when |
+|---|---|
+| NCCI Procedure-to-Procedure Edit | Two of its procedures form an NCCI edit (`ref_ncci_ptp_edits`) in effect on the service date. Where the edit allows a modifier, 59 or XE/XS/XP/XU on either line bypasses it; otherwise nothing does |
+| Units Exceed MUE Limit | A procedure's units, added up across lines, exceed its MUE (`ref_mue_limits`) |
+| Diagnosis Not Covered (LCD/NCD) | A procedure has a coverage policy (`ref_lcd_ncd_policies`) and the diagnosis its line points to isn't on the covered list (error) |
+| Diagnosis Doesn't Match Procedure | A specialty procedure without a policy (cardiology, behavioural, neurology, OB/GYN, oncology, orthopaedics, pulmonology, rehab, surgery) points to a diagnosis from an unrelated ICD-10 chapter, e.g. an echocardiogram for diabetes. Symptom (R) and encounter (Z) codes always fit; office visits, labs, imaging and preventive care aren't screened. A rough screen by chapter, not a payer crosswalk, so it's a warning (`PLAUSIBLE_CHAPTERS` in `coding_edits.py`) |
+
+The first three are errors. A real diagnosis-to-procedure crosswalk (payers' LCD article ICD-10
+lists, or a commercial one) would make the fourth precise; there's none in the reference data yet.
+
+They test four rule fields (`ncci_conflict`, `mue_exceeded`, `diagnosis_not_covered`,
+`diagnosis_procedure_mismatch`), so
+administrators can disable them, change their severity, or combine them with other conditions.
+AI Fix names the line and the reference record, and points a line at a fitting diagnosis already
+on the claim when there is one. A corrected primary diagnosis clears a coverage error at once;
+line problems are fixed by editing the draft. The checks run on claims entered, uploaded or
+sent through the API, the ones that haven't gone out yet. The source data's adjudicated claims
+aren't checked, because their synthetic lines would flag about two thirds of them. Organisations
+whose rules were saved before these rules existed get them added once (`seed_version` in
+`rules.json`); a rule an administrator deletes later stays deleted.
 
 ### Risk score (0–100)
 
@@ -116,6 +147,9 @@ uv sync
 cd claim_validation_tool/backend
 uv run python -m app.orgs migrate        # creates the first organisation, "meridian", over Data/raw_data
 uv run python -m app.orgs add-sample     # optional: the synthetic "lakeside" practice, for demos
+# optional: one state of CMS's synthetic Medicare inpatient claims (data.cms.gov), as "cms-florida"
+uv run python -m app.orgs add-cms --claims inpatient.csv --beneficiaries beneficiary_2025.csv \
+  --icd-descriptions icd10cm_codes_2025.txt --hcpcs-descriptions HCPC2025_JAN_ANWEB_12172024.txt
 uv run python -m app.users add yourname --name "Your Name" --role admin --org meridian   # prompts for a password
 uv run uvicorn app.main:app --reload --port 8000
 ```
@@ -166,6 +200,19 @@ uv run python -m app.orgs rotate-key        # after putting a new key first in R
 uv run python -m app.orgs key-status        # which key provider holds each organisation's key
 ```
 
+The hash check also catches the newest events being removed, using `logs/audit-head.json`
+(back it up with the rest of `logs/`, and restore them together). Restoring an older copy of
+both, or changes by someone holding the key, needs a copy kept outside the server to catch.
+
+The audit log keeps each closed year in its own file (`logs/audit-2026.jsonl`) and every
+event for at least `RCM_AUDIT_RETENTION_YEARS` (6). Years past that can be deleted, never
+automatically, with the API running or not:
+
+```bash
+uv run python -m app.orgs audit-purge --dry-run   # what would go
+uv run python -m app.orgs audit-purge --by "Ana Diaz"  # delete it; recorded in the log, and the hash check still covers what's left
+```
+
 Without the master key the data can't be read, so keep a copy somewhere separate (a
 password manager or key vault). Production mode refuses to start without one. Details in
 `DATA_SEGREGATION_PLAN.md` §9.
@@ -180,6 +227,74 @@ page, and ends at the set time or earlier, by the platform or by the organisatio
 administrators. Starting it, ending it, and every request made with it are in the
 organisation's own audit log, and its administrators see each grant and its reason on their
 Audit Log page. Grants are kept in `backend/orgs/break_glass.json`.
+
+### How claims leave
+
+ClaustraRCM works alongside a hospital's billing system. A draft can be **handed off**
+(`POST /api/claims/{id}/hand-off`: the billing system sends it, open issues must be
+acknowledged) or **submitted** (`POST /api/claims/{id}/submit`: blocked by any rule error or
+warning). A claim takes one route; `POST /api/claims/{id}/reopen` puts a handed-off claim
+back to Draft once someone confirms it wasn't sent. Administrators choose which route is
+offered first on the Users page (default: the hospital's billing system).
+
+Once handed off, the claim can go back to the billing system: `GET /api/claims/{id}/handoff`
+summarises it, `…/handoff/837` downloads its 837 with the corrections in, and
+`…/handoff/changes.pdf` lists what changed since it was first entered or uploaded (net of
+AI Fix and edits: a value changed back isn't listed) and what was still open. Only billers and
+admins can export, each download is audited (field names, never values), and every download
+of a claim keeps one control number until it's reopened. The file is a first-time claim
+(frequency code 1) because nothing has reached a payer, and CLM01 carries the hospital's own
+number when the claim was uploaded with one. It's marked as a test file until the EDI settings
+are complete. Self-pay claims get the list only.
+
+### What a clean claim doesn't cover
+
+**Prior authorization.** An 837 carries an authorization number only when someone got one, so a
+claim can't show that it needed one. Administrators keep each payer's list of services needing
+prior authorization on the Users page (`prior_auth_lists.json`; no patient details). A claim for a listed
+service is marked as requiring it however it arrived, and the claim can't override that; the existing
+rule then flags it if there's no authorization. `prior_auth_check` reports `obtained`, `missing`,
+`not_needed` (a list exists and no service is on it), `not_assessed` (no list, or saved before it) or
+`not_applicable` (self-pay). `obtained` means the claim carries an authorization, not that the payer
+confirmed it. Only the primary payer's list and CPT/HCPCS codes are used, so inpatient
+admission authorizations without such a code aren't caught. Saved claims don't change when a list does.
+
+**Coverage.** `coverage_check` is always `not_checked` (`not_applicable` for self-pay). Confirming
+active coverage needs a 270/271 eligibility check with the payer, which isn't built.
+
+### Claims API for hospital systems
+
+Administrators create a key on the Users page. Send it as `Authorization: Bearer <key>`. A key
+works on `/api/v1` only, and sign-in cookies don't work there. Nothing sent here goes to a payer.
+
+```bash
+# An 837P/837I, or a CSV/Excel file in the upload template's layout (up to 200 claims, 5 MB)
+curl -X POST "$API/api/v1/claims/file" -H "Authorization: Bearer $KEY" -H 'Content-Type: application/json' \
+  -d "{\"filename\": \"claims.837\", \"content\": \"$(base64 < claims.837)\"}"
+```
+
+Each checked claim comes back with `claim_id`, `claim_number`, `status`, `clean`, `open_issues`,
+`coverage_check`, `prior_auth_check`, `findings` and `suggestions`, and never patient details beyond `patient_id`. `POST /api/v1/claims`
+takes one claim as JSON: `claim_number`, this organisation's payer and provider IDs, and either
+`patient` (name and sex; the date of birth, address and member ID are in `billing`) or `patient_id`.
+
+**The patient list keeps itself up to date.** The hospital's register is the master; ours is a working
+copy (`patient_list.json`, encrypted, laid over `dim_patients`, which is never modified) holding only
+name, age, sex, ZIP code and primary payer, with date of birth, address and policies in the
+registrations file. A patient on a claim is never refused for being new, through the API or file
+upload: a clear match (same name and date of birth, or name and member ID) updates them, no match
+adds them, and an unclear match (same name with another date of birth, same member ID with this payer, or the same
+date of birth with the same first or last name) adds them with `patient_needs_review`. Those appear
+on the Claims page for staff; nothing is merged automatically, and merging isn't built yet. A patient is
+only listed if their claim saved. The list says what claims have told us, not whether coverage is active.
+Providers and payers still have to be set up: a claim naming an unknown one is refused.
+
+The hospital's claim number identifies the claim: send it again and the Draft is replaced and
+rechecked, so a corrected claim or a retry never makes a second one. Once the system sends the claim
+itself, `POST /api/v1/claims/{claim_id}/handoff` finishes it here (open issues need
+`{"acknowledge_open_issues": true}`); after that the number can't be replaced (409). Too many
+requests get 429 with `Retry-After`. Every request is in the audit log as `api.<key id>`, without
+the claim number, which can be a patient account number.
 
 ### Accounts
 
@@ -206,7 +321,21 @@ npm install
 npm run dev
 ```
 
-App: http://localhost:5173. The Vite dev server proxies `/api` to port 8000.
+Website: http://localhost:5173 · App: http://localhost:5173/app. The Vite dev server proxies `/api` to port 8000.
+
+### Website and app
+
+One build serves both. The public website is at `/` (Home with the interactive Load →
+Validate & Correct → Send demo over synthetic claims), `/about`, `/pilot` (pilot interest),
+`/sign-up` (says access is by invitation), `/privacy` and `/terms`. The claims app, with its
+sign-in and hash routes, is at `/app`; older bookmarks such as `/#/claims` are sent to
+`/app#/claims`, and `/sign-in` and `/login` open the app. Each half is loaded only when
+it's visited.
+
+Content only the owner can supply (team profiles, founder story, mission and vision
+approval, legal pages) lives in `frontend/src/site/content.js`; until it's filled in, the
+pages show labelled placeholders. The pilot form opens the visitor's email app addressed
+to `VITE_PILOT_CONTACT_EMAIL`; without it, the form says requests aren't open yet.
 
 ### HTTPS
 
@@ -231,21 +360,25 @@ secure, so the HTTPS-only cookie is still sent).
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `RCM_ORGS_DIR` | `backend/orgs` | Organisations: `organisations.json` and one folder per organisation with its `rules.json` (seeded with 9 defaults), `claim_corrections.json`, `claim_drafts.json` (expire 30 days after the last save), `new_claims.json` (with their 837s), `patient_registrations.json`, `edi_settings.json`, and `logs/audit.jsonl` |
+| `RCM_ORGS_DIR` | `backend/orgs` | Organisations: `organisations.json` and one folder per organisation with its `rules.json` (seeded with 9 defaults), `claim_corrections.json`, `claim_drafts.json` (expire 30 days after the last save), `new_claims.json` (with their 837s), `patient_registrations.json`, `claim_changes.json` (edits to claims, for the list of changes), `edi_settings.json`, and `logs/audit.jsonl` |
 | `ANTHROPIC_API_KEY` | unset | Enables Claude for the clarification assistant |
 | `RCM_ASSISTANT_MODEL` | `claude-sonnet-5-5` | Claude model the assistant uses |
 | `RCM_ASSISTANT_MODE` | | Set to `retrieval` to keep Claude off even with a key |
-| `RCM_USERS_FILE` | `backend/users.json` | Sign-in accounts |
+| `RCM_USERS_FILE` | `backend/users.json` | Sign-in accounts (API keys are kept beside it in `api_keys.json`, digests only) |
+| `RCM_API_RATE_PER_MINUTE` | `120` | Requests each API key may make per minute |
 | `RCM_AUDIT_FILE` | `backend/logs/audit.jsonl` | Platform audit log: requests that belong to no organisation (e.g. sign-in with an unknown username). Each organisation's own log is in its folder |
+| `RCM_AUDIT_RETENTION_YEARS` | `6` | Years audit events are kept before `audit-purge` may delete them; less than 6 is refused |
 | `RCM_SESSION_IDLE_MINUTES` | `15` | Sign out after this long without a request |
 | `RCM_SESSION_MAX_HOURS` | `8` | Longest a session lasts |
+| `RCM_SESSIONS_FILE` | unset | Keep sign-in sessions in this file so a restart doesn't sign everyone out (digests only). For a demo host that stops and starts on its own; refused in production |
 | `RCM_COOKIE_SECURE` | off | Set to `1` behind HTTPS so the session cookie is never sent over plain HTTP |
 | `RCM_MASTER_KEY` | unset | Turns on encryption at rest: wraps each organisation's data key (`orgs/<id>/data_key.enc`). To replace it: put the new key first, comma, then the old; run `python -m app.orgs rotate-key`; then remove the old |
 | `RCM_KEY_PROVIDER` | `local` | Where the master key lives: `local` uses `RCM_MASTER_KEY`. Cloud key services (`aws-kms`, `azure-keyvault`, `gcp-kms`) are planned; see `DATA_SEGREGATION_PLAN.md` §9.6 |
 | `RCM_ENVIRONMENT` | unset | `production` refuses to start without `RCM_MASTER_KEY` or `RCM_COOKIE_SECURE=1`, and blocks sign-in for organisations without a BAA on record |
-| `RCM_PUBLIC_URL` | unset | The app's public address (e.g. `https://rcm.example.com`), for the single sign-on callback behind a proxy |
+| `RCM_PUBLIC_URL` | unset | The site's public address (e.g. `https://rcm.example.com`), for the single sign-on callback behind a proxy; sign-in returns to `/app` there |
 | `RCM_ALLOWED_ORIGINS` | `http://localhost:5173` | Web addresses the app is served from (comma-separated), for the browser's cross-origin check |
 | `VITE_API_BASE` | `/api` | API base URL for the frontend |
+| `VITE_PILOT_CONTACT_EMAIL` | unset | Address the website's pilot form emails (set at build time, e.g. in Vercel). Unset: the form is disabled |
 
 Each organisation's app data persists in its folder (git-ignored, readable only by the account
 running the API). The source CSVs are never modified: new claims and their submission dates are
@@ -283,9 +416,10 @@ All routes are under `/api`; full schemas at `/docs`.
 | Audit | `GET /audit` (username, record_id, outcome, limit) · `GET /audit/verify` |
 | Users | `GET /users` · `POST /users` · `PATCH /users/{username}` · `POST /users/{username}/password` (administrators) |
 | Platform | `GET/POST /platform/organisations` · `POST /platform/organisations/{id}/suspend` · `…/reactivate` · `…/admins` · `…/baa` · `PUT/DELETE …/sso` · `…/delete` · `…/emergency-access` · `GET /platform/emergency-access` · `POST /platform/emergency-access/{id}/end` · `GET /platform/audit` (platform accounts) |
-| Organisation | `GET /organisation/export` (administrators: zip of all its data) |
+| Organisation | `GET /organisation/export` (administrators: zip of all its data) · `PUT /organisation/settings` · `GET/PUT /organisation/edi-settings` · `GET/POST /organisation/api-keys` · `DELETE /organisation/api-keys/{id}` |
+| Claims API for hospital systems (API key only) | `POST /v1/claims` · `POST /v1/claims/file` · `GET /v1/claims/{id}` · `POST /v1/claims/{id}/handoff` |
 | Emergency access (organisation side) | `GET /audit/emergency-access` · `POST /audit/emergency-access/{id}/end` (administrators) |
-| Claims | `GET /claims` (search, filter, sort, page) · `POST /claims` · `GET /claims/{id}` · `PUT /claims/{id}` (edit a Draft) · `POST /claims/{id}/submit` · `GET /claims/{id}/837` · `GET /claims/{id}/claim-form.pdf` · `GET /claims/{id}/837-readable.pdf` |
+| Claims | `GET /claims` (search, filter, sort, page) · `POST /claims` · `POST /claims/import` (CSV/Excel or 837 file → Draft claims) · `GET /claims/import/template.csv` · `GET /claims/{id}` · `PUT /claims/{id}` (edit a Draft) · `POST /claims/{id}/submit` · `GET /claims/{id}/837` · `GET /claims/{id}/claim-form.pdf` · `GET /claims/{id}/837-readable.pdf` · `GET /claims/{id}/handoff` · `GET /claims/{id}/handoff/837` · `GET /claims/{id}/handoff/changes.pdf` |
 | Saved drafts | `GET /drafts` · `POST /drafts` · `GET /drafts/{id}` · `PUT /drafts/{id}` · `DELETE /drafts/{id}` (billers and admins) |
 | Validation | `GET /validate/{id}` · `POST /validate` (up to 200 claims) |
 | Rules | `GET/POST /rules` · `GET/PUT/PATCH/DELETE /rules/{id}` · `GET /rules/fields` · `POST /rules/test` |
@@ -309,7 +443,8 @@ claim_validation_tool/
 ├── backend/app/
 │   ├── main.py             # FastAPI app, CORS, audit middleware, routers, data preload
 │   ├── users.py            # Account management CLI (python -m app.users)
-│   ├── orgs.py             # Organisations CLI: list, add, migrate, add-sample
+│   ├── orgs.py             # Organisations CLI: list, add, migrate, add-sample, add-cms
+│   ├── cms_org.py          # Builds an organisation from CMS synthetic inpatient claims
 │   ├── sample_org.py       # Generates the synthetic Lakeside Family Practice
 │   ├── routers/            # One module per API area
 │   ├── models/             # Pydantic request/response schemas
@@ -320,7 +455,9 @@ claim_validation_tool/
 │   ├── evals/              # Assistant evaluation set and runner
 │   └── tests/              # pytest suite and fixture CSVs
 └── frontend/src/
-    ├── App.jsx             # Shell and hash routes
+    ├── Root.jsx            # Website at /, claims app at /app
+    ├── App.jsx             # App shell and hash routes
+    ├── site/               # Public website: pages, layout, claim demo, owner content
     ├── pages/              # Login, Dashboard, ClaimsWorkbench, NewClaim, RuleManager, JabAudit, AuditLog, Users, UserGuide
     ├── components/         # Shared UI (badges, panels, builders, error boundary)
     ├── hooks/              # Data hooks built on useApi
@@ -338,7 +475,7 @@ claim_validation_tool/
   config is ready but there's no server yet), the encryption master key sits in `.env` rather
   than a key service, local accounts rather than single sign-on, and no agreement (BAA/DPA)
   with Anthropic. Sessions live in memory, so a
-  restart signs everyone out, and the audit log has no rotation or retention policy.
+  restart signs everyone out.
 - AI Fix is rule-based; the assistant handles the ambiguous cases. Its knowledge is limited to
   the reference tables: there are no payer policy manuals, so it can't say which services a
   payer requires prior authorization for, or quote filing limits, and says so.

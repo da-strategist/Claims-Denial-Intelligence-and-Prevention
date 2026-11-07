@@ -12,9 +12,11 @@ from typing import Annotated
 from fastapi import Depends, HTTPException
 
 from app.data.audit import AuditLog, get_audit_log
+from app.data.claim_changes import ClaimChangeLog, get_claim_change_log
 from app.data.corrections import CorrectionStore, get_correction_store
 from app.data.drafts import DraftStore, get_draft_store
 from app.data.knowledge import KnowledgeBase, get_knowledge_base
+from app.data.prior_auth_lists import PriorAuthListStore, get_prior_auth_lists
 from app.data.reference import ReferenceData, get_reference_data
 from app.data.registrations import RegistrationStore, get_registration_store
 from app.data.repository import get_repository
@@ -52,6 +54,10 @@ def _corrections(org_id: OrgId) -> CorrectionStore:
     return get_correction_store(org_id)
 
 
+def _claim_changes(org_id: OrgId) -> ClaimChangeLog:
+    return get_claim_change_log(org_id)
+
+
 def _reference(org_id: OrgId) -> ReferenceData:
     return get_reference_data(org_id)
 
@@ -62,6 +68,10 @@ def _drafts(org_id: OrgId) -> DraftStore:
 
 def _registrations(org_id: OrgId) -> RegistrationStore:
     return get_registration_store(org_id)
+
+
+def _prior_auth_lists(org_id: OrgId) -> PriorAuthListStore:
+    return get_prior_auth_lists(org_id)
 
 
 def _snapshot(org_id: OrgId) -> StatusSnapshot:
@@ -85,11 +95,13 @@ def _names(org_id: OrgId) -> NameScrubber:
 
 
 OrgClaims = Annotated[ScopedClaims, Depends(_claims)]
+OrgClaimChanges = Annotated[ClaimChangeLog, Depends(_claim_changes)]
 OrgRules = Annotated[RuleRepository, Depends(_rules)]
 OrgCorrections = Annotated[CorrectionStore, Depends(_corrections)]
 OrgReference = Annotated[ReferenceData, Depends(_reference)]
 OrgDrafts = Annotated[DraftStore, Depends(_drafts)]
 OrgRegistrations = Annotated[RegistrationStore, Depends(_registrations)]
+OrgPriorAuthLists = Annotated[PriorAuthListStore, Depends(_prior_auth_lists)]
 OrgSnapshot = Annotated[StatusSnapshot, Depends(_snapshot)]
 OrgAudit = Annotated[AuditLog, Depends(_audit)]
 OrgKnowledge = Annotated[KnowledgeBase, Depends(_knowledge)]
@@ -101,11 +113,12 @@ def forget_organisation(org_id: str) -> None:
     """Drop everything held in memory for a deleted organisation. The caches can't drop
     one organisation's entry, so they're cleared; others reload on their next request."""
     from app.data.new_claims import get_new_claim_store
+    from app.data.patient_list import get_patient_list
     from app.data.secure_files import org_cipher
 
     for cache in (
-        get_repository, get_new_claim_store, get_rule_repository, get_correction_store,
-        get_draft_store, get_registration_store, get_reference_data, get_status_snapshot,
+        get_repository, get_new_claim_store, get_patient_list, get_rule_repository, get_correction_store, get_claim_change_log,
+        get_draft_store, get_registration_store, get_reference_data, get_status_snapshot, get_prior_auth_lists,
         get_audit_log, get_knowledge_base, get_retriever, get_name_scrubber, org_cipher,
     ):
         cache.cache_clear()

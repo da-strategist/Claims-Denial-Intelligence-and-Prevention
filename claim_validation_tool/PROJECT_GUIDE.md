@@ -38,11 +38,18 @@ This tool validates healthcare claims against configurable rules, identifies den
   - `auth.py` — sessions, login throttling, and the `require(permission)` route dependency
   - `edi837.py`, `edi_settings.py`, `edi_reader.py`, `claim_pdf.py` — build the 837 at submission
     from the claim and the organisation settings, read a saved 837 back, and render its PDFs
+- `app/data/coding_edits.py` — coding checks on service lines (NCCI edits, MUE limits, LCD/NCD
+  coverage by each line's own diagnosis, and a diagnosis/procedure screen by ICD-10 chapter).
+  The repository turns them into the `ncci_conflict`, `mue_exceeded`, `diagnosis_not_covered`
+  and `diagnosis_procedure_mismatch` rule fields for claims entered here; AI Fix reads the
+  details from `ReferenceData.coding`. New seed rules reach existing organisations through
+  `SEED_ADDITIONS` in `seed_rules.py`
 - `app/data/` — data access: claims repository over the synthetic CSVs (claims entered in the app
   are saved in `new_claims.json` and replayed on startup), JSON-backed rule, correction, saved-draft
   (`drafts.py`) and patient registration (`registrations.py`) stores, reference data (CPT, ICD-10, contracts, CARC/RARC), and the
   assistant's knowledge base (`knowledge.py`: one citable source per reference-table row),
-  user accounts (`users.py`), and the hash-chained audit log (`audit.py`)
+  user accounts (`users.py`), and the hash-chained audit log (`audit.py`: one file per closed year, kept
+  `RCM_AUDIT_RETENTION_YEARS`, then deletable with `app.orgs audit-purge`)
 - `app/evals/` — the assistant's evaluation set and runner
 
 **Organisations (HIPAA data segregation, `DATA_SEGREGATION_PLAN.md`):** every store and cache
@@ -177,7 +184,7 @@ A fact is never counted twice: an attribute factor only adds points when no enab
 
 **Saved drafts are not claims.** The New Claim page's **Save draft** stores the form as it was left (`/api/drafts`), with nothing required beyond field formats. Saved drafts aren't validated, scored, listed in Claims, or counted on the Overview. They are shared by everyone who can enter claims, recorded in the audit log, kept in an owner-only file, and deleted 30 days after the last save (data minimisation). Creating the claim from a saved draft removes the draft.
 
-**837 claim files.** `services/edi837.py` builds the 837P/837I from the claim, its `billing` details (`models/billing.py`), the payers, provider, and facility, and the organisation settings (`services/edi_settings.py`). It runs at submission; the text is saved in `new_claims.json` with the claim. Missing organisation settings (or a facility ZIP without +4) mark the file as a test file rather than inventing values. `services/edi_reader.py` reads a saved 837 back into named fields, and `services/claim_pdf.py` (reportlab) renders the CMS-1500/UB-04 and readable-837 PDFs from it. Patients' billing details come from `data/registrations.py`: entered details first, else deterministic sample details for the synthetic patients.
+**837 claim files.** `services/edi837.py` builds the 837P/837I from the claim, its `billing` details (`models/billing.py`), the payers, provider, and facility, and the organisation settings (`services/edi_settings.py`). It runs at submission; the text is saved in `new_claims.json` with the claim. Missing organisation settings (or a facility ZIP without +4) mark the file as a test file rather than inventing values. Administrators keep those settings on the Users page (`routers/organisation.py`, `components/EdiSettingsCard.jsx`). A handed-off claim can be exported on demand (`GET /claims/{id}/handoff/837`, `…/handoff/changes.pdf`): that file needs no clearinghouse, uses the hospital's own claim number when the claim was uploaded with one, and keeps one control number until the claim is reopened. `services/claim_changes.py` works out the list of changes from `data/claim_changes.py` (edits, and fixes an edit folded in) and the AI Fix corrections still in place. `services/edi_reader.py` reads a saved 837 back into named fields, and `services/claim_pdf.py` (reportlab) renders the CMS-1500/UB-04 and readable-837 PDFs from it. Patients' billing details come from `data/registrations.py`: entered details first, else deterministic sample details for the synthetic patients.
 
 **Draft claims are finished on New Claim, not in Claims.** The workbench asks for `include_drafts=false`; the New Claim page's Drafts panel lists both saved forms and draft claims (`GET /claims?status=Draft`), and opens a draft claim with its findings, fixes, and submission in place. The page is open to every role that can enter claims, so any biller can pick up anyone's draft.
 

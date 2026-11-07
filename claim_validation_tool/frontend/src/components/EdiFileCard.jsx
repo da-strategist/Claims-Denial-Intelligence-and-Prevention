@@ -45,7 +45,7 @@ export default function EdiFileCard({ claimId, edi }) {
       )}
       {edi.test && edi.notes.length > 0 && (
         <p className="text-xs text-gray-600">
-          Can’t go to a payer yet. An administrator needs to complete the EDI settings:{' '}
+          Can’t go to a payer yet. An administrator needs to complete the claim file settings on the Users page:{' '}
           {edi.notes.join('. ').replace(/^Not set: /, '').replace('. Not set: ', '. ')}.
         </p>
       )}

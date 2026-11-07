@@ -115,6 +115,8 @@ continuous claims:
 - **837 settings.** Complete `backend/edi_settings.json` (submitter, clearinghouse, billing
   provider with NPI, EIN and ZIP+4, payer IDs), give facilities ZIP+4 addresses, set `mode`
   to `production`, and validate a test file with the clearinghouse first.
+- **Prior authorization lists.** Load the hospital's list for each of its main payers on the Users
+  page, and agree who keeps them current. Until then, its claims show prior auth as not assessed.
 - **Encryption at rest.** Generate a master key (`uv run python -m app.orgs new-master-key`),
   put it in the key service (in `backend/.env` until then) with a backup copy kept
   separately, run `uv run python -m app.orgs encrypt` with the API stopped, and set
@@ -135,15 +137,59 @@ continuous claims:
 - **Single sign-on.** Add the identity provider the clients use (OpenID Connect covers
   Entra ID, Okta, and Google; DATA_SEGREGATION_PLAN.md §9.7) and its screens, link each
   person's SSO ID, mark a break-glass administrator, then make sign-in SSO only.
-- **Compliance items still open**: a BAA/DPA with Anthropic and the clearinghouse, and
-  audit-log retention.
+- **Audit-log retention.** Events are kept 6 years (HIPAA's documentation period); set
+  `RCM_AUDIT_RETENTION_YEARS` higher if a state or contract requires it. Once a year, run
+  `python -m app.orgs audit-purge --dry-run`, then with `--by "Your Name"`, if your policy is to
+  delete what's past retention. Back up the `logs/` folders with the rest of the data.
+- **Audit log copy outside the server.** The log catches removal by anyone without the
+  encryption key, but not an older copy restored whole, or someone holding the key. Copy
+  `logs/audit-head.json` or the log itself somewhere the server can't overwrite, such as
+  write-once storage, and compare during reviews.
+- **Compliance items still open**: a BAA/DPA with Anthropic and the clearinghouse.
 
 ## Planned feature updates: claim submission
 
-Not scheduled; to be built when the need arises. Today a claim goes Draft -> Pending
-with its 837 saved and downloadable, and stays Pending (turning Overdue) because nothing
-comes back from the payer. Suggested order: 1 then 2 complete the cycle without any
-outside partner; 3 and 5 matter once real volume flows; 4 can be added at any time.
+ClaustraRCM sits alongside a hospital's billing system rather than replacing it. Each
+organisation sets a default route, and either route can be used on any claim:
+
+- **Validate only:** check and correct here, export, and send from the hospital's own
+  billing system. Draft -> Handed off.
+- **Send through ClaustraRCM:** Draft -> Pending, with its 837 saved. Sending for real needs
+  the clearinghouse connection below.
+
+Build order:
+
+- [x] **Choosing the route.** Organisation default (Users page), both routes on each draft,
+  the Handed off status, and duplicate protection: a claim takes one route, and reopening a
+  handed-off claim requires confirming the billing system hasn't sent it.
+- [x] **Corrected claim export.** After hand-off: the claim's 837 with its corrections (under
+  the hospital's own claim number if it was uploaded with one) and a list of what changed,
+  both audited. One claim at a time; a batch export for validate-only hospitals is still to come.
+- [x] **Claim file settings.** Administrators keep the 837 identifiers on the Users page. Hand-off
+  files need no clearinghouse, and a facility with a 5-digit ZIP on file can be given its ZIP+4.
+- [x] **Standard API.** Hospital systems send a claim or an 837/CSV file with an API key and get
+  back its errors and suggested fixes (`/api/v1`). The hospital's claim number identifies the claim,
+  so sending it again replaces the Draft. Not yet tried with a real hospital system.
+- [x] **Self-updating patient list.** A patient on a claim is matched and updated, or added, never
+  refused for being new; an unclear match is flagged for staff, not merged. Still to do: merging
+  confirmed duplicates, and how long a patient stays on the list after their last claim.
+- [x] **Prior authorization lists.** Each payer's list of services needing prior authorization
+  (Users page). A listed service with no authorization is flagged however the claim arrived. A payer
+  without a list is shown as not assessed. Lists are entered by hand and depend on the hospital
+  keeping them current.
+- [x] **Saying what wasn't checked.** Claims report coverage as not checked, and prior authorization
+  as not assessed where there's no list, on the claim's page and in the API.
+
+After the pilot, shaped by what it teaches us:
+- [ ] **Eligibility check (is coverage active?).** Needs a 270/271 route, likely through the
+  clearinghouse. Questions for the pilot: how does the hospital check coverage today, and when?
+  How many denials are for lapsed coverage? Would it use a check here, or does its own system
+  already do it?
+- [ ] **Payer outcomes.** Features 1 and 2 below, with 835 upload optional for validate-only
+  hospitals so they can see whether denials fell.
+- [ ] **Clearinghouse connection.** Feature 5 below, once a vendor is chosen and the BAA signed.
+
+Features 3 and 4 can follow when real volume flows or a client asks.
 
 1. **Record payer decisions.** Enter the payer's decision by hand (paid and adjusted
    amounts, CARC/RARC denial codes), or import an 835 remittance file to update claims
@@ -161,6 +207,10 @@ outside partner; 3 and 5 matter once real volume flows; 4 can be added at any ti
    999 and 277CA acknowledgements (accepted / rejected). Needs a chosen vendor,
    credentials, and a business associate agreement first; complete
    `backend/edi_settings.json` and validate a test file with them before going live.
+
+## Client-facing documentation (later)
+
+- [ ] **Architecture and product document for client discussions.** A plain-language explanation of how the tool is built (frontend, backend, data per organisation, security and compliance, the assistant and what it shares with Claude, the claim routes), with a diagram, written for hospital IT, compliance and revenue cycle leads. Build it from `PROJECT_GUIDE.md`, `README.md` and `DATA_SEGREGATION_PLAN.md`.
 
 ## Summary
 

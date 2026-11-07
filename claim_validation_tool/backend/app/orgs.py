@@ -3,14 +3,23 @@
     uv run python -m app.orgs list
     uv run python -m app.orgs migrate                     # one-time: today's data -> "meridian"
     uv run python -m app.orgs add-sample                  # the synthetic "lakeside" practice
+    uv run python -m app.orgs add-cms --claims inpatient.csv --beneficiaries beneficiary_2025.csv
+                                                          # CMS synthetic Medicare inpatient claims (cms_org.py)
     uv run python -m app.orgs add acme --name "Acme Health" --data-dir /path/to/acme/csvs
     uv run python -m app.orgs new-master-key              # prints a key for RCM_MASTER_KEY
     uv run python -m app.orgs encrypt                     # encrypt every organisation's files
     uv run python -m app.orgs rotate-key                  # re-wrap data keys with the active key provider
     uv run python -m app.orgs key-status                  # which provider holds each organisation's key
+    uv run python -m app.orgs audit-purge --dry-run       # audit years past retention
+    uv run python -m app.orgs audit-purge --by "Ana Diaz" # delete them, saying who is doing it
 
 `encrypt` turns on encryption at rest for files written before RCM_MASTER_KEY was set
 (stop the API and back up the orgs folder first). It is safe to run twice.
+
+`audit-purge` deletes the audit log years whose retention period (RCM_AUDIT_RETENTION_YEARS,
+at least 6) is over, for every organisation and the platform log. Nothing is deleted
+automatically; run it with --dry-run first. It is safe while the API is running. Each log
+records the purge as an event: who ran it, the operating system account, and what went.
 
 `migrate` moves a single-organisation install's files into backend/orgs/meridian/ and
 assigns every account without an organisation to it. It never overwrites a file and is
@@ -23,6 +32,7 @@ import os
 import sys
 from pathlib import Path
 
+from app.data.audit import get_audit_log, get_platform_audit_log, retention_years
 from app.data.corrections import DEFAULT_CORRECTIONS_FILE
 from app.data.drafts import DEFAULT_DRAFTS_FILE
 from app.data.new_claims import DEFAULT_NEW_CLAIMS_FILE
@@ -34,6 +44,7 @@ from app.data.rules import DEFAULT_RULES_FILE
 from app.data.key_providers import active_name
 from app.data.secure_files import MASTER_KEY_ENV, EncryptionError, data_key_provider, new_master_key
 from app.data.users import get_user_store
+from app import cms_org
 from app.sample_org import generate
 from app.services.edi_settings import DEFAULT_EDI_SETTINGS_FILE
 
@@ -92,12 +103,34 @@ def add_sample() -> str:
     return f"created organisation {org_id} ({name}) with sample data in orgs/{org_id}/data"
 
 
+def add_cms(claims: Path, beneficiaries: Path, state: str, org_id: str, name: str,
+            icd: Path | None, hcpcs: Path | None) -> str:
+    registry = get_org_registry()
+    if registry.get(org_id) is not None:
+        return f"{org_id} already exists"
+    if registry.get(FIRST_ORG[0]) is None:
+        raise LookupError("Run `python -m app.orgs migrate` first (the CMS organisation copies its code sets)")
+    data_dir = registry.folder(org_id) / "data"
+    counts = cms_org.convert(claims, beneficiaries, data_dir, registry.data_dir(FIRST_ORG[0]), state, icd, hcpcs)
+    registry.add(org_id, name, Path(org_id) / "data")
+    summary = ", ".join(f"{count} {what}" for what, count in counts.items())
+    return f"created organisation {org_id} ({name}): {summary}"
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Manage organisations")
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("list", help="show organisations")
     commands.add_parser("migrate", help="move a single-organisation install into 'meridian'")
     commands.add_parser("add-sample", help="add the synthetic Lakeside Family Practice")
+    cms = commands.add_parser("add-cms", help="add one state of CMS's synthetic Medicare inpatient claims")
+    cms.add_argument("--claims", type=Path, required=True, help="inpatient.csv from the CMS download")
+    cms.add_argument("--beneficiaries", type=Path, required=True, help="the beneficiary file (beneficiary_YYYY.csv)")
+    cms.add_argument("--state", default=cms_org.STATE, help="SSA state code (default 10, Florida)")
+    cms.add_argument("--org-id", default=cms_org.ORG_ID)
+    cms.add_argument("--name", default=cms_org.ORG_NAME)
+    cms.add_argument("--icd-descriptions", type=Path, help="CMS icd10cm_codes_YYYY.txt, for diagnosis names")
+    cms.add_argument("--hcpcs-descriptions", type=Path, help="CMS HCPCS alpha-numeric .txt, for HCPCS names")
     add = commands.add_parser("add", help="add an organisation")
     add.add_argument("org_id")
     add.add_argument("--name", required=True)
@@ -109,6 +142,9 @@ def main(argv: list[str] | None = None) -> int:
         "rotate-key", help="re-wrap every data key with the active key provider's current key"
     )
     commands.add_parser("key-status", help="which key provider holds each organisation's data key")
+    purge = commands.add_parser("audit-purge", help="delete audit log years past their retention period")
+    purge.add_argument("--dry-run", action="store_true", help="only show what would be deleted")
+    purge.add_argument("--by", help="who is running the purge, recorded in the log (needed to delete)")
     args = parser.parse_args(argv)
     registry = get_org_registry()
     try:
@@ -122,6 +158,9 @@ def main(argv: list[str] | None = None) -> int:
                     print(line)
             case "add-sample":
                 print(add_sample())
+            case "add-cms":
+                print(add_cms(args.claims, args.beneficiaries, args.state, args.org_id, args.name,
+                              args.icd_descriptions, args.hcpcs_descriptions))
             case "new-master-key":
                 print(new_master_key())
                 print(
@@ -149,6 +188,19 @@ def main(argv: list[str] | None = None) -> int:
                     if org.status != OrgStatus.DELETED:
                         held = data_key_provider(registry.folder(org.id)) or "no data key (unencrypted)"
                         print(f"{org.id:14} {held}")
+            case "audit-purge":
+                if not args.dry_run and not (args.by or "").strip():
+                    raise ValueError("Say who is running the purge: --by \"Your Name\"")
+                logs = [(o.id, get_audit_log(o.id)) for o in registry.list() if o.status != OrgStatus.DELETED]
+                logs.append(("platform", get_platform_audit_log()))
+                verb = "would delete" if args.dry_run else "deleted"
+                for name, log in logs:
+                    removed = log.purge(by=args.by, dry_run=args.dry_run)
+                    if removed:
+                        years = ", ".join(f"{year} ({count} events)" for year, count in removed)
+                        print(f"{name}: {verb} {years}")
+                    else:
+                        print(f"{name}: nothing older than {retention_years()} years")
             case "add":
                 org = registry.add(args.org_id, args.name, Path(args.data_dir).resolve())
                 print(f"created organisation {org.id} ({org.name})")

@@ -6,18 +6,20 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.data import get_reference_data, get_repository, get_rule_repository
-from app.data.audit import AuditLog, get_audit_log, get_platform_audit_log
+from app.data.audit import AuditLog, get_audit_log, get_platform_audit_log, retention_years
 from app.data.orgs import OrgStatus, get_org_registry
 from app.data.key_providers import LOCAL
 from app.data.secure_files import MASTER_KEY_ENV, key_provider, production
 from app.data.users import get_user_store
-from app.services.auth import cookie_secure
+from app.services.auth import cookie_secure, get_session_store
 from app.models import Role
 from app.routers import (
     aifix,
     assistant,
     audit,
     auth,
+    claim_api,
+    claim_import,
     claims,
     dashboard,
     departments,
@@ -47,6 +49,7 @@ def allowed_origins() -> list[str]:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     keys = key_provider()  # an unknown or unbuilt provider stops startup here
+    retention_years()  # and so does an audit retention period under 6 years
     if keys is None:
         if production():
             # Patient data is never written unencrypted in production
@@ -59,6 +62,7 @@ async def lifespan(app: FastAPI):
         )
     if production() and not cookie_secure():
         raise RuntimeError("RCM_ENVIRONMENT=production needs RCM_COOKIE_SECURE=1 (HTTPS only)")
+    get_session_store()  # and so does RCM_SESSIONS_FILE in production
     if production():
         for org in get_org_registry().list():
             if org.status == OrgStatus.ACTIVE and org.baa is None:
@@ -104,6 +108,8 @@ app.include_router(audit.router)
 app.include_router(users.router)
 app.include_router(organisation.router)
 app.include_router(platform.router)
+app.include_router(claim_api.router)
+app.include_router(claim_import.router)  # before claims: /api/claims/import isn't a claim ID
 app.include_router(claims.router)
 app.include_router(drafts.router)
 app.include_router(payers.router)
@@ -149,7 +155,12 @@ def _audit(request: Request, status_code: int) -> None:
     if user is not None and user.emergency_access_id:
         detail["emergency_access"] = user.emergency_access_id
     platform_route = request.url.path.startswith("/api/platform/")
-    log = get_platform_audit_log() if platform_route else _audit_log_for(user, username)
+    # A refused API key names its organisation, so that organisation sees the attempt
+    refused_key_org = detail.pop("audit_organisation", None)
+    if refused_key_org and get_org_registry().has_data(refused_key_org):
+        log = get_audit_log(refused_key_org)
+    else:
+        log = get_platform_audit_log() if platform_route else _audit_log_for(user, username)
     log.record(
         username=username,
         role=user.role if user else None,

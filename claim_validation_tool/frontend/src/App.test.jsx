@@ -149,7 +149,13 @@ describe('Audit Log page', () => {
     window.location.hash = '#/audit'
     const fetchMock = mockApi({
       'GET /auth/me': () => ADMIN,
-      'GET /audit/verify': () => ({ ok: true, events: 1234, first_bad_seq: null }),
+      'GET /audit/verify': () => ({
+        ok: true,
+        events: 1234,
+        first_bad_seq: null,
+        retention_years: 6,
+        purged_through_year: null,
+      }),
       'GET /audit': () => [
         {
           seq: 2,
@@ -169,7 +175,9 @@ describe('Audit Log page', () => {
       ],
     })
     render(<App />)
-    expect(await screen.findByText(/Hash chain intact across 1,234 events/)).toBeInTheDocument()
+    expect(await screen.findByText(/Hash chain intact across 1,234 events, with none missing from the end/)).toBeInTheDocument()
+    expect(screen.getByText(/kept for at least 6 years/)).toBeInTheDocument()
+    expect(screen.queryByText(/were deleted/)).not.toBeInTheDocument()
     expect(screen.getByText('GET /api/patients')).toBeInTheDocument()
     expect(screen.getByText('403 denied')).toBeInTheDocument()
 
@@ -191,5 +199,24 @@ describe('Audit Log page', () => {
     })
     render(<App />)
     expect(await screen.findByRole('alert')).toHaveTextContent('altered at event 7')
+  })
+
+  it('says which years were deleted under the retention policy', async () => {
+    window.location.hash = '#/audit'
+    mockApi({
+      'GET /auth/me': () => ADMIN,
+      'GET /audit/verify': () => ({
+        ok: true,
+        events: 40,
+        first_bad_seq: null,
+        retention_years: 6,
+        purged_through_year: 2019,
+        purged_at: '2026-01-05T09:00:00Z',
+        purged_by: 'Ana Diaz',
+      }),
+      'GET /audit': () => [],
+    })
+    render(<App />)
+    expect(await screen.findByText(/Events from 2019 and earlier were deleted.*by Ana Diaz/)).toBeInTheDocument()
   })
 })

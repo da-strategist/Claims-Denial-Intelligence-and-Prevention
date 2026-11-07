@@ -2,6 +2,7 @@ import { Fragment, useState } from 'react'
 import ClaimDetailPanel from '../components/ClaimDetailPanel'
 import ClaimFilters from '../components/ClaimFilters'
 import Icon from '../components/Icon'
+import PatientReviewCard from '../components/PatientReviewCard'
 import PageHeader, { AccessNote, Notice, Page } from '../components/PageHeader'
 import Pagination from '../components/Pagination'
 import RiskScore from '../components/RiskScore'
@@ -219,6 +220,18 @@ function ViewSwitch({ view, attentionCount, onChange }) {
   )
 }
 
+// An open claim stays where it is until it's collapsed, even when a fix or a submission
+// takes it out of the list (out of the queue, past a filter) or re-sorts it by risk
+function keepOpenClaims(claims, held, expanded) {
+  const open = held.filter(({ claim }) => expanded.has(claim.claim_id))
+  if (!open.length) return claims
+  const openIds = new Set(open.map(({ claim }) => claim.claim_id))
+  const fresh = Object.fromEntries(claims.map((claim) => [claim.claim_id, claim]))
+  const rows = claims.filter((claim) => !openIds.has(claim.claim_id))
+  for (const { claim, index } of open) rows.splice(index, 0, fresh[claim.claim_id] ?? claim)
+  return rows
+}
+
 export default function ClaimsWorkbench() {
   // #/claims?search=CLM0120001 opens the workbench on that claim, expanded;
   // #/claims?attention=1&from=…&to=… opens the queue for a dashboard period
@@ -249,7 +262,11 @@ export default function ClaimsWorkbench() {
   const setPage = (nextPage) => setPaging({ queryKey, page: nextPage })
 
   const { data, loading, error, reload } = useClaims({ ...query, page, page_size: PAGE_SIZE })
-  const claims = data?.items ?? []
+  // Open claims at their place in the list when one changed, for this query and page
+  const [held, setHeld] = useState({ listKey: '', rows: [] })
+  const listKey = `${queryKey}|${page}`
+  const listed = data?.items ?? []
+  const claims = held.listKey === listKey ? keepOpenClaims(listed, held.rows, expanded) : listed
   const validations = useClaimValidations(claims.map((claim) => claim.claim_id))
   const payers = usePayerLookup()
   const departments = useDepartmentLookup()
@@ -298,6 +315,7 @@ export default function ClaimsWorkbench() {
       >
         <ViewSwitch view={view} attentionCount={attention?.total} onChange={changeView} />
       </PageHeader>
+      <PatientReviewCard />
 
       <AccessNote />
 
@@ -347,6 +365,12 @@ export default function ClaimsWorkbench() {
                           claim={claim}
                           validation={validation}
                           onClaimChanged={() => {
+                            setHeld({
+                              listKey,
+                              rows: claims.flatMap((row, index) =>
+                                expanded.has(row.claim_id) ? [{ claim: row, index }] : [],
+                              ),
+                            })
                             reload()
                             validations.reload()
                           }}
@@ -358,7 +382,7 @@ export default function ClaimsWorkbench() {
               )
             })}
             {!data && loading && <MessageRow>Loading claims…</MessageRow>}
-            {data?.items.length === 0 && (
+            {data && claims.length === 0 && (
               <MessageRow>
                 {view === 'attention' && elsewhere.data?.total > 0 ? (
                   <span className="inline-flex flex-col items-center gap-3">

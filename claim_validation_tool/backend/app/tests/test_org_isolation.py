@@ -7,6 +7,7 @@ showing up in a Meridian response is easy to spot, and vice versa.
 
 import json
 import re
+from uuid import uuid4
 
 import pytest
 
@@ -14,6 +15,7 @@ from app.data.audit import get_audit_log
 from app.data.orgs import get_org_registry
 from app.data.users import get_user_store
 from app.models import Role
+from app.data.api_keys import get_api_keys
 from app.tests.conftest import LAKESIDE_FIXTURES_DIR, api_routes, sign_in
 from app.tests.test_claim_entry import NEW_CLAIM
 
@@ -44,6 +46,8 @@ def other_orgs_ids(client, org, role=Role.ADMIN):
         "username": "biller2" if org == "lakeside" else "biller1",
         "org_id": org,  # platform routes: refused to organisation accounts
         "grant_id": "EA-0000abcd",
+        "payer_id": "PAY001",  # each organisation's own lists: see test_prior_auth_lists
+        "key_id": get_api_keys().create(org, f"Owner's key {uuid4().hex}", "admin1")[0].id,
     }
 
 
@@ -51,6 +55,7 @@ def other_orgs_ids(client, org, role=Role.ADMIN):
 def test_no_route_reaches_another_organisations_records(client, viewer, owner):
     ids = other_orgs_ids(client, owner)
     sign_in(client, Role.ADMIN, viewer)
+    key = {"Authorization": f"Bearer {get_api_keys().create(viewer, 'Walk', 'admin1')[1]}"}
     # Anything of the owner's beyond the ID that was asked for would be a leak
     markers = LAKESIDE_MARKERS if owner == "lakeside" else MERIDIAN_MARKERS
     checked = 0
@@ -61,7 +66,9 @@ def test_no_route_reaches_another_organisations_records(client, viewer, owner):
         url = path
         for name in params:
             url = url.replace("{" + name + "}", ids[name])
-        res = client.request(method, url, json={})
+        # The claims API takes the viewer's API key rather than a session
+        headers = key if path.startswith("/api/v1/") else None
+        res = client.request(method, url, json={}, headers=headers)
         checked += 1
         assert res.status_code in (403, 404, 422), f"{method} {url} -> {res.status_code}: {res.text[:200]}"
         echoed = res.text
@@ -69,6 +76,8 @@ def test_no_route_reaches_another_organisations_records(client, viewer, owner):
             echoed = echoed.replace(asked, "")
         leak = markers.search(echoed)
         assert leak is None, f"{method} {url} revealed {leak.group()}"
+    # Revoking another organisation's key was refused above, so it still works
+    assert get_api_keys().get(ids["key_id"]).revoked_at is None
     assert checked >= 20  # every route with an ID in its path (a broken walk would find none)
 
 
@@ -95,7 +104,7 @@ def test_lists_and_dashboards_hold_only_the_organisations_own_data(client):
         leak = MERIDIAN_MARKERS.search(text)
         assert leak is None, f"Lakeside's GET {path} shows Meridian's {leak.group()}"
     assert client.get("/api/claims").json()["total"] == 10
-    assert client.get("/api/auth/me").json()["organisation"] == {"id": "lakeside", "name": "Lakeside"}
+    assert client.get("/api/auth/me").json()["organisation"]["id"] == "lakeside"
 
 
 def test_writes_stay_inside_the_organisation(client, today):
