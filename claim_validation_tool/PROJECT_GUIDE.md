@@ -38,6 +38,12 @@ This tool validates healthcare claims against configurable rules, identifies den
   - `auth.py` — sessions, login throttling, and the `require(permission)` route dependency
   - `edi837.py`, `edi_settings.py`, `edi_reader.py`, `claim_pdf.py` — build the 837 at submission
     from the claim and the organisation settings, read a saved 837 back, and render its PDFs
+- `app/data/coding_edits.py` — coding checks on service lines (NCCI edits, MUE limits, LCD/NCD
+  coverage by each line's own diagnosis, and a diagnosis/procedure screen by ICD-10 chapter).
+  The repository turns them into the `ncci_conflict`, `mue_exceeded`, `diagnosis_not_covered`
+  and `diagnosis_procedure_mismatch` rule fields for claims entered here; AI Fix reads the
+  details from `ReferenceData.coding`. New seed rules reach existing organisations through
+  `SEED_ADDITIONS` in `seed_rules.py`
 - `app/data/` — data access: claims repository over the synthetic CSVs (claims entered in the app
   are saved in `new_claims.json` and replayed on startup), JSON-backed rule, correction, saved-draft
   (`drafts.py`) and patient registration (`registrations.py`) stores, reference data (CPT, ICD-10, contracts, CARC/RARC), and the

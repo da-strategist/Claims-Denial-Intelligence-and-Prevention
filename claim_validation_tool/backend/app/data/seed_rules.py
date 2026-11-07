@@ -7,6 +7,69 @@ total_charge, ~$31.6K, rather than the prototype's $50K, which no claim reaches)
 
 from app.models import RuleCreate
 
+# Added in seed version 2: errors from the coding checks on service lines. An organisation
+# whose rules were saved before then gets these once (RuleRepository._load)
+CODING_RULES: list[RuleCreate] = [
+    RuleCreate(
+        name="NCCI Procedure-to-Procedure Edit",
+        description=(
+            "Two procedures on the claim form an NCCI edit: the column 2 code is bundled into "
+            "the column 1 code and is denied unless a modifier documents a distinct service"
+        ),
+        category="Coding",
+        severity="error",
+        recommended_action=(
+            "Remove the bundled line, or add modifier 59 or XE/XS/XP/XU only if the documentation "
+            "shows a separate session, site, or practitioner"
+        ),
+        conditions=[{"field": "ncci_conflict", "operator": "equals", "value": "true"}],
+    ),
+    RuleCreate(
+        name="Units Exceed MUE Limit",
+        description="A procedure is billed with more units than its Medically Unlikely Edit allows per day",
+        category="Coding",
+        severity="error",
+        recommended_action="Correct the units to what was performed, within the MUE limit",
+        conditions=[{"field": "mue_exceeded", "operator": "equals", "value": "true"}],
+    ),
+    RuleCreate(
+        name="Diagnosis Not Covered (LCD/NCD)",
+        description=(
+            "A procedure has a coverage policy, and the diagnosis its line points to isn't on "
+            "the policy's covered list, so the payer will deny it as not medically necessary"
+        ),
+        category="Coding",
+        severity="error",
+        recommended_action=(
+            "Check the documentation for a covered diagnosis and code it, or obtain an ABN "
+            "before billing a non-covered service"
+        ),
+        conditions=[{"field": "diagnosis_not_covered", "operator": "equals", "value": "true"}],
+    ),
+]
+
+# Added in seed version 3: a line whose diagnosis doesn't plausibly fit its procedure
+MISMATCH_RULES: list[RuleCreate] = [
+    RuleCreate(
+        name="Diagnosis Doesn't Match Procedure",
+        description=(
+            "A specialty procedure points to a diagnosis from an unrelated body system (e.g. an "
+            "echocardiogram for anxiety), a common reason for medical necessity denials"
+        ),
+        category="Coding",
+        severity="warning",
+        recommended_action=(
+            "Point the line at the diagnosis that justifies the procedure, adding it if it's "
+            "documented; query the provider if the reason for the service isn't clear"
+        ),
+        conditions=[{"field": "diagnosis_procedure_mismatch", "operator": "equals", "value": "true"}],
+    ),
+]
+
+# Rules added to organisations whose saved rules predate each seed version
+SEED_ADDITIONS: dict[int, list[RuleCreate]] = {2: CODING_RULES, 3: MISMATCH_RULES}
+SEED_VERSION = max(SEED_ADDITIONS)
+
 DEFAULT_RULES: list[RuleCreate] = [
     RuleCreate(
         name="Missing Primary Diagnosis Code",
@@ -94,4 +157,6 @@ DEFAULT_RULES: list[RuleCreate] = [
             {"field": "total_charge", "operator": "greaterThan", "value": "20000"},
         ],
     ),
+    *CODING_RULES,
+    *MISMATCH_RULES,
 ]

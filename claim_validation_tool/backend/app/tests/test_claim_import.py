@@ -146,6 +146,11 @@ def test_an_upload_is_audited_with_its_claims(client, today):
 
 
 def test_a_submitted_837p_reads_back_into_the_same_claim(client, today):
+    # Two E&M visits on one day, one with 2 units, would be stopped by the NCCI and MUE checks;
+    # they're switched off here so the claim can be submitted and its 837 read back
+    for name in ("NCCI Procedure-to-Procedure Edit", "Units Exceed MUE Limit"):
+        [rule] = [r for r in client.get("/api/rules").json() if r["name"] == name]
+        assert client.patch(f"/api/rules/{rule['id']}", json={"enabled": False}).status_code == 200
     original, download = submitted_837(
         client,
         diagnoses=["E11.65", "I10"],

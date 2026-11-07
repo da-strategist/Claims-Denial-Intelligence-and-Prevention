@@ -12,6 +12,7 @@ from typing import Protocol
 from pydantic import ValidationError
 
 from app.data import ClaimsRepository, CorrectionStore, ReferenceData, RuleRepository
+from app.data.coding_edits import ALWAYS_PLAUSIBLE, CodingResult, icd10_chapter
 from app.data.reference import contract_rate
 from app.models import (
     RULE_FIELDS,
@@ -73,6 +74,14 @@ def _has(rule: Rule, field: str, operator: str, value: str | None = None) -> boo
 
 def _kind(rule: Rule) -> str:
     """What a rule checks, judged from its conditions (rule IDs can change)."""
+    if _has(rule, "ncci_conflict", "equals", "true"):
+        return "ncci_conflict"
+    if _has(rule, "mue_exceeded", "equals", "true"):
+        return "mue_exceeded"
+    if _has(rule, "diagnosis_not_covered", "equals", "true"):
+        return "diagnosis_not_covered"
+    if _has(rule, "diagnosis_procedure_mismatch", "equals", "true"):
+        return "diagnosis_procedure_mismatch"
     if _has(rule, "pa_required", "equals", "true") and _has(rule, "pa_obtained", "equals", "false"):
         return "missing_prior_auth"
     if _has(rule, "pa_obtained", "equals", "true") and _has(rule, "pa_number", "isEmpty"):
@@ -151,6 +160,19 @@ def _icd10_citation(reference: ReferenceData, code: str) -> list[Citation]:
             excerpt=f"{entry['body_system']} · {entry['acuity_type']}",
         )
     ]
+
+
+def _coding_result(context: ClaimContext) -> CodingResult:
+    """The claim's coding checks, as they stand (after any corrected diagnosis)."""
+    claim = context.claim
+    return context.reference.coding.check(
+        [line.model_dump() for line in claim.lines],
+        [claim.primary_icd10 or "", *claim.additional_icd10],
+        claim.service_date.isoformat(),
+    )
+
+
+EDIT_THE_DRAFT = "Open the claim on New Claim (Drafts), correct the line, and save it"
 
 
 class RuleBasedSuggester:
@@ -391,6 +413,241 @@ class RuleBasedSuggester:
             action=SuggestionAction.MANUAL,
             confidence=Confidence.MEDIUM,
             citations=_payer_citation(claim),
+        )
+
+    def _ncci_conflict(self, context: ClaimContext, rule: Rule) -> FixSuggestion:
+        conflicts = _coding_result(context).ncci
+        if not conflicts:
+            return self._generic(context, rule)
+        first = conflicts[0]
+        pair = f"CPT {first.column_2_cpt} (line {first.line_number}) with {first.column_1_cpt}"
+        more = f" {len(conflicts) - 1} more pair(s) are listed below." if len(conflicts) > 1 else ""
+        citations = [
+            Citation(
+                source_type=SourceType.NCCI_EDIT,
+                reference_id=c.edit_id,
+                title=f"NCCI PTP edit {c.column_1_cpt} / {c.column_2_cpt}",
+                excerpt=f"{c.rationale}. "
+                + ("A distinct-service modifier can bypass it." if c.modifier_allowed else "No modifier bypasses it."),
+            )
+            for c in conflicts
+        ]
+        if not first.modifier_allowed:
+            return self._base(
+                context,
+                rule,
+                title=f"Remove CPT {first.column_2_cpt} from line {first.line_number}",
+                summary=f"{pair} is never paid on the same day: {first.rationale.lower()}.{more}",
+                reasoning=(
+                    "This edit's modifier indicator is 0, so no modifier makes the column 2 code "
+                    "payable. Billing it anyway gets the line denied and draws audit attention."
+                ),
+                steps=[f"Remove line {first.line_number} (CPT {first.column_2_cpt})", EDIT_THE_DRAFT],
+                action=SuggestionAction.MANUAL,
+                confidence=Confidence.HIGH,
+                citations=citations,
+                clarification_topic=ClarificationTopic.NCCI_MODIFIERS,
+            )
+        return self._base(
+            context,
+            rule,
+            title=f"Resolve the NCCI edit on line {first.line_number}",
+            summary=f"{pair} is bundled: {first.rationale.lower()}.{more}",
+            reasoning=(
+                "The payer will deny the column 2 code as included in the column 1 code. If the "
+                "documentation shows a separate session, site, or practitioner, modifier 59 (or "
+                "XE/XS/XP/XU) reports it as distinct. Adding a modifier without that support is "
+                "a compliance risk; otherwise remove the line."
+            ),
+            steps=[
+                "Check the documentation for a separate session, site, or practitioner",
+                f"If it's there, add modifier XS, XE, XP, XU or 59 to line {first.line_number}; "
+                "if not, remove the line",
+                EDIT_THE_DRAFT,
+            ],
+            action=SuggestionAction.CLARIFY,
+            confidence=Confidence.MEDIUM,
+            citations=citations,
+            clarification_topic=ClarificationTopic.NCCI_MODIFIERS,
+        )
+
+    def _mue_exceeded(self, context: ClaimContext, rule: Rule) -> FixSuggestion:
+        excesses = _coding_result(context).mue
+        if not excesses:
+            return self._base(
+                context, rule, title=f"Review: {rule.name}", summary=rule.description,
+                reasoning="The units no longer exceed the limit.", action=SuggestionAction.MANUAL,
+                confidence=Confidence.LOW,
+            )
+        first = excesses[0]
+        lines = [line.line_number for line in context.claim.lines if line.cpt_code == first.cpt_code]
+        where = f"line{'s' * (len(lines) > 1)} {', '.join(map(str, lines))}"
+        return self._base(
+            context,
+            rule,
+            title=f"Reduce CPT {first.cpt_code} to {first.limit} unit{'s' * (first.limit > 1)}",
+            summary=f"{first.units} units of CPT {first.cpt_code} are billed ({where}); the MUE allows {first.limit} per day.",
+            reasoning=(
+                f"{first.rationale}. Units above the limit are denied outright. If more were "
+                "truly performed, the payer needs documentation of medical necessity, usually "
+                "on appeal."
+            ),
+            steps=[
+                "Confirm in the documentation how many units were performed",
+                f"Set CPT {first.cpt_code} to at most {first.limit} unit(s) on {where}",
+                EDIT_THE_DRAFT,
+            ],
+            action=SuggestionAction.MANUAL,
+            confidence=Confidence.HIGH,
+            citations=[
+                Citation(
+                    source_type=SourceType.MUE,
+                    reference_id=e.mue_id,
+                    title=f"MUE for CPT {e.cpt_code}: {e.limit} per day",
+                    excerpt=f"{e.rationale}. Billed: {e.units}.",
+                )
+                for e in excesses
+            ],
+            clarification_topic=ClarificationTopic.NCCI_MODIFIERS,
+        )
+
+    def _diagnosis_not_covered(self, context: ClaimContext, rule: Rule) -> FixSuggestion:
+        claim = context.claim
+        uncovered = _coding_result(context).uncovered
+        if not uncovered:
+            return self._generic(context, rule)
+        first = uncovered[0]
+        covered = sorted(set(first.covered_icd10))
+        diagnoses = [claim.primary_icd10 or "", *claim.additional_icd10]
+        on_claim = [code for code in diagnoses if code in covered]
+        citations = [
+            Citation(
+                source_type=SourceType.COVERAGE_POLICY,
+                reference_id=u.policy_id,
+                title=f"{u.policy_id}: {u.title}",
+                excerpt=f"Covers CPT {u.cpt_code} for {', '.join(u.covered_icd10)}",
+            )
+            for u in uncovered
+        ] + _icd10_citation(context.reference, first.diagnosis)
+        summary = (
+            f"Line {first.line_number} (CPT {first.cpt_code}) points to {first.diagnosis}; "
+            f"{first.title} ({first.policy_id}) covers it only for {', '.join(covered)}."
+        )
+        reasoning = (
+            "Payers judge each line by the diagnosis it points to. Without a covered one the "
+            "service is denied as not medically necessary."
+        )
+        if on_claim:
+            # The claim already has a covered diagnosis; the line points at the wrong one
+            return self._base(
+                context,
+                rule,
+                title=f"Point line {first.line_number} at {on_claim[0]}",
+                summary=summary,
+                reasoning=reasoning
+                + f" {', '.join(on_claim)} is already on the claim, so the line likely points at the wrong diagnosis.",
+                steps=[
+                    f"Confirm {on_claim[0]} is the reason for CPT {first.cpt_code}",
+                    f"Change line {first.line_number}'s diagnosis to {on_claim[0]}",
+                    EDIT_THE_DRAFT,
+                ],
+                action=SuggestionAction.MANUAL,
+                confidence=Confidence.MEDIUM,
+                citations=citations,
+                clarification_topic=ClarificationTopic.MEDICAL_NECESSITY,
+            )
+        documentation = f" Documentation required: {first.documentation_required}"
+        if first.diagnosis == claim.primary_icd10:
+            return self._base(
+                context,
+                rule,
+                title=f"Diagnosis doesn't support CPT {first.cpt_code} under {first.policy_id}",
+                summary=summary,
+                reasoning=reasoning
+                + " Change the diagnosis only if the documentation supports one on the list; "
+                "otherwise the patient should sign an ABN before a non-covered service."
+                + documentation,
+                steps=[
+                    "Review the provider's documentation for a covered condition",
+                    "If one is documented, choose it below and apply",
+                    "If not, obtain an ABN or don't bill the service as covered",
+                ],
+                action=SuggestionAction.APPLY,
+                confidence=Confidence.LOW,
+                changes=[_change(claim, "primary_icd10", options=covered)],
+                citations=citations,
+                clarification_topic=ClarificationTopic.MEDICAL_NECESSITY,
+            )
+        return self._base(
+            context,
+            rule,
+            title=f"Diagnosis on line {first.line_number} doesn't support CPT {first.cpt_code}",
+            summary=summary,
+            reasoning=reasoning
+            + " The line points at a secondary diagnosis, so correct it on the draft." + documentation,
+            steps=[
+                "Review the provider's documentation for a covered condition",
+                f"If one is documented, add it and point line {first.line_number} at it",
+                "If not, obtain an ABN or don't bill the service as covered",
+                EDIT_THE_DRAFT,
+            ],
+            action=SuggestionAction.MANUAL,
+            confidence=Confidence.LOW,
+            citations=citations,
+            clarification_topic=ClarificationTopic.MEDICAL_NECESSITY,
+        )
+
+    def _diagnosis_procedure_mismatch(self, context: ClaimContext, rule: Rule) -> FixSuggestion:
+        claim = context.claim
+        mismatched = _coding_result(context).mismatched
+        if not mismatched:
+            return self._generic(context, rule)
+        first = mismatched[0]
+        procedure = context.reference.cpt.get(first.cpt_code, {}).get("description", first.cpt_code)
+        diagnoses = [claim.primary_icd10 or "", *claim.additional_icd10]
+        fitting = [
+            code for code in diagnoses if code and icd10_chapter(code) in set(first.expected) | ALWAYS_PLAUSIBLE
+        ]
+        more = f" {len(mismatched) - 1} more line(s) are listed below." if len(mismatched) > 1 else ""
+        steps = [
+            f"Check why {procedure.lower()} was performed in the provider's documentation",
+            (
+                f"If it was for {fitting[0]}, point line {first.line_number} at it"
+                if fitting
+                else f"Add the documented reason (a {' or '.join(first.expected).lower()} diagnosis) "
+                f"and point line {first.line_number} at it"
+            ),
+            "Query the provider if the reason isn't documented",
+            EDIT_THE_DRAFT,
+        ]
+        return self._base(
+            context,
+            rule,
+            title=f"Check the diagnosis for line {first.line_number} (CPT {first.cpt_code})",
+            summary=(
+                f"Line {first.line_number} bills {procedure} ({first.category}) for {first.diagnosis}, "
+                f"{'an' if first.chapter[0] in 'AEIOU' else 'a'} {first.chapter.lower()} diagnosis.{more}"
+            ),
+            reasoning=(
+                f"{first.category} procedures are usually justified by "
+                f"{', '.join(first.expected).lower()} diagnoses, or by a symptom or encounter reason. "
+                "A diagnosis from an unrelated body system is a common medical necessity denial. "
+                "This is a screen by ICD-10 chapter, not a payer rule, so it may be right as billed."
+            ),
+            steps=steps,
+            action=SuggestionAction.CLARIFY,
+            confidence=Confidence.MEDIUM if fitting else Confidence.LOW,
+            citations=[
+                Citation(
+                    source_type=SourceType.CLAIM_DATA,
+                    reference_id=f"line-{m.line_number}",
+                    title=f"Line {m.line_number} · CPT {m.cpt_code} ({m.category})",
+                    excerpt=f"Points to {m.diagnosis} ({m.chapter}); expected {', '.join(m.expected)}",
+                )
+                for m in mismatched
+            ]
+            + _icd10_citation(context.reference, first.diagnosis),
+            clarification_topic=ClarificationTopic.MEDICAL_NECESSITY,
         )
 
     def _generic(self, context: ClaimContext, rule: Rule) -> FixSuggestion:

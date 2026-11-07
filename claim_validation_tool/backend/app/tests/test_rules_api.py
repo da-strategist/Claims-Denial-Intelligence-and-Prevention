@@ -9,7 +9,7 @@ NEW_RULE = {
 
 def test_list_rules_returns_seed_set(client):
     rules = client.get("/api/rules").json()
-    assert len(rules) == 9
+    assert len(rules) == 13
     assert rules[0]["id"] == "RULE-001"
 
 
@@ -23,12 +23,12 @@ def test_create_get_and_delete_rule(client):
     created = client.post("/api/rules", json=NEW_RULE)
     assert created.status_code == 201
     rule = created.json()
-    assert rule["id"] == "RULE-010"
+    assert rule["id"] == "RULE-014"
     assert rule["enabled"] is True
 
-    assert client.get("/api/rules/RULE-010").json()["name"] == "Medicaid ER visit"
-    assert client.delete("/api/rules/RULE-010").status_code == 204
-    assert client.get("/api/rules/RULE-010").status_code == 404
+    assert client.get("/api/rules/RULE-014").json()["name"] == "Medicaid ER visit"
+    assert client.delete("/api/rules/RULE-014").status_code == 204
+    assert client.get("/api/rules/RULE-014").status_code == 404
 
 
 def test_patch_changes_only_sent_fields(client):

@@ -208,6 +208,10 @@ Features 3 and 4 can follow when real volume flows or a client asks.
    credentials, and a business associate agreement first; complete
    `backend/edi_settings.json` and validate a test file with them before going live.
 
+## Client-facing documentation (later)
+
+- [ ] **Architecture and product document for client discussions.** A plain-language explanation of how the tool is built (frontend, backend, data per organisation, security and compliance, the assistant and what it shares with Claude, the claim routes), with a diagram, written for hospital IT, compliance and revenue cycle leads. Build it from `PROJECT_GUIDE.md`, `README.md` and `DATA_SEGREGATION_PLAN.md`.
+
 ## Summary
 
 | Phase | Status |

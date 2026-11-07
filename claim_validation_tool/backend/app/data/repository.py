@@ -17,6 +17,7 @@ from typing import Any
 import pandas as pd
 from cryptography.fernet import Fernet
 
+from app.data.coding_edits import NO_FLAGS, CodingEdits
 from app.data.corrections import get_correction_store
 from app.data.new_claims import NewClaimStore, get_new_claim_store
 from app.data.orgs import get_org_registry, org_cipher_for
@@ -125,6 +126,13 @@ class ClaimsRepository:
         if "additional_icd10" not in self._claims:
             self._claims["additional_icd10"] = ""
         self._claims["other_payer_ids"] = ""
+        # Coding checks on service lines (coding_edits.py) run on claims entered or uploaded
+        # here, before they go out. Source claims were adjudicated long ago; their synthetic
+        # lines would flag most of them, so they aren't checked
+        self._coding = CodingEdits.load(data_dir)
+        for column, value in NO_FLAGS.items():
+            self._claims[column] = value
+        self._checked_ids: set[str] = set()
         self._pending_ids: set[str] = set()
         self._draft_ids: set[str] = set()
         # What claims entered in the app carry beyond the source columns (billing details
@@ -222,6 +230,7 @@ class ClaimsRepository:
                 for field in CORRECTABLE_FIELDS:
                     self._claims.loc[pos, field] = self._original.loc[pos, field]
                 self._claims.loc[pos, "has_corrections"] = False
+                self._recheck_coding(pos)
             for claim_id, fields in overrides.items():
                 pos = self._claim_pos([claim_id])[0]
                 if pos == -1:
@@ -232,6 +241,7 @@ class ClaimsRepository:
                         value = parse_condition_value(RULE_FIELDS[field], fields[field])
                     self._claims.loc[pos, field] = value
                 self._claims.loc[pos, "has_corrections"] = True
+                self._recheck_coding(pos)
             changed = self._corrected_ids | overrides.keys()
             self._corrected_ids = set(overrides)
             self._bump(changed)
@@ -344,7 +354,7 @@ class ClaimsRepository:
         if the claim_id is taken or the patient isn't registered.
         """
         claim_id = fields["claim_id"]
-        row = self._claim_row(fields)
+        row = self._claim_row(fields, lines)
         with self._overlay_lock:
             if self._claim_pos([claim_id])[0] != -1:
                 raise ValueError(f"Claim {claim_id} already exists")
@@ -357,6 +367,7 @@ class ClaimsRepository:
             )
             self._claim_pos = pd.Index(self._claims["claim_id"]).get_indexer
             self._append_lines(claim_id, lines)
+            self._checked_ids.add(claim_id)
             self._claims_per_patient[fields["patient_id"]] = (
                 self._claims_per_patient.get(fields["patient_id"], 0) + 1
             )
@@ -389,7 +400,7 @@ class ClaimsRepository:
         claim_id = fields["claim_id"]
         # An edit gives the claim's details again; the hospital's number for it stays
         fields = {**fields, "source_ref": self._source_refs.get(claim_id)}
-        row = self._claim_row(fields)
+        row = self._claim_row(fields, lines)
         with self._overlay_lock:
             pos = self._claim_pos([claim_id])[0]
             if pos == -1:
@@ -417,8 +428,8 @@ class ClaimsRepository:
         assert claim is not None
         return claim
 
-    def _claim_row(self, fields: dict[str, Any]) -> dict[str, Any]:
-        """A fact_claims row for a claim entered in the app."""
+    def _claim_row(self, fields: dict[str, Any], lines: list[dict[str, Any]]) -> dict[str, Any]:
+        """A fact_claims row for a claim entered in the app, with its coding checks."""
         patient = self._patient(fields["patient_id"])
         if patient is None:
             raise ValueError(f"Patient {fields['patient_id']} is not registered")
@@ -444,7 +455,24 @@ class ClaimsRepository:
             in [fields["payer_id"], *fields.get("other_payer_ids", [])],
             "has_corrections": False,
             "is_overdue": False,
+            **self._coding.check(
+                lines,
+                [fields.get("primary_icd10") or "", *fields.get("additional_icd10", [])],
+                fields["service_date"],
+            ).flags(),
         }
+
+    def _recheck_coding(self, pos: int) -> None:
+        """Run the coding checks again on a claim whose diagnosis was corrected (AI Fix).
+        Caller holds the lock."""
+        row = self._claims.iloc[pos]
+        if row["claim_id"] not in self._checked_ids:
+            return
+        lines = self._rows(self._lines, self._lines_by_claim.get(row["claim_id"]))
+        diagnoses = [str(row["primary_icd10"]), *str(row["additional_icd10"]).split("|")]
+        flags = self._coding.check(lines, diagnoses, str(row["service_date"])).flags()
+        for column, value in flags.items():
+            self._claims.at[pos, column] = value
 
     def submission_frame(self, claim_id: str) -> pd.DataFrame:
         """The claim as it would be if submitted today, for the final rule check.

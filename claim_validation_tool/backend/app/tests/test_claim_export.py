@@ -113,7 +113,8 @@ def test_the_list_shows_edits_in_words_and_keeps_fixes_the_edit_folded_in(client
     )
     assert res.status_code == 200, res.text
     assert get_correction_store("meridian").for_claim(claim_id) == []
-    hand_off(client, claim_id)
+    # 2 units of an office visit is over its MUE, an open issue to acknowledge
+    hand_off(client, claim_id, acknowledge_open_issues=True)
 
     changes = {c["field"]: c for c in export(client, claim_id).json()["changes"]}
     assert changes["pa_number"]["new_value"] == "PA123"
@@ -128,7 +129,7 @@ def test_the_list_shows_edits_in_words_and_keeps_fixes_the_edit_folded_in(client
 def test_changes_survive_a_restart(client, today):
     claim_id = create(client).json()["claim"]["claim_id"]
     edit(client, claim_id, lines=[{**NEW_CLAIM["lines"][0], "units": 3}])
-    hand_off(client, claim_id)
+    hand_off(client, claim_id, acknowledge_open_issues=True)  # 3 units is over the MUE
     get_claim_change_log.cache_clear()
     assert [c["field"] for c in export(client, claim_id).json()["changes"] if c["field"] == "line.1.units"]
 

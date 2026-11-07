@@ -199,5 +199,5 @@ def test_rule_test_counts_scope_and_matches(repo):
 
 
 def test_seed_rules_are_valid():
-    assert len(DEFAULT_RULES) == 9
+    assert len(DEFAULT_RULES) == 13
     assert all(isinstance(rule, RuleCreate) for rule in DEFAULT_RULES)

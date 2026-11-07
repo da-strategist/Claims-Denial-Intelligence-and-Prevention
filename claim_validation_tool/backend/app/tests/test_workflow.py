@@ -32,7 +32,7 @@ def test_claim_from_entry_to_overdue(client, today):
             "payer_id": patient["primary_payer_id"],
             "provider_id": provider["provider_id"],
             "diagnoses": ["E11.65"],
-            "lines": [{"cpt_code": "99213", "units": 2, "icd10_pointer": "E11.65"}],
+            "lines": [{"cpt_code": "99213", "units": 1, "icd10_pointer": "E11.65"}],
             "claim_type": "Professional",
             "service_date": "2026-01-05",
             "submission_date": "2026-01-06",
@@ -49,7 +49,7 @@ def test_claim_from_entry_to_overdue(client, today):
     claim, validation = res.json()["claim"], res.json()["validation"]
     claim_id = claim["claim_id"]
     assert claim["status"] == "Draft"
-    assert claim["total_charge"] == 2 * procedures["99213"]["standard_charge"]
+    assert claim["total_charge"] == procedures["99213"]["standard_charge"]
     assert validation["status"] == "error"
     # The missing prior auth is scored once, through its rule's error
     assert [f["label"] for f in validation["risk_factors"]] == ["1 rule error"]

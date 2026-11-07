@@ -115,6 +115,20 @@ RULE_FIELDS: dict[str, RuleField] = {
             label="Patient's Primary Payer on Claim",
             type=FieldType.BOOLEAN,
         ),
+        # Coding checks on the service lines (data/coding_edits.py), for claims entered or
+        # uploaded here; always false for the source data's adjudicated claims
+        RuleField(field="ncci_conflict", label="NCCI Edit Conflict (lines)", type=FieldType.BOOLEAN),
+        RuleField(field="mue_exceeded", label="Units Over MUE Limit", type=FieldType.BOOLEAN),
+        RuleField(
+            field="diagnosis_not_covered",
+            label="Diagnosis Not Covered by LCD/NCD",
+            type=FieldType.BOOLEAN,
+        ),
+        RuleField(
+            field="diagnosis_procedure_mismatch",
+            label="Diagnosis Doesn't Fit Procedure",
+            type=FieldType.BOOLEAN,
+        ),
     ]
 }
 

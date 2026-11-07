@@ -152,7 +152,7 @@ def test_claim_missing_patients_primary_payer_is_flagged_for_rules(client):
 
     def flagged(**changes):
         findings = create(client, **changes).json()["validation"]["findings"]
-        return "RULE-010" in [f["rule_id"] for f in findings]
+        return "RULE-014" in [f["rule_id"] for f in findings]
 
     # PAT000003 is registered with PAY001
     assert flagged(payer_id="PAY002")
@@ -299,7 +299,7 @@ def test_rules_can_flag_overdue_claims(client, today):
     submit(client, claim_id)
     today(date(2026, 3, 1))
     findings = client.get(f"/api/validate/{claim_id}").json()["findings"]
-    assert "RULE-010" in [f["rule_id"] for f in findings]
+    assert "RULE-014" in [f["rule_id"] for f in findings]
 
 
 def test_startup_drops_corrections_for_claims_that_no_longer_exist(anon_client):

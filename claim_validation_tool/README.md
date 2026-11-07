@@ -101,6 +101,33 @@ each payer's electronic payer ID. Until every one is set, `mode` is `production`
 facility address has a ZIP+4, files are marked as test files (ISA15 = T) and the claim lists
 what's missing. See `app/services/edi_settings.py` for the file's shape.
 
+### Coding checks on service lines
+
+Four seed rules check a claim's lines against the organisation's reference tables, the same
+ones the assistant cites. Diagnoses are judged per line, by the diagnosis each line points to,
+as payers do:
+
+| Rule | Flags a claim when |
+|---|---|
+| NCCI Procedure-to-Procedure Edit | Two of its procedures form an NCCI edit (`ref_ncci_ptp_edits`) in effect on the service date. Where the edit allows a modifier, 59 or XE/XS/XP/XU on either line bypasses it; otherwise nothing does |
+| Units Exceed MUE Limit | A procedure's units, added up across lines, exceed its MUE (`ref_mue_limits`) |
+| Diagnosis Not Covered (LCD/NCD) | A procedure has a coverage policy (`ref_lcd_ncd_policies`) and the diagnosis its line points to isn't on the covered list (error) |
+| Diagnosis Doesn't Match Procedure | A specialty procedure without a policy (cardiology, behavioural, neurology, OB/GYN, oncology, orthopaedics, pulmonology, rehab, surgery) points to a diagnosis from an unrelated ICD-10 chapter, e.g. an echocardiogram for diabetes. Symptom (R) and encounter (Z) codes always fit; office visits, labs, imaging and preventive care aren't screened. A rough screen by chapter, not a payer crosswalk, so it's a warning (`PLAUSIBLE_CHAPTERS` in `coding_edits.py`) |
+
+The first three are errors. A real diagnosis-to-procedure crosswalk (payers' LCD article ICD-10
+lists, or a commercial one) would make the fourth precise; there's none in the reference data yet.
+
+They test four rule fields (`ncci_conflict`, `mue_exceeded`, `diagnosis_not_covered`,
+`diagnosis_procedure_mismatch`), so
+administrators can disable them, change their severity, or combine them with other conditions.
+AI Fix names the line and the reference record, and points a line at a fitting diagnosis already
+on the claim when there is one. A corrected primary diagnosis clears a coverage error at once;
+line problems are fixed by editing the draft. The checks run on claims entered, uploaded or
+sent through the API, the ones that haven't gone out yet. The source data's adjudicated claims
+aren't checked, because their synthetic lines would flag about two thirds of them. Organisations
+whose rules were saved before these rules existed get them added once (`seed_version` in
+`rules.json`); a rule an administrator deletes later stays deleted.
+
 ### Risk score (0–100)
 
 25 points per rule error, 10 per warning, 20 for prior patient denials (+5 if preventable),
