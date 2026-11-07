@@ -28,7 +28,7 @@ const VALUES = [
 function TeamMember({ member }) {
   return (
     <li className="card flex flex-col p-6 sm:flex-row sm:gap-6">
-      {member.photo && (
+      {member.photo ? (
         <img
           src={member.photo}
           alt={`Portrait of ${member.name}`}
@@ -37,6 +37,16 @@ function TeamMember({ member }) {
           height="112"
           className="h-28 w-28 shrink-0 rounded-2xl object-cover"
         />
+      ) : (
+        <div
+          aria-hidden="true"
+          className="flex h-28 w-28 shrink-0 items-center justify-center rounded-2xl bg-navy text-3xl font-semibold tracking-tight text-white"
+        >
+          {member.name
+            .split(' ')
+            .map((part) => part[0])
+            .join('')}
+        </div>
       )}
       <div className="mt-4 sm:mt-0">
         <h3 className="text-lg font-semibold text-gray-900">{member.name}</h3>

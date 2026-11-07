@@ -76,11 +76,23 @@ describe('site navigation', () => {
     expect(within(screen.getByRole('main')).getByRole('link', { name: 'Request a Pilot' })).toHaveAttribute('href', '/pilot')
   })
 
-  it('labels unapproved and missing About content instead of inventing it', () => {
+  it('labels the unapproved mission and vision, and shows the founder story', () => {
     at('/about')
     render(<Site />)
     expect(screen.getAllByText('Draft · pending approval')).toHaveLength(2)
-    expect(screen.getByText(/Team profiles will appear here/)).toBeInTheDocument()
+    expect(screen.getByText(/Jubril Olalekan, Founder/)).toBeInTheDocument()
+  })
+
+  it('shows the founders with their LinkedIn profiles', () => {
+    at('/about')
+    render(<Site />)
+    const team = screen.getByRole('heading', { name: 'Jubril Olalekan' }).closest('ul')
+    expect(within(team).getByText('Founder')).toBeInTheDocument()
+    expect(within(team).getByRole('img', { name: 'Portrait of Maureen Okonkwo' })).toHaveAttribute('src', '/team/maureen-okonkwo.jpg')
+    expect(within(team).getByRole('link', { name: /profile of Maureen Okonkwo/ })).toHaveAttribute(
+      'href',
+      'https://www.linkedin.com/in/maureencokonkwo',
+    )
   })
 
   it('switches showcase tabs with the arrow keys', async () => {

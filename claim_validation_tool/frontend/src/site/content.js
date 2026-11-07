@@ -15,11 +15,36 @@ export const MISSION = {
 }
 
 /** Team profiles, in display order: { name, role, bio, photo (URL under /public), linkedin }.
- * Empty until the owner supplies real profiles; nothing here is invented. */
-export const TEAM = []
+ * Names and roles from the owner; bios drawn only from each person's LinkedIn profile.
+ * Without a photo, the card shows the person's initials. */
+export const TEAM = [
+  {
+    name: 'Jubril Olalekan',
+    role: 'Founder',
+    bio: 'Health information management professional and data analyst. Spent three years at the Institute for Information and Communication Technology (IICT) in Nigeria helping design an electronic clinical coding system (ICD-10 and ICD-10-PCS), a disease surveillance module and an electronic health insurance system, and trained more than 100 healthcare professionals in clinical coding and health record workflows. Now brings coding and revenue cycle knowledge together with data engineering to catch claim errors before submission.',
+    photo: null,
+    linkedin: 'https://www.linkedin.com/in/jubril-olalekan',
+  },
+  {
+    name: 'Maureen Okonkwo',
+    role: 'Co-founder',
+    bio: 'Senior BI and data analyst in Melbourne, building SQL, Tableau and Power BI reporting for leadership teams in SaaS, consulting and healthcare. A two-time Tableau Ambassador and Vizzies Award winner who co-leads the Lagos Tableau User Group and mentors analysts across Africa through Women in Data Africa.',
+    photo: '/team/maureen-okonkwo.jpg',
+    linkedin: 'https://www.linkedin.com/in/maureencokonkwo',
+  },
+]
 
-/** The founder's own account of why ClaustraRCM exists. Empty until supplied. */
-export const FOUNDER_STORY = ''
+/** The founder's account of why ClaustraRCM exists, adapted from the founder's own LinkedIn writing.
+ * Paragraphs are separated by a blank line. A first version, to be refined. */
+export const FOUNDER_STORY = `There’s a gap in healthcare operations that often goes unnoticed. On one side are clinical coders and health information professionals, who understand ICD-10 rules, payer coverage requirements, and exactly why a claim gets denied. On the other are data and analytics engineers, who can build pipelines and dashboards but have never opened a coding manual. Both do important work, and neither speaks the other’s language fluently.
+
+The result is denial dashboards that count problems without explaining them, and catch them only after the damage is done. A denied claim costs twice: weeks waiting on cash, and hours of rework to get it. Many denials are preventable: a missing diagnosis, two codes that can’t be billed together, a prior authorization number that never made it onto the claim.
+
+I’ve worked on both sides. I coded clinical records, trained hospital staff, and helped design an electronic clinical coding system and an electronic health insurance system, then moved into data and analytics engineering. ClaustraRCM brings the two together: it checks every claim before submission, explains what’s wrong and how to fix it, and holds back the ones likely to be denied until someone does.
+
+We’re starting with the hospitals that can least afford the leakage: rural and Critical Access Hospitals.
+
+— Jubril Olalekan, Founder`
 
 /** Published legal pages. Until they exist, /privacy and /terms say they're being prepared. */
 export const LEGAL = { privacy: null, terms: null }
