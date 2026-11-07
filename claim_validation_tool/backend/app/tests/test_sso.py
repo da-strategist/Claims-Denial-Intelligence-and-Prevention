@@ -69,7 +69,7 @@ def test_signing_in_through_the_organisations_identity_provider(client, idp):
     assert link(client, "biller1", sso_id="amina.bello@meridian.example")["sso_id"] == "amina.bello@meridian.example"
     with TestClient(client.app) as browser:
         res = sso_sign_in(browser)
-        assert res.status_code == 302 and res.headers["location"] == "/"
+        assert res.status_code == 302 and res.headers["location"] == "/app"
         me = browser.get("/api/auth/me").json()
         assert (me["username"], me["organisation"]["id"]) == ("biller1", "meridian")
     events = get_audit_log("meridian").events()

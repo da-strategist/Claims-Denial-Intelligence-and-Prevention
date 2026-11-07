@@ -321,7 +321,21 @@ npm install
 npm run dev
 ```
 
-App: http://localhost:5173. The Vite dev server proxies `/api` to port 8000.
+Website: http://localhost:5173 · App: http://localhost:5173/app. The Vite dev server proxies `/api` to port 8000.
+
+### Website and app
+
+One build serves both. The public website is at `/` (Home with the interactive Load →
+Validate & Correct → Send demo over synthetic claims), `/about`, `/pilot` (pilot interest),
+`/sign-up` (says access is by invitation), `/privacy` and `/terms`. The claims app, with its
+sign-in and hash routes, is at `/app`; older bookmarks such as `/#/claims` are sent to
+`/app#/claims`, and `/sign-in` and `/login` open the app. Each half is loaded only when
+it's visited.
+
+Content only the owner can supply (team profiles, founder story, mission and vision
+approval, legal pages) lives in `frontend/src/site/content.js`; until it's filled in, the
+pages show labelled placeholders. The pilot form opens the visitor's email app addressed
+to `VITE_PILOT_CONTACT_EMAIL`; without it, the form says requests aren't open yet.
 
 ### HTTPS
 
@@ -361,9 +375,10 @@ secure, so the HTTPS-only cookie is still sent).
 | `RCM_MASTER_KEY` | unset | Turns on encryption at rest: wraps each organisation's data key (`orgs/<id>/data_key.enc`). To replace it: put the new key first, comma, then the old; run `python -m app.orgs rotate-key`; then remove the old |
 | `RCM_KEY_PROVIDER` | `local` | Where the master key lives: `local` uses `RCM_MASTER_KEY`. Cloud key services (`aws-kms`, `azure-keyvault`, `gcp-kms`) are planned; see `DATA_SEGREGATION_PLAN.md` §9.6 |
 | `RCM_ENVIRONMENT` | unset | `production` refuses to start without `RCM_MASTER_KEY` or `RCM_COOKIE_SECURE=1`, and blocks sign-in for organisations without a BAA on record |
-| `RCM_PUBLIC_URL` | unset | The app's public address (e.g. `https://rcm.example.com`), for the single sign-on callback behind a proxy |
+| `RCM_PUBLIC_URL` | unset | The site's public address (e.g. `https://rcm.example.com`), for the single sign-on callback behind a proxy; sign-in returns to `/app` there |
 | `RCM_ALLOWED_ORIGINS` | `http://localhost:5173` | Web addresses the app is served from (comma-separated), for the browser's cross-origin check |
 | `VITE_API_BASE` | `/api` | API base URL for the frontend |
+| `VITE_PILOT_CONTACT_EMAIL` | unset | Address the website's pilot form emails (set at build time, e.g. in Vercel). Unset: the form is disabled |
 
 Each organisation's app data persists in its folder (git-ignored, readable only by the account
 running the API). The source CSVs are never modified: new claims and their submission dates are
@@ -440,7 +455,9 @@ claim_validation_tool/
 │   ├── evals/              # Assistant evaluation set and runner
 │   └── tests/              # pytest suite and fixture CSVs
 └── frontend/src/
-    ├── App.jsx             # Shell and hash routes
+    ├── Root.jsx            # Website at /, claims app at /app
+    ├── App.jsx             # App shell and hash routes
+    ├── site/               # Public website: pages, layout, claim demo, owner content
     ├── pages/              # Login, Dashboard, ClaimsWorkbench, NewClaim, RuleManager, JabAudit, AuditLog, Users, UserGuide
     ├── components/         # Shared UI (badges, panels, builders, error boundary)
     ├── hooks/              # Data hooks built on useApi

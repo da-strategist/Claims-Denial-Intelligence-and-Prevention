@@ -26,6 +26,37 @@
   --color-accent: #0a6ce0;
   --color-accent-hover: #0858b8;
   --color-accent-soft: #e8f1fd;
+
+  /* Public website: deep navy for its dark sections */
+  --color-navy: #0b1730;
+  --color-navy-soft: #13264a;
+}
+
+/* Public website: content entering view (only where motion is welcome; see motion-safe:) */
+@keyframes site-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes site-flow {
+  from {
+    background-position: 0 0;
+  }
+  to {
+    background-position: 24px 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
 }
 
 body {
