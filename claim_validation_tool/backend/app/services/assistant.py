@@ -16,6 +16,7 @@ import re
 from collections import Counter
 from dataclasses import dataclass
 from functools import lru_cache
+from threading import Lock
 from typing import Protocol
 
 from app.data.knowledge import KnowledgeBase, Source, get_knowledge_base
@@ -319,6 +320,15 @@ def _named_match(source: Source, asked: set[str], question: str) -> tuple[float,
     return 3.0, f"Named in the question: {codes}"
 
 
+def _document_applies(source: Source, facts: ClaimFacts | None, asked: set[str]) -> bool:
+    """A payer document only speaks for its own payer: on a claim, the billed payer's, unless
+    the question names another payer. Without a claim, any payer's (each is labelled)."""
+    if source.source_type != SourceType.PAYER_DOCUMENT or facts is None:
+        return True
+    payer = source.data["payer_id"]
+    return payer == facts.payer_id or f"payer:{payer}" in asked
+
+
 class Retriever:
     def __init__(self, knowledge: KnowledgeBase) -> None:
         self.knowledge = knowledge
@@ -338,6 +348,8 @@ class Retriever:
 
         matches = []
         for source, keyword_score in zip(self.knowledge.sources, keyword):
+            if not _document_applies(source, facts, asked):
+                continue
             score, reasons = 0.0, []
             if facts and (claim := _claim_match(source, facts)):
                 score += claim[0]
@@ -533,20 +545,27 @@ def get_name_scrubber(org_id: str) -> NameScrubber:
     return NameScrubber(get_repository(org_id).person_names())
 
 
+_RETRIEVERS: dict[str, tuple[int, Retriever]] = {}  # organisation -> (documents version, retriever)
+_RETRIEVERS_LOCK = Lock()
+
+
 def get_retriever(org_id: str) -> Retriever:
-    """The reference tables plus the organisation's payer documents, rebuilt when a document
-    is added or removed."""
-    return _retriever(org_id, get_payer_documents(org_id).version)
-
-
-@lru_cache(maxsize=64)
-def _retriever(org_id: str, documents_version: int) -> Retriever:
+    """The reference tables plus the organisation's payer documents. Rebuilt when a document
+    is added or removed; only the current one is kept for each organisation."""
+    version = get_payer_documents(org_id).version
+    with _RETRIEVERS_LOCK:
+        cached = _RETRIEVERS.get(org_id)
+        if cached and cached[0] == version:
+            return cached[1]
     knowledge = get_knowledge_base(org_id)
     documents = document_sources(get_payer_documents(org_id))
-    return Retriever(KnowledgeBase((*knowledge.sources, *documents), knowledge.payer_names))
+    retriever = Retriever(KnowledgeBase((*knowledge.sources, *documents), knowledge.payer_names))
+    with _RETRIEVERS_LOCK:
+        _RETRIEVERS[org_id] = (version, retriever)
+    return retriever
 
 
-get_retriever.cache_clear = _retriever.cache_clear  # cleared with the other per-organisation caches
+get_retriever.cache_clear = _RETRIEVERS.clear  # cleared with the other per-organisation caches
 
 
 @lru_cache(maxsize=1)

@@ -224,3 +224,28 @@ def test_a_scanned_pdf_is_kept_but_has_nothing_to_search(client):
     page.save()
     document = upload(client, buffer.getvalue(), "scan.pdf").json()
     assert (document["pages"], document["pages_with_text"]) == (1, 0)
+
+
+# ----- Found in review ----------------------------------------------------------------------
+
+
+def test_another_payers_document_isnt_used_even_when_it_names_the_billed_code(client, today):
+    upload(client, "Prior authorization is required for CPT 99213.".encode(), payer_id="PAY002", title="Blue Cross manual")
+    claim_id = create(client).json()["claim"]["claim_id"]  # billed to PAY001 for 99213
+    answer = ask(client, "Does 99213 need prior authorization?", claim_id=claim_id)
+    assert not [s for s in answer["sources"] if s["source_type"] == "payer_document"]
+    # Naming that payer in the question is asking about it on purpose
+    named = ask(client, "Does Blue Cross NC need prior authorization for 99213?", claim_id=claim_id)
+    assert [s for s in named["sources"] if s["source_type"] == "payer_document"]
+
+
+def test_a_text_file_without_blank_lines_is_still_split_into_parts(client):
+    lines = "\n".join(f"Line {n}: claims for service {n} must include the referral." for n in range(400))
+    document = upload(client, lines.encode()).json()
+    assert document["pages"] > 1
+    last = client.get(f"{DOCS}/DOC-001/pages/{document['pages']}").json()["text"]
+    assert "Line 399" in last
+
+
+def test_a_blank_title_is_refused(client):
+    assert upload(client, title="   ").status_code == 422

@@ -59,14 +59,27 @@ def media_type_for(filename: str) -> str:
     return MEDIA_TYPES[suffix]
 
 
+def _pieces(text: str) -> list[str]:
+    """Paragraphs; a paragraph too long for one part is split by line, then by length."""
+    pieces = []
+    for paragraph in text.split("\n\n"):
+        if len(paragraph) <= TEXT_PART_CHARS:
+            pieces.append(paragraph + "\n\n")
+            continue
+        for line in paragraph.split("\n"):
+            for start in range(0, max(len(line), 1), TEXT_PART_CHARS):
+                pieces.append(line[start : start + TEXT_PART_CHARS] + "\n")
+    return pieces
+
+
 def _text_parts(text: str) -> list[str]:
-    """A text file in parts of about TEXT_PART_CHARS, broken between paragraphs."""
+    """A text file in parts of about TEXT_PART_CHARS, broken between paragraphs or lines."""
     parts, current = [], ""
-    for paragraph in text.replace("\r\n", "\n").split("\n\n"):
-        if current and len(current) + len(paragraph) > TEXT_PART_CHARS:
+    for piece in _pieces(text.replace("\r\n", "\n")):
+        if current and len(current) + len(piece) > TEXT_PART_CHARS:
             parts.append(current.strip())
             current = ""
-        current += paragraph + "\n\n"
+        current += piece
     if current.strip():
         parts.append(current.strip())
     return parts or [""]
@@ -80,7 +93,6 @@ def read_pages(data: bytes, media_type: str) -> list[str]:
         except UnicodeDecodeError:
             raise DocumentError("The text file isn't UTF-8 text") from None
     from pypdf import PdfReader
-    from pypdf.errors import PdfReadError
 
     try:
         reader = PdfReader(io.BytesIO(data))
@@ -89,9 +101,9 @@ def read_pages(data: bytes, media_type: str) -> list[str]:
         if len(reader.pages) > MAX_PAGES:
             raise DocumentError(f"The PDF has more than {MAX_PAGES} pages")
         return [" ".join((page.extract_text() or "").split()) for page in reader.pages]
-    except (PdfReadError, ValueError, KeyError, TypeError) as err:
-        if isinstance(err, DocumentError):
-            raise
+    except DocumentError:
+        raise
+    except Exception as err:  # pypdf raises many kinds of error on damaged files
         raise DocumentError("The PDF can't be read") from err
 
 
@@ -136,6 +148,8 @@ class PayerDocumentStore:
         self, payer_id: str, title: str, effective_date: date | None, filename: str, data: bytes, by: str
     ) -> PayerDocument:
         media_type = media_type_for(filename)
+        if not title.strip():
+            raise DocumentError("Give the document a title")
         if not data:
             raise DocumentError("The file is empty")
         if len(data) > MAX_BYTES:
