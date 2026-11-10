@@ -50,7 +50,7 @@ function Hero() {
             Catch Claim Errors Before They Become Costly Rework.
           </h1>
           <p className="mx-auto mt-6 max-w-2xl text-lg leading-relaxed text-pretty text-gray-600 sm:text-xl">
-            ClaustraRCM helps hospital billing teams validate claims before submission, identify issues that need attention, and
+            VeriClaim helps hospital billing teams validate claims before submission, identify issues that need attention, and
             correct errors through a clear, streamlined workflow.
           </p>
           <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
@@ -204,14 +204,14 @@ function ThreeSteps() {
       />
       <div className="relative mx-auto max-w-6xl px-5 sm:px-8">
         <SectionHeading id="steps-title" eyebrow="How it works" title="Three Simple Steps. Clearer Claims." inverse>
-          From loading a claim to preparing it for submission, ClaustraRCM keeps the process straightforward.
+          From loading a claim to preparing it for submission, VeriClaim keeps the process straightforward.
         </SectionHeading>
         <ol className="mt-14 grid gap-5 lg:grid-cols-3">
           <StepPanel number="01" label="Load" title="Bring Your Claims In." visual={<LoadVisual />}>
-            Use API integration, file upload, or manual entry to bring claims into ClaustraRCM.
+            Use API integration, file upload, or manual entry to bring claims into VeriClaim.
           </StepPanel>
           <StepPanel number="02" label="Validate & Correct" title="Find Errors. Fix Them. Move Forward." visual={<ValidateVisual />}>
-            ClaustraRCM checks claims against configured rules and flags issues for billing specialists to review and correct.
+            VeriClaim checks claims against configured rules and flags issues for billing specialists to review and correct.
           </StepPanel>
           <StepPanel number="03" label="Send" title="Ready for the Next Step." visual={<SendVisual />}>
             Once validated, claims can move forward through the hospital’s established submission workflow.
@@ -425,7 +425,7 @@ function Showcase() {
   return (
     <section aria-labelledby="showcase-title" className="bg-white py-24 sm:py-28">
       <div className="mx-auto max-w-6xl px-5 sm:px-8">
-        <SectionHeading id="showcase-title" eyebrow="The product" title="See ClaustraRCM in Action." />
+        <SectionHeading id="showcase-title" eyebrow="The product" title="See VeriClaim in Action." />
         <div role="tablist" aria-label="Product views" className="mx-auto mt-10 flex max-w-full gap-1 overflow-x-auto rounded-full bg-gray-100 p-1 sm:w-fit">
           {SHOWCASE.map((tab, index) => (
             <button
@@ -619,7 +619,7 @@ function Status() {
         <div className="mt-14 flex flex-col items-center justify-between gap-4 rounded-[1.5rem] bg-white p-6 ring-1 ring-gray-200/80 sm:flex-row sm:p-8">
           <div>
             <h3 className="text-xl font-semibold text-gray-900">Interested in Becoming a Pilot Partner?</h3>
-            <p className="mt-1 text-[15px] text-gray-600">We’re looking for a small number of hospitals to evaluate ClaustraRCM with us.</p>
+            <p className="mt-1 text-[15px] text-gray-600">We’re looking for a small number of hospitals to evaluate VeriClaim with us.</p>
           </div>
           <Link href="/pilot" className="btn-primary shrink-0 px-6 py-3 text-base">
             Request a Pilot
@@ -641,10 +641,10 @@ export function ClosingCta() {
       />
       <div className="relative mx-auto max-w-3xl px-5 text-center sm:px-8">
         <h2 id="closing-title" className="text-3xl font-semibold tracking-tight text-balance text-white sm:text-5xl sm:leading-[1.08]">
-          Better Claims Start Before Submission.
+          Better Claims Start with Cleaner Submissions.
         </h2>
         <p className="mx-auto mt-5 max-w-xl text-lg leading-relaxed text-slate-300">
-          Discover how ClaustraRCM could fit your billing workflow and help your team identify errors earlier.
+          Discover how VeriClaim could fit your billing workflow and help your team identify errors earlier.
         </p>
         <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
           <Link href="/#demo" className="btn bg-white px-6 py-3 text-base text-gray-900 hover:bg-gray-100">

@@ -14,13 +14,10 @@ export const DASHBOARD_PERIODS = [
   { months: 3, label: 'Last 3 months' },
 ]
 
-// SAMPLE DATA ONLY — change before going live. The Overview opens on All time because the
-// synthetic claims end in December 2025 while claims entered now carry 2026 dates, and
-// "Last N months" counts back from the latest service date, so one new claim would move the
-// window onto mostly empty months. On real, continuous claims, open on 'Last 12 months' (12)
-// and count the window back from today (services/dashboard.py `_periods`). See PHASES.md,
-// "Before going live".
-export const DEFAULT_DASHBOARD_MONTHS = ''
+// Where the Overview opens. A real organisation's claims are continuous, so it opens on the
+// last 12 months, counted back from today. The synthetic sample claims end in December 2025,
+// so a sample organisation opens on All time (its "last N months" end with its latest claim).
+export const dashboardMonthsFor = (organisation) => (organisation?.sample_data ? '' : 12)
 
 export const EMPTY_FILTERS = {
   search: '',

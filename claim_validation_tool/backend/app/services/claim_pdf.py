@@ -121,7 +121,7 @@ def _render(story: list, claim_id: str, test: bool, title: str, footer: str) -> 
     doc = SimpleDocTemplate(
         buffer, pagesize=LETTER, leftMargin=0.5 * inch, rightMargin=0.5 * inch,
         topMargin=0.5 * inch, bottomMargin=0.6 * inch, title=title,
-        author="ClaustraRCM", subject=f"Claim {claim_id}",
+        author="VeriClaim", subject=f"Claim {claim_id}",
     )
     decorate = _page_decorations(test, footer)
     doc.build(story, onFirstPage=decorate, onLaterPages=decorate)
@@ -433,5 +433,5 @@ def claim_changes_pdf(claim: ClaimDetail, export: HandoffExport) -> bytes:
         story.append(Paragraph("Nothing: every enabled rule passed.", CELL))
     return _render(
         story, claim.claim_id, False, f"Changes to claim {claim.claim_id}",
-        f"{claim.claim_id} · contains patient information · nothing was sent to a payer from ClaustraRCM",
+        f"{claim.claim_id} · contains patient information · nothing was sent to a payer from VeriClaim",
     )

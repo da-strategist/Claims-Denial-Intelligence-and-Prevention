@@ -1,13 +1,13 @@
-# ClaustraRCM: How It Works
+# VeriClaim: How It Works
 
 *A plain-language overview for hospital revenue cycle, IT and compliance leads.*
 *Status: working product preparing for its first hospital pilots. November 2026.*
 
 ---
 
-## 1. What ClaustraRCM does
+## 1. What VeriClaim does
 
-ClaustraRCM checks hospital claims **before they are submitted**, so preventable errors are
+VeriClaim checks hospital claims **before they are submitted**, so preventable errors are
 fixed while they are still a two-minute correction rather than a denial, an appeal and weeks
 of waiting for payment.
 
@@ -19,7 +19,7 @@ It works in three steps:
 | **Validate & Correct** | Every claim is checked against configurable rules and coding edits, given a 0–100 denial-risk score, and every problem is explained with a suggested fix that staff can apply or undo. |
 | **Send** | A clean claim goes back to your billing system with a corrected 837 file and a list of what changed. |
 
-ClaustraRCM is **not another billing system**. It sits alongside the one you already use.
+VeriClaim is **not another billing system**. It sits alongside the one you already use.
 It does **not** send claims to payers or clearinghouses today. A clearinghouse connection is
 planned after the pilot.
 
@@ -37,7 +37,7 @@ planned after the pilot.
 | Diagnosis/procedure fit | A specialty procedure pointing to a diagnosis from an unrelated area (e.g. an echocardiogram for diabetes). Shown as a warning. |
 | Your own rules | Any rule your administrators define: field, condition and value, scoped to payers, departments or claim types |
 
-**What a clean result does not mean.** A claim that passes has no errors that ClaustraRCM can
+**What a clean result does not mean.** A claim that passes has no errors that VeriClaim can
 detect. It is not a guarantee of payment. In particular:
 
 - **Coverage** is not verified. Confirming active coverage needs a real-time eligibility check
@@ -56,7 +56,7 @@ detect. It is not a guarantee of payment. In particular:
             │  HTTPS, signed-in session             │  HTTPS, API key
             ▼                                       ▼
    ┌──────────────────┐                 ┌──────────────────────┐
-   │   Web application │ ───────────────▶│      ClaustraRCM API  │
+   │   Web application │ ───────────────▶│      VeriClaim API  │
    │  (what staff see) │                 │  rules · scoring ·    │
    └──────────────────┘                 │  fixes · 837 files ·  │
                                          │  audit log            │
@@ -179,7 +179,7 @@ The rule-based fix suggestions ("AI Fix") don't use an AI model at all.
   creates a duplicate.
 - Enter a claim on screen, with the patient's details filled in from their registration.
 
-**Patients.** Your registration system remains the master record. ClaustraRCM keeps a
+**Patients.** Your registration system remains the master record. VeriClaim keeps a
 minimal working copy that claims keep up to date. Possible duplicates are flagged for staff;
 nothing is merged automatically.
 
@@ -187,7 +187,7 @@ nothing is merged automatically.
 
 - **Hand off to your billing system** (the default): download the corrected 837 file and a
   PDF listing every change made and anything still open. Your billing system sends the claim.
-- **Mark as submitted in ClaustraRCM**: allowed only once no error or warning remains. The
+- **Mark as submitted in VeriClaim**: allowed only once no error or warning remains. The
   837 is saved with the claim as the record of what was sent, with CMS-1500 or UB-04 PDFs
   built from it.
 
@@ -204,16 +204,16 @@ Your administrators choose which route is offered first.
 | Organisation separation, roles, need-to-know limits, audit log | Built |
 | Encryption at rest per organisation, data export and deletion | Built |
 | Single sign-on (OpenID Connect) | Built; connected per client during onboarding |
-| Hosted demonstration on synthetic data | Live at https://claustrarcm-demo.vercel.app |
+| Hosted demonstration on synthetic data | Live at https://vericlaim-rcm.vercel.app |
 | Eligibility checks (270/271) | Planned after the pilot |
 | Clearinghouse connection and payer remittance (835) | Planned after the pilot |
 
 ### Before any real patient data is loaded
 
-ClaustraRCM currently runs on **synthetic data only**. Before a pilot uses real claims,
+VeriClaim currently runs on **synthetic data only**. Before a pilot uses real claims,
 we will complete and confirm with you:
 
-1. A signed **business associate agreement (BAA)** between your organisation and ClaustraRCM.
+1. A signed **business associate agreement (BAA)** between your organisation and VeriClaim.
    The system blocks sign-in for any organisation without one on record.
 2. A BAA or data processing agreement with **Anthropic**, or the assistant runs with AI
    switched off for your organisation.
@@ -230,4 +230,4 @@ we will complete and confirm with you:
 - Which denials your team sees most, so the pilot checks the right things
 - Your security review: questionnaires, architecture diagrams and the audit log in detail
 
-**Contact:** jubril.d.olalekan@gmail.com · **Request a pilot:** https://claustrarcm-demo.vercel.app/pilot
+**Contact:** jubril.d.olalekan@gmail.com · **Request a pilot:** https://vericlaim-rcm.vercel.app/pilot

@@ -49,7 +49,7 @@ function Field({ id, label, error, optional, hint, children }) {
 }
 
 /**
- * Pilot interest. The request is saved for the ClaustraRCM team to approve (the Platform page),
+ * Pilot interest. The request is saved for the VeriClaim team to approve (the Platform page),
  * and the visitor's email app opens with the same message addressed to the configured contact
  * (VITE_PILOT_CONTACT_EMAIL), so it still arrives if saving fails. Without a contact it says
  * requests aren't open.
@@ -120,7 +120,7 @@ export default function Pilot() {
           Interested in Becoming a Pilot Partner?
         </h1>
         <p className="mt-5 text-lg leading-relaxed text-gray-600">
-          ClaustraRCM is a working product preparing for its first hospital pilots. Pilot partners validate their own claims with
+          VeriClaim is a working product preparing for its first hospital pilots. Pilot partners validate their own claims with
           us and help shape what it checks next.
         </p>
         <ul className="mt-8 space-y-3 text-[15px] text-gray-700">
@@ -239,7 +239,7 @@ export default function Pilot() {
             </button>
             <p className="text-xs leading-relaxed text-gray-500">
               <span className="font-medium text-gray-700">How we use these details.</span> We keep your request so the
-              ClaustraRCM team can review it and contact you about a pilot, and nothing else. It’s stored encrypted, seen
+              VeriClaim team can review it and contact you about a pilot, and nothing else. It’s stored encrypted, seen
               only by our team, and deleted 12 months after we decide on it. Your email app also opens with a copy
               addressed to us. Please don’t include any patient information.
             </p>

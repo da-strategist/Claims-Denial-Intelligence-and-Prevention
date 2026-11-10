@@ -372,7 +372,7 @@ export default function ClaimDemo() {
                     <span className="rounded-full bg-gray-200 px-2 py-0.5 text-[11px] font-semibold text-gray-600">Planned</span>
                   </div>
                   <p className="mt-1 text-sm text-gray-600">
-                    A direct clearinghouse connection is planned after the pilot. ClaustraRCM doesn’t transmit claims to payers today.
+                    A direct clearinghouse connection is planned after the pilot. VeriClaim doesn’t transmit claims to payers today.
                   </p>
                 </div>
               </div>

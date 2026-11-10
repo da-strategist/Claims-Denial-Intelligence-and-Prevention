@@ -64,6 +64,7 @@ def test_a_new_organisation_starts_empty_with_its_first_admin(client):
             "id": "acme",
             "name": "Acme Health",
             "default_claim_route": "validate_only",
+            "sample_data": False,  # a real organisation, unlike the fixtures
         }
         assert acme.get("/api/claims").json()["total"] == 0
         assert acme.get("/api/dashboard").status_code == 200

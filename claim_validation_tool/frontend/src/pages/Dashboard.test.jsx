@@ -74,3 +74,29 @@ describe('Overview: needs attention and draft claims', () => {
   })
 })
 
+
+describe('Overview: the period it opens on', () => {
+  const opened = async (organisation) => {
+    const fetchMock = mockApi({
+      'GET /dashboard': () => DASHBOARD({ claims: 0, with_problems: 0 }),
+      'GET /payers': () => [],
+      'GET /departments': () => [],
+    })
+    render(
+      <AuthContext.Provider value={{ user: { display_name: 'A', permissions: BILLER, organisation } }}>
+        <Dashboard />
+      </AuthContext.Provider>,
+    )
+    await screen.findByText('10')
+    const url = fetchMock.mock.calls.map(([u]) => String(u)).find((u) => u.includes('/dashboard'))
+    return new URL(url, 'http://x').searchParams.get('months')
+  }
+
+  it('opens a real organisation on the last 12 months', async () => {
+    expect(await opened({ id: 'valley', name: 'Valley', sample_data: false })).toBe('12')
+  })
+
+  it('opens a sample organisation on all time', async () => {
+    expect(await opened({ id: 'meridian', name: 'Meridian', sample_data: true })).toBeNull()
+  })
+})

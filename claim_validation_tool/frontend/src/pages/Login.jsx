@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import Icon from '../components/Icon'
 import Logo from '../components/Logo'
 import { INPUT_CLASS } from '../constants'
+import { getHealth } from '../services/api'
 
 const PROMISE = [
   ['Load', 'Claims from your systems, a file, or the claim form'],
@@ -18,6 +19,13 @@ export default function Login({ onSignIn, notice }) {
   const [visible, setVisible] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
+  // A demo server says so; the pilot and production servers don't
+  const [demo, setDemo] = useState(false)
+  useEffect(() => {
+    getHealth()
+      .then((health) => setDemo(Boolean(health?.demo)))
+      .catch(() => {})
+  }, [])
 
   const submit = async (event) => {
     event.preventDefault()
@@ -41,10 +49,10 @@ export default function Login({ onSignIn, notice }) {
         />
         <a href="/" className="relative flex w-fit items-center gap-2.5 rounded-lg">
           <Logo />
-          <span className="text-[17px] font-semibold tracking-tight">ClaustraRCM</span>
+          <span className="text-[17px] font-semibold tracking-tight">VeriClaim</span>
         </a>
         <div className="relative max-w-md">
-          <h2 className="text-4xl leading-[1.1] font-semibold tracking-tight text-balance">Better claims start before submission.</h2>
+          <h2 className="text-4xl leading-[1.1] font-semibold tracking-tight text-balance">Better claims start with cleaner submissions.</h2>
           <ol className="mt-10 space-y-4">
             {PROMISE.map(([step, text], index) => (
               <li key={step} className="flex gap-4 rounded-2xl bg-white/5 p-4 ring-1 ring-white/10">
@@ -59,12 +67,14 @@ export default function Login({ onSignIn, notice }) {
             ))}
           </ol>
         </div>
-        <p className="relative text-xs text-slate-400">Sign-in is for invited users. Demonstrations use synthetic data.</p>
+        <p className="relative text-xs text-slate-400">
+          Sign-in is for invited users.{demo && ' Demonstrations use synthetic data.'}
+        </p>
       </aside>
 
       <div className="flex flex-col px-4 py-10 sm:px-8">
         <a href="/" className="flex w-fit items-center gap-1.5 rounded-lg text-sm text-gray-500 hover:text-gray-900">
-          <Icon name="back" className="h-4 w-4" /> ClaustraRCM home
+          <Icon name="back" className="h-4 w-4" /> VeriClaim home
         </a>
         <div className="flex flex-1 items-center justify-center py-10">
           <div className="w-full max-w-sm">
@@ -72,7 +82,7 @@ export default function Login({ onSignIn, notice }) {
               <div className="lg:hidden">
                 <Logo size="h-11 w-11 text-lg rounded-2xl" />
               </div>
-              <h1 className="mt-5 text-3xl font-semibold tracking-tight text-gray-900 lg:mt-0">Sign in to ClaustraRCM</h1>
+              <h1 className="mt-5 text-3xl font-semibold tracking-tight text-gray-900 lg:mt-0">Sign in to VeriClaim</h1>
               <p className="mt-1.5 text-[15px] text-gray-500">Catch claim problems before payers do.</p>
             </div>
             <form onSubmit={submit} aria-label="Sign in" className="space-y-4">

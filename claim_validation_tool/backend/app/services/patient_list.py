@@ -8,6 +8,7 @@ because mixing up two people's records is worse than having a duplicate.
 
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from types import SimpleNamespace
 from datetime import date
 from functools import lru_cache
 from threading import Lock
@@ -100,8 +101,13 @@ def find_patient(incoming: IncomingPatient, repo, registrations, today: date):
     return None, sorted(near)
 
 
+# Nothing on record for a patient yet (a real organisation's register has no birth dates or
+# policies): only the name matches, so they're never a clear match
+_NOTHING = SimpleNamespace(policies={}, address=None, birth_date=None)
+
+
 def _registration(patient, repo, registrations, today: date):
-    return registrations.get(patient, repo.get_payer(patient.primary_payer_id), today)
+    return registrations.get(patient, repo.get_payer(patient.primary_payer_id), today) or _NOTHING
 
 
 def _age(birth_date: date, today: date) -> int:

@@ -7,12 +7,12 @@ import SiteLayout from './SiteLayout'
 import { APP_PATH, usePath } from './router'
 
 const PAGES = {
-  '/': { Page: Home, title: 'ClaustraRCM — Catch claim errors before submission' },
-  '/about': { Page: About, title: 'About — ClaustraRCM' },
-  '/pilot': { Page: Pilot, title: 'Request a pilot — ClaustraRCM' },
-  '/sign-up': { Page: SignUp, title: 'Sign up — ClaustraRCM' },
-  '/privacy': { Page: () => <Legal kind="privacy" />, title: 'Privacy Policy — ClaustraRCM' },
-  '/terms': { Page: () => <Legal kind="terms" />, title: 'Terms of Use — ClaustraRCM' },
+  '/': { Page: Home, title: 'VeriClaim — Catch claim errors before submission' },
+  '/about': { Page: About, title: 'About — VeriClaim' },
+  '/pilot': { Page: Pilot, title: 'Request a pilot — VeriClaim' },
+  '/sign-up': { Page: SignUp, title: 'Sign up — VeriClaim' },
+  '/privacy': { Page: () => <Legal kind="privacy" />, title: 'Privacy Policy — VeriClaim' },
+  '/terms': { Page: () => <Legal kind="terms" />, title: 'Terms of Use — VeriClaim' },
 }
 
 /** The public website: Home, About, pilot requests, sign-up information and legal pages.
@@ -22,7 +22,7 @@ export default function Site() {
   const page = PAGES[path]
 
   useEffect(() => {
-    document.title = page?.title ?? 'Page not found — ClaustraRCM'
+    document.title = page?.title ?? 'Page not found — VeriClaim'
   }, [page])
 
   // A new page (not the first) moves focus to its content, for screen readers and keyboards

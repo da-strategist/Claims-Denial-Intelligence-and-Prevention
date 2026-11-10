@@ -1,4 +1,4 @@
-# Build Phases — ClaustraRCM Claim Validation Tool
+# Build Phases — VeriClaim Claim Validation Tool
 
 > Status key: `[ ]` Pending | `[~]` In Progress | `[x]` Completed
 
@@ -63,7 +63,7 @@
 
 ## Phase 8: JAB Audit Integration (Conceptual)
 - [x] Build workflow diagram component — six steps, marked Live / Needed / Proposed, closing the loop back into Rule Manager
-- [x] Build integration architecture cards — ClaustraRCM, JAB Audit, clearinghouse, EHR/PM, contract repository, security & compliance
+- [x] Build integration architecture cards — VeriClaim, JAB Audit, clearinghouse, EHR/PM, contract repository, security & compliance
 - [x] Design future API contracts — claim handoff (out), underpayment findings, recovery status, rule suggestions (in). Pydantic models in `models/jab.py`, served by `GET /api/jab/contracts` as field tables, JSON Schema, and validated examples
 - Not built: a live underpayment preview. The synthetic allowed amounts aren't generated from contract rates (allowed/expected ranges 0.5–1.9×), so variance figures would be noise. Revisit once the data generator is aligned.
 
@@ -102,16 +102,21 @@ Tasks:
 Settings chosen for the synthetic sample data that must change once the tool runs on real,
 continuous claims:
 
-- **Overview period.** The Overview opens on *All time* (`DEFAULT_DASHBOARD_MONTHS` in
-  `frontend/src/constants.js`), and "Last N months" counts back from the latest service date
-  in the data (`_periods` in `backend/app/services/dashboard.py`). That's because the sample
-  claims end in December 2025 while claims entered now carry 2026 dates, so one new claim
-  would move the window onto mostly empty months. On real data, switch to counting back
-  **from today** and open on *Last 12 months*.
-- **Sample patient registrations.** The synthetic patients' dates of birth, addresses, and
-  member IDs are generated (`backend/app/data/registrations.py`, marked "sample" in the
-  form). Real patients' details must come from the hospital's registration system or be
-  captured on their first claim; turn off sample generation.
+- [x] **Real organisations, no sample data.** Each organisation is marked sample (synthetic
+  demo data: Meridian, Lakeside, CMS Florida) or real (every organisation created on the
+  Platform page). A real one starts from the shared code sets only (`python -m app.orgs
+  code-sets <dir>`, then `RCM_CODE_SETS_DIR`; production never copies them from another
+  organisation), never gets generated patient details (they come from its claims), and its
+  Overview opens on the last 12 months counted back from today. `RCM_ENVIRONMENT=production`
+  refuses to start while any sample organisation exists, and the sign-in page mentions
+  synthetic data only on a demo server.
+- **The payer list.** The shared payer catalogue (`dim_payers`) is the sample one: before the
+  pilot, replace it with the hospital's real payers and their payer IDs.
+- **Full code sets.** The shared code sets are small samples (e.g. a few dozen ICD-10 codes
+  of about 70,000), so real claims would be flagged for valid codes. Load the full current
+  ICD-10-CM, CPT/HCPCS, NCCI and MUE tables into the pilot's code sets folder first.
+- **Code set licences.** CPT descriptions are the AMA's and need a licence for production use;
+  confirm which code sets the pilot ships with, and their sources and licences.
 - **837 settings.** Complete `backend/edi_settings.json` (submitter, clearinghouse, billing
   provider with NPI, EIN and ZIP+4, payer IDs), give facilities ZIP+4 addresses, set `mode`
   to `production`, and validate a test file with the clearinghouse first.
@@ -129,11 +134,16 @@ continuous claims:
   content security policy), keep the API on 127.0.0.1, and set `RCM_COOKIE_SECURE=1` and
   `RCM_ALLOWED_ORIGINS` to the app's address (production mode refuses to start without the
   first). Tested locally with `deploy/https-local.sh`; see the README.
+- **Pilot server.** [x] Scripts for one small AWS server in us-east-1 (~$13/month), in
+  `deploy/aws/` (see its README): `bundle.sh` builds the release, `provision.sh` creates the
+  KMS key, server, firewall, snapshots and budget alert, `deploy.sh` installs it. KMS, HTTPS
+  (sslip.io until there's a domain), production mode and the code sets are set from the start.
+  Open: accept the AWS BAA first, then run them; a domain and SES email later.
 - **BAAs.** Record each organisation's signed BAA on the Platform page before loading its
   real data; in production mode an organisation without one can't sign in.
-- **Key service.** Pick a cloud key service, add its provider (`key_providers.py`, about one
-  small class; see DATA_SEGREGATION_PLAN.md §9.6), and move the key to it with `rotate-key`.
-  Production logs a warning while the key is still in `.env`.
+- **Key service.** [x] AWS KMS is built (`RCM_KEY_PROVIDER=aws-kms`, `RCM_KMS_KEY_ID`,
+  `backend/app/data/aws_kms.py`). On a new pilot server, use it from the start, so the master
+  key never sits in `.env`. Production logs a warning while the key is still in `.env`.
 - **Single sign-on.** Add the identity provider the clients use (OpenID Connect covers
   Entra ID, Okta, and Google; DATA_SEGREGATION_PLAN.md §9.7) and its screens, link each
   person's SSO ID, mark a break-glass administrator, then make sign-in SSO only.
@@ -149,12 +159,12 @@ continuous claims:
 
 ## Planned feature updates: claim submission
 
-ClaustraRCM sits alongside a hospital's billing system rather than replacing it. Each
+VeriClaim sits alongside a hospital's billing system rather than replacing it. Each
 organisation sets a default route, and either route can be used on any claim:
 
 - **Validate only:** check and correct here, export, and send from the hospital's own
   billing system. Draft -> Handed off.
-- **Send through ClaustraRCM:** Draft -> Pending, with its 837 saved. Sending for real needs
+- **Send through VeriClaim:** Draft -> Pending, with its 837 saved. Sending for real needs
   the clearinghouse connection below.
 
 Build order:

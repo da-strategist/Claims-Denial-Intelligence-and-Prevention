@@ -20,7 +20,7 @@ export function SignUp() {
   return (
     <Page eyebrow="Sign up" title="Access is by invitation during the pilot." labelledBy="signup-title">
       <p>
-        ClaustraRCM accounts are created by your organization’s administrator, so every user belongs to a hospital and sees only
+        VeriClaim accounts are created by your organization’s administrator, so every user belongs to a hospital and sees only
         that hospital’s claims.
       </p>
       <div className="flex flex-col items-center justify-center gap-3 sm:flex-row">

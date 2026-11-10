@@ -85,7 +85,7 @@ def _write_orgs(root: Path) -> None:
     now = datetime.now(UTC).isoformat()
     root.mkdir(parents=True, exist_ok=True)
     orgs = [
-        {"id": org, "name": org.title(), "data_dir": str(data_dir), "status": "active", "created_at": now}
+        {"id": org, "name": org.title(), "data_dir": str(data_dir), "status": "active", "created_at": now, "sample_data": True}
         for org, data_dir in ORGS.items()
     ]
     (root / "organisations.json").write_text(json.dumps({"organisations": orgs}))

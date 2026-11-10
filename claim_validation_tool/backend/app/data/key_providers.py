@@ -4,8 +4,8 @@ organisation's data key (secure_files.py).
 RCM_KEY_PROVIDER picks the provider that locks new and re-wrapped data keys:
 
     local           the master key is RCM_MASTER_KEY in the environment (.env). Built.
-    aws-kms         AWS Key Management Service              } planned: add one at go-live
-    azure-keyvault  Azure Key Vault                         } (DATA_SEGREGATION_PLAN.md
+    aws-kms         AWS Key Management Service (aws_kms.py, RCM_KMS_KEY_ID). Built.
+    azure-keyvault  Azure Key Vault                         } planned (DATA_SEGREGATION_PLAN.md
     gcp-kms         Google Cloud Key Management Service     }  §9.6)
 
 With a cloud provider the master key never leaves the key service: the app sends it the
@@ -32,7 +32,6 @@ LOCAL = "local"
 
 # Not built yet; named so a typo and a planned provider get different messages
 PLANNED = {
-    "aws-kms": "AWS KMS",
     "azure-keyvault": "Azure Key Vault",
     "gcp-kms": "Google Cloud KMS",
 }
@@ -94,7 +93,13 @@ class LocalKeyProvider:
             return False
 
 
-_FACTORIES: dict[str, Callable[[], KeyProvider | None]] = {LOCAL: LocalKeyProvider.from_env}
+def _aws_kms() -> KeyProvider | None:
+    from app.data.aws_kms import AwsKmsKeyProvider
+
+    return AwsKmsKeyProvider.from_env()
+
+
+_FACTORIES: dict[str, Callable[[], KeyProvider | None]] = {LOCAL: LocalKeyProvider.from_env, "aws-kms": _aws_kms}
 
 
 def register(name: str, factory: Callable[[], KeyProvider | None]) -> None:

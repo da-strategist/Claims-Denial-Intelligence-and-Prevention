@@ -1,7 +1,7 @@
 # Data segregation plan: organisations and need-to-know access
 
 **Status:** design agreed 2026-10-17 (decisions in §8). **All four phases built**: A (organisation wall), B (need-to-know scope), C (platform administration and emergency access), and D (encryption at rest, data export, deletion, BAA tracking; §9). A separate deployment per client remains an option (§9.5).
-**Goal:** many organisations (hospitals, practices) can use one hosted ClaustraRCM, each
+**Goal:** many organisations (hospitals, practices) can use one hosted VeriClaim, each
 completely walled off from the others; inside each organisation, people see only the
 facilities, departments, or providers they work for (HIPAA's minimum necessary standard).
 
@@ -265,7 +265,7 @@ organisations' data keys; each `data_key.enc` records which provider locked it.
 | Provider | `RCM_KEY_PROVIDER` | Status |
 |---|---|---|
 | Master key in the environment (`RCM_MASTER_KEY`, `.env`) | `local` (default) | Built; in use |
-| AWS Key Management Service | `aws-kms` | Planned |
+| AWS Key Management Service | `aws-kms` (`RCM_KMS_KEY_ID`, `aws_kms.py`) | Built; for the AWS pilot |
 | Azure Key Vault | `azure-keyvault` | Planned |
 | Google Cloud KMS | `gcp-kms` | Planned |
 

@@ -55,7 +55,7 @@ TEMPLATE_ROWS = [
     {"claim_ref": "A1", "cpt_code": "99214", "icd10_pointer": "I10", "units": "1"},
 ]
 
-# For a patient who isn't on the list yet: everything has to come from the claim
+# For a patient who isn't on the list yet, or has nothing on record: everything comes from the claim
 _NOT_ON_LIST = SimpleNamespace(policies={}, address=None, birth_date=None)
 
 _RELATIONSHIPS = {code: relationship for relationship, code in RELATIONSHIP_CODES.items()}
@@ -177,7 +177,7 @@ def _table_claim(rows: pd.DataFrame, repo, registrations, today: date, claim: Pa
         patient = repo.get_patient(header["patient_id"].upper())
         if patient is None:
             raise ValueError(f"Patient {header['patient_id']} is not registered")
-        registration = registrations.get(patient, repo.get_payer(patient.primary_payer_id), today)
+        registration = registrations.get(patient, repo.get_payer(patient.primary_payer_id), today) or _NOT_ON_LIST
     else:
         if not (header["patient_first_name"] and header["patient_last_name"]):
             raise ValueError("Give patient_id, or the patient's patient_first_name and patient_last_name")
@@ -193,9 +193,8 @@ def _table_claim(rows: pd.DataFrame, repo, registrations, today: date, claim: Pa
         )
         patient, _ = find_patient(claim.incoming, repo, registrations, today)
         registration = (
-            registrations.get(patient, repo.get_payer(patient.primary_payer_id), today)
-            if patient is not None
-            else _NOT_ON_LIST
+            (registrations.get(patient, repo.get_payer(patient.primary_payer_id), today) if patient else None)
+            or _NOT_ON_LIST
         )
 
     pa_number = header["pa_number"] or None
@@ -360,9 +359,8 @@ def _edi_claim(read: Claim837, kind: str, repo, registrations, today, external, 
     )
     patient, _ = find_patient(claim.incoming, repo, registrations, today)
     registration = (
-        registrations.get(patient, repo.get_payer(patient.primary_payer_id), today)
-        if patient is not None
-        else _NOT_ON_LIST
+        (registrations.get(patient, repo.get_payer(patient.primary_payer_id), today) if patient else None)
+        or _NOT_ON_LIST
     )
     address = _edi_address(person) or (registration.address.model_dump(mode="json") if registration.address else None)
     if address is None or (not person.birth_date and registration.birth_date is None):

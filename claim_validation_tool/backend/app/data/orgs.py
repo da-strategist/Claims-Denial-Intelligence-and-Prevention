@@ -70,6 +70,9 @@ class Organisation(BaseModel):
     sso: SsoSettings | None = None
     default_claim_route: ClaimRoute = ClaimRoute.VALIDATE_ONLY
     deleted_at: datetime | None = None
+    # Synthetic data for demos and tests (Meridian, Lakeside). A real organisation never gets
+    # generated patient details, and RCM_ENVIRONMENT=production won't start with one.
+    sample_data: bool = False
 
 
 class OrgRegistry:
@@ -95,12 +98,16 @@ class OrgRegistry:
         org = self._orgs.get(org_id)
         return org is not None and org.status != OrgStatus.DELETED
 
-    def add(self, org_id: str, name: str, data_dir: Path) -> Organisation:
+    def add(self, org_id: str, name: str, data_dir: Path, *, sample_data: bool = False) -> Organisation:
         with self._lock:
             if org_id in self._orgs:
                 raise ValueError(f"Organisation {org_id} already exists")
             org = Organisation(
-                id=org_id, name=name, data_dir=str(data_dir), created_at=datetime.now(UTC)
+                id=org_id,
+                name=name,
+                data_dir=str(data_dir),
+                created_at=datetime.now(UTC),
+                sample_data=sample_data,
             )
             self._orgs[org.id] = org
             self.folder(org.id).mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -113,6 +120,13 @@ class OrgRegistry:
         with self._lock:
             if self._orgs.pop(org_id, None) is not None:
                 self._save()
+
+    def set_sample_data(self, org_id: str, sample_data: bool) -> Organisation:
+        with self._lock:
+            org = self._require(org_id).model_copy(update={"sample_data": sample_data})
+            self._orgs[org_id] = org
+            self._save()
+            return org
 
     def set_status(self, org_id: str, status: OrgStatus) -> Organisation:
         with self._lock:

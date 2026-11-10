@@ -12,5 +12,5 @@ router = APIRouter(
 
 @router.get("/contracts", response_model=list[ApiContract])
 def get_contracts() -> list[ApiContract]:
-    """Proposed ClaustraRCM <-> JAB Audit API contracts (conceptual; not yet live)."""
+    """Proposed VeriClaim <-> JAB Audit API contracts (conceptual; not yet live)."""
     return list_contracts()

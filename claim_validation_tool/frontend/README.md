@@ -1,4 +1,4 @@
-# ClaustraRCM frontend
+# VeriClaim frontend
 
 React 19 + Vite + Tailwind CSS v4. See the [project README](../README.md) for setup and the
 [project guide](../PROJECT_GUIDE.md) for conventions.

@@ -21,14 +21,14 @@ function IntegrationStatus({ status }) {
 const WORKFLOW_STEPS = [
   {
     title: 'Pre-submission validation',
-    owner: 'ClaustraRCM',
+    owner: 'VeriClaim',
     status: 'live',
     description: 'Every claim is checked against the rules and scored for denial risk.',
     href: '#/claims',
   },
   {
     title: 'AI Fix & correction',
-    owner: 'ClaustraRCM',
+    owner: 'VeriClaim',
     status: 'live',
     description: 'Billing specialists apply suggested fixes and re-validate before submission.',
     href: '#/claims',
@@ -41,7 +41,7 @@ const WORKFLOW_STEPS = [
   },
   {
     title: 'Claim handoff',
-    owner: 'ClaustraRCM → JAB Audit',
+    owner: 'VeriClaim → JAB Audit',
     status: 'proposed',
     description: 'Adjudicated claims sent nightly with contract rates and validation context.',
     contract: 'claim-handoff',
@@ -124,7 +124,7 @@ export function WorkflowDiagram() {
 
 const SYSTEMS = [
   {
-    name: 'ClaustraRCM Validation API',
+    name: 'VeriClaim Validation API',
     status: 'live',
     role: 'Rules engine, risk scoring, AI Fix, and the executive dashboard.',
     interface: 'REST · /api/*',

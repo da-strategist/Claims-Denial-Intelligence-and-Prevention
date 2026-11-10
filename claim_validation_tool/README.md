@@ -1,4 +1,4 @@
-# ClaustraRCM — Claim Validation Tool
+# VeriClaim — Claim Validation Tool
 
 Pre-submission claim validation and denial prevention for hospital revenue cycle teams.
 Every claim is checked against configurable rules and scored for denial risk; flagged claims
@@ -252,7 +252,7 @@ Audit Log page. Grants are kept in `backend/orgs/break_glass.json`.
 
 ### How claims leave
 
-ClaustraRCM works alongside a hospital's billing system. A draft can be **handed off**
+VeriClaim works alongside a hospital's billing system. A draft can be **handed off**
 (`POST /api/claims/{id}/hand-off`: the billing system sends it, open issues must be
 acknowledged) or **submitted** (`POST /api/claims/{id}/submit`: blocked by any rule error or
 warning). A claim takes one route; `POST /api/claims/{id}/reopen` puts a handed-off claim
@@ -389,6 +389,8 @@ for your domain by itself, serves the built frontend (`npm run build`), adds HST
 strict content security policy, and passes `/api/*` to the API listening on 127.0.0.1
 only. Run the API there with `RCM_ENVIRONMENT=production`, `RCM_COOKIE_SECURE=1`, and
 `RCM_ALLOWED_ORIGINS=https://<your domain>`; instructions are at the top of the file.
+The pilot server on AWS (one EC2 instance with KMS, set up by script) is in
+`deploy/aws/README.md`; the demo stays on Fly and Vercel.
 `http://localhost:5173` keeps working during development (Chrome treats localhost as
 secure, so the HTTPS-only cookie is still sent).
 
@@ -409,8 +411,10 @@ secure, so the HTTPS-only cookie is still sent).
 | `RCM_SESSIONS_FILE` | unset | Keep sign-in sessions in this file so a restart doesn't sign everyone out (digests only). For a demo host that stops and starts on its own; refused in production |
 | `RCM_COOKIE_SECURE` | off | Set to `1` behind HTTPS so the session cookie is never sent over plain HTTP |
 | `RCM_MASTER_KEY` | unset | Turns on encryption at rest: wraps each organisation's data key (`orgs/<id>/data_key.enc`). To replace it: put the new key first, comma, then the old; run `python -m app.orgs rotate-key`; then remove the old |
-| `RCM_KEY_PROVIDER` | `local` | Where the master key lives: `local` uses `RCM_MASTER_KEY`. Cloud key services (`aws-kms`, `azure-keyvault`, `gcp-kms`) are planned; see `DATA_SEGREGATION_PLAN.md` §9.6 |
-| `RCM_ENVIRONMENT` | unset | `production` refuses to start without `RCM_MASTER_KEY` or `RCM_COOKIE_SECURE=1`, and blocks sign-in for organisations without a BAA on record |
+| `RCM_KEY_PROVIDER` | `local` | Where the master key lives: `local` uses `RCM_MASTER_KEY`; `aws-kms` uses AWS KMS (`RCM_KMS_KEY_ID`). Azure Key Vault and Google Cloud KMS are planned; see `DATA_SEGREGATION_PLAN.md` §9.6 |
+| `RCM_KMS_KEY_ID` | unset | With `aws-kms`: the KMS key's ARN, ID or alias. Credentials and `AWS_REGION` come the usual AWS way (on EC2, the instance role, needing `kms:Encrypt`, `kms:Decrypt` and `kms:DescribeKey` on that key) |
+| `RCM_CODE_SETS_DIR` | unset | The shared code sets new organisations start from (`python -m app.orgs code-sets <dir>` writes them, with no patients or claims). Required in production; elsewhere an existing organisation's code sets are used |
+| `RCM_ENVIRONMENT` | unset | `production` refuses to start without a master key (`RCM_MASTER_KEY` or a key service) or `RCM_COOKIE_SECURE=1`, or while any sample organisation exists; blocks sign-in for organisations without a BAA on record; and drops the sign-in page's "synthetic data" line |
 | `RCM_PUBLIC_URL` | unset | The site's public address (e.g. `https://rcm.example.com`), for the single sign-on callback behind a proxy; sign-in returns to `/app` there |
 | `RCM_ALLOWED_ORIGINS` | `http://localhost:5173` | Web addresses the app is served from (comma-separated), for the browser's cross-origin check |
 | `VITE_API_BASE` | `/api` | API base URL for the frontend |

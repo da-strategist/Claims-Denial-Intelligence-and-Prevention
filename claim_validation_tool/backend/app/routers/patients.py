@@ -22,7 +22,7 @@ class ReviewPerson(BaseModel):
     patient_id: str
     first_name: str
     last_name: str
-    birth_date: date
+    birth_date: date | None = None  # unknown until a claim records it
 
 
 class PatientToReview(ReviewPerson):
@@ -37,7 +37,7 @@ def _person(patient, repo, registrations) -> ReviewPerson:
         patient_id=patient.patient_id,
         first_name=patient.first_name,
         last_name=patient.last_name,
-        birth_date=registration.birth_date,
+        birth_date=registration.birth_date if registration else None,
     )
 
 
@@ -87,9 +87,13 @@ def get_registration(
     patient_id: PatientId, repo: Claims, registrations: Registrations
 ) -> PatientRegistration:
     """Date of birth, address, and policies to fill a new claim with: what was entered on
-    the patient's last claim, or generated sample details (`source` says which)."""
+    the patient's last claim, or generated sample details (`source` says which) in a
+    sample organisation. 404 when nothing is on record yet."""
     patient = repo.get_patient(patient_id)
     if patient is None:
         raise HTTPException(status_code=404, detail=f"Patient {patient_id} not found")
     payer = repo.get_payer(patient.primary_payer_id)
-    return registrations.get(patient, payer, repository_module._today())
+    registration = registrations.get(patient, payer, repository_module._today())
+    if registration is None:
+        raise HTTPException(status_code=404, detail=f"Nothing on record for {patient_id} yet: enter their details")
+    return registration

@@ -1,4 +1,4 @@
-# CLAUSTRARCM — PREMIUM WEBSITE DESIGN & DEVELOPMENT MASTER PROMPT
+# VERICLAIM — PREMIUM WEBSITE DESIGN & DEVELOPMENT MASTER PROMPT
 
 ## YOUR ROLE
 
@@ -11,11 +11,11 @@ You are an elite multidisciplinary team consisting of:
 - A senior React and FastAPI developer.
 - A specialist in human-centered design and visual storytelling.
 
-Your assignment is to design and implement a premium, visually striking, highly professional website for **ClaustraRCM**, a healthcare claims validation platform.
+Your assignment is to design and implement a premium, visually striking, highly professional website for **VeriClaim**, a healthcare claims validation platform.
 
 This is not a request to create a generic SaaS landing page.
 
-The objective is to create a memorable product experience that communicates ClaustraRCM's value almost instantly.
+The objective is to create a memorable product experience that communicates VeriClaim's value almost instantly.
 
 **The claims validation workflow must be the visual centerpiece of the entire homepage.**
 
@@ -32,7 +32,7 @@ The design philosophy should draw from the principles associated with Steve Jobs
 - Meticulous attention to detail.
 - Emotional resonance through clarity and usefulness.
 
-Do not imitate Apple's branding, layouts, or proprietary visual assets. Apply the underlying principles to create an original ClaustraRCM identity.
+Do not imitate Apple's branding, layouts, or proprietary visual assets. Apply the underlying principles to create an original VeriClaim identity.
 
 The finished website must feel credible to hospital CFOs, revenue-cycle directors, billing managers, and healthcare administrators.
 
@@ -40,7 +40,7 @@ The finished website must feel credible to hospital CFOs, revenue-cycle director
 
 # 1. MANDATORY: INSPECT THE EXISTING PROJECT FIRST
 
-Before designing or implementing anything, thoroughly inspect the actual ClaustraRCM project directory.
+Before designing or implementing anything, thoroughly inspect the actual VeriClaim project directory.
 
 The repository is the authoritative source of truth.
 
@@ -54,7 +54,7 @@ Review:
 - Existing React components and routing.
 - Existing Tailwind styling and design tokens.
 - Existing authentication and organization management.
-- Existing ClaustraRCM branding and logo assets.
+- Existing VeriClaim branding and logo assets.
 - Claims validation engine and business rules.
 - Claims intake methods.
 - Clean and unclean claim classification.
@@ -93,7 +93,7 @@ Before making changes, provide a concise technical assessment of the existing st
 
 # 2. PRODUCT UNDERSTANDING
 
-ClaustraRCM is a pre-submission healthcare claims validation platform.
+VeriClaim is a pre-submission healthcare claims validation platform.
 
 Its purpose is to help hospital billing teams identify and correct errors before submitting claims to insurance payers.
 
@@ -127,11 +127,11 @@ Do not imply the platform has existing hospital customers, proven reimbursement 
 
 ## Core Brand Positioning
 
-**ClaustraRCM — Better Claims Start Before Submission.**
+**VeriClaim — Better Claims Start Before Submission.**
 
 This should be the central brand idea.
 
-The website must position ClaustraRCM as:
+The website must position VeriClaim as:
 
 - Intelligent but understandable.
 - Sophisticated but easy to use.
@@ -201,7 +201,7 @@ Create three main navigation destinations:
 
 **Home | About | Sign In / Sign Up**
 
-Include the ClaustraRCM logo and a prominent **Request a Pilot** button.
+Include the VeriClaim logo and a prominent **Request a Pilot** button.
 
 Use a sticky navigation bar with a refined scrolling state.
 
@@ -217,7 +217,7 @@ This is the most important requirement.
 
 The homepage must not rely on a static stock photograph or generic illustration as its hero visual.
 
-**The hero must feature a visually compelling, interactive demonstration of the actual ClaustraRCM claims validation workflow.**
+**The hero must feature a visually compelling, interactive demonstration of the actual VeriClaim claims validation workflow.**
 
 The primary narrative is:
 
@@ -235,7 +235,7 @@ Use a spacious, premium split-screen or integrated hero layout.
 
 ### Supporting Text
 
-"ClaustraRCM helps hospital billing teams validate claims before submission, identify issues that need attention, and correct errors through a clear, streamlined workflow."
+"VeriClaim helps hospital billing teams validate claims before submission, identify issues that need attention, and correct errors through a clear, streamlined workflow."
 
 ### Primary CTA
 
@@ -251,7 +251,7 @@ Use a spacious, premium split-screen or integrated hero layout.
 
 ### Hero Visual: Living Claims Validation Dashboard
 
-Create an animated, interactive product visualization based on the actual ClaustraRCM interface.
+Create an animated, interactive product visualization based on the actual VeriClaim interface.
 
 The visualization should demonstrate a complete claims validation journey.
 
@@ -324,7 +324,7 @@ Immediately after the hero and its introductory context, create a large, visuall
 
 Supporting copy:
 
-"From loading a claim to preparing it for submission, ClaustraRCM keeps the process straightforward."
+"From loading a claim to preparing it for submission, VeriClaim keeps the process straightforward."
 
 This must be a signature visual section, not three ordinary feature cards.
 
@@ -336,7 +336,7 @@ This must be a signature visual section, not three ordinary feature cards.
 
 Description:
 
-"Use API integration, file upload, or manual entry to bring claims into ClaustraRCM."
+"Use API integration, file upload, or manual entry to bring claims into VeriClaim."
 
 ### Visual
 
@@ -358,7 +358,7 @@ Use recognizable interface elements and subtle directional animation.
 
 Description:
 
-"ClaustraRCM checks claims against configured rules and flags issues for billing specialists to review and correct."
+"VeriClaim checks claims against configured rules and flags issues for billing specialists to review and correct."
 
 ### Visual
 
@@ -394,7 +394,7 @@ Description:
 
 Show a clean claim proceeding toward a submission or export stage.
 
-**Critical requirement:** Inspect the actual codebase to establish whether ClaustraRCM directly submits claims to payers or clearinghouses.
+**Critical requirement:** Inspect the actual codebase to establish whether VeriClaim directly submits claims to payers or clearinghouses.
 
 If direct submission is implemented, accurately show that capability.
 
@@ -439,7 +439,7 @@ Do not fabricate statistics.
 
 Headline:
 
-**See ClaustraRCM in Action.**
+**See VeriClaim in Action.**
 
 Showcase the actual application using screenshots or reusable product UI components.
 
@@ -548,7 +548,7 @@ Headline:
 
 Supporting text:
 
-"Discover how ClaustraRCM could fit your billing workflow and help your team identify errors earlier."
+"Discover how VeriClaim could fit your billing workflow and help your team identify errors earlier."
 
 Buttons:
 
@@ -562,7 +562,7 @@ Buttons:
 
 The About page should establish trust, purpose, and human connection.
 
-## About ClaustraRCM
+## About VeriClaim
 
 Tell the story of why the platform exists.
 
@@ -634,7 +634,7 @@ Create a refined split-screen layout.
 
 One side:
 
-- ClaustraRCM branding.
+- VeriClaim branding.
 - A concise product promise.
 - A product workflow illustration or dashboard preview.
 
@@ -697,7 +697,7 @@ If the destination is not configured, request the required information rather th
 
 Include:
 
-- ClaustraRCM logo.
+- VeriClaim logo.
 - Short product description.
 - Home.
 - About.
@@ -799,7 +799,7 @@ Do not describe a form, authentication flow, or integration as functional unless
 
 Ask for missing information instead of inventing it:
 
-1. Official ClaustraRCM logo, approved colors, typography, and branding preferences.
+1. Official VeriClaim logo, approved colors, typography, and branding preferences.
 2. Team members' full names, roles, biographies, photographs, LinkedIn URLs, and display order.
 3. Authentic founder story and approval of proposed mission and vision.
 4. Confirmed public demo URL.

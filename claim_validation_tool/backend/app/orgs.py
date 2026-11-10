@@ -6,6 +6,8 @@
     uv run python -m app.orgs add-cms --claims inpatient.csv --beneficiaries beneficiary_2025.csv
                                                           # CMS synthetic Medicare inpatient claims (cms_org.py)
     uv run python -m app.orgs add acme --name "Acme Health" --data-dir /path/to/acme/csvs
+    uv run python -m app.orgs code-sets /srv/code_sets     # the shared code sets only, for RCM_CODE_SETS_DIR
+    uv run python -m app.orgs sample-data meridian on      # mark an organisation as synthetic sample data
     uv run python -m app.orgs new-master-key              # prints a key for RCM_MASTER_KEY
     uv run python -m app.orgs encrypt                     # encrypt every organisation's files
     uv run python -m app.orgs rotate-key                  # re-wrap data keys with the active key provider
@@ -20,6 +22,12 @@
 at least 6) is over, for every organisation and the platform log. Nothing is deleted
 automatically; run it with --dry-run first. It is safe while the API is running. Each log
 records the purge as an event: who ran it, the operating system account, and what went.
+
+`code-sets` writes the shared code sets (CPT, ICD-10, payers, CARC/RARC, NCCI/MUE, LCD/NCD,
+fee schedule) with the organisation tables as headers only: no patients, providers or claims.
+A pilot or production server points RCM_CODE_SETS_DIR at it, and every new organisation starts
+from it. `sample-data` marks an organisation as synthetic (demo and test data): only those get
+generated patient details, and RCM_ENVIRONMENT=production refuses to start with one.
 
 `migrate` moves a single-organisation install's files into backend/orgs/meridian/ and
 assigns every account without an organisation to it. It never overwrites a file and is
@@ -52,7 +60,7 @@ from app.data.secure_files import (
 )
 from app.data.users import get_user_store
 from app import cms_org
-from app.sample_org import generate
+from app.sample_org import empty, generate
 from app.services.edi_settings import DEFAULT_EDI_SETTINGS_FILE
 
 FIRST_ORG = ("meridian", "Meridian Regional Medical Center")
@@ -78,7 +86,7 @@ def migrate() -> list[str]:
     done = []
     if registry.get(org_id) is None:
         data_dir = Path(os.path.relpath(DEFAULT_DATA_DIR, registry.root))
-        registry.add(org_id, name, data_dir)
+        registry.add(org_id, name, data_dir, sample_data=True)  # the synthetic sample claims
         done.append(f"created organisation {org_id} ({name}), claims data {DEFAULT_DATA_DIR}")
     folder = registry.folder(org_id)
     for old, new_name in LEGACY_FILES:
@@ -106,7 +114,7 @@ def add_sample() -> str:
         raise LookupError("Run `python -m app.orgs migrate` first (the sample copies its code sets)")
     data_dir = registry.folder(org_id) / "data"
     generate(data_dir, registry.data_dir(FIRST_ORG[0]))
-    registry.add(org_id, name, Path(org_id) / "data")
+    registry.add(org_id, name, Path(org_id) / "data", sample_data=True)
     return f"created organisation {org_id} ({name}) with sample data in orgs/{org_id}/data"
 
 
@@ -119,7 +127,7 @@ def add_cms(claims: Path, beneficiaries: Path, state: str, org_id: str, name: st
         raise LookupError("Run `python -m app.orgs migrate` first (the CMS organisation copies its code sets)")
     data_dir = registry.folder(org_id) / "data"
     counts = cms_org.convert(claims, beneficiaries, data_dir, registry.data_dir(FIRST_ORG[0]), state, icd, hcpcs)
-    registry.add(org_id, name, Path(org_id) / "data")
+    registry.add(org_id, name, Path(org_id) / "data", sample_data=True)  # CMS's synthetic claims
     summary = ", ".join(f"{count} {what}" for what, count in counts.items())
     return f"created organisation {org_id} ({name}): {summary}"
 
@@ -130,6 +138,11 @@ def main(argv: list[str] | None = None) -> int:
     commands.add_parser("list", help="show organisations")
     commands.add_parser("migrate", help="move a single-organisation install into 'meridian'")
     commands.add_parser("add-sample", help="add the synthetic Lakeside Family Practice")
+    code_sets = commands.add_parser("code-sets", help="write the shared code sets only (for RCM_CODE_SETS_DIR)")
+    code_sets.add_argument("out_dir", type=Path)
+    sample = commands.add_parser("sample-data", help="mark an organisation as synthetic sample data, or not")
+    sample.add_argument("org_id")
+    sample.add_argument("setting", choices=["on", "off"])
     cms = commands.add_parser("add-cms", help="add one state of CMS's synthetic Medicare inpatient claims")
     cms.add_argument("--claims", type=Path, required=True, help="inpatient.csv from the CMS download")
     cms.add_argument("--beneficiaries", type=Path, required=True, help="the beneficiary file (beneficiary_YYYY.csv)")
@@ -165,6 +178,14 @@ def main(argv: list[str] | None = None) -> int:
                     print(line)
             case "add-sample":
                 print(add_sample())
+            case "code-sets":
+                if args.out_dir.exists() and any(args.out_dir.iterdir()):
+                    raise ValueError(f"{args.out_dir} isn't empty")
+                empty(args.out_dir, DEFAULT_DATA_DIR)
+                print(f"wrote the shared code sets to {args.out_dir}: set RCM_CODE_SETS_DIR={args.out_dir.resolve()}")
+            case "sample-data":
+                org = registry.set_sample_data(args.org_id, args.setting == "on")
+                print(f"{org.id}: {'sample' if org.sample_data else 'real'} data")
             case "add-cms":
                 print(add_cms(args.claims, args.beneficiaries, args.state, args.org_id, args.name,
                               args.icd_descriptions, args.hcpcs_descriptions))

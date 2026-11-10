@@ -1,0 +1,28 @@
+[Unit]
+Description=Claim validation API (pilot)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=vericlaim
+Group=vericlaim
+EnvironmentFile=/etc/vericlaim/api.env
+ExecStart=/usr/local/bin/vericlaim-start-api
+Restart=on-failure
+RestartSec=5
+# Only its data folder is writable; everything else is read-only to it
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/srv/vericlaim/data
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target
