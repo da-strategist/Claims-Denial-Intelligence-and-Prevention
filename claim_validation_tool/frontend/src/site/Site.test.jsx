@@ -48,7 +48,7 @@ describe('site navigation', () => {
     const nav = screen.getAllByRole('navigation', { name: 'Site' })[0]
     expect(within(nav).getByRole('link', { name: 'Sign in' })).toHaveAttribute('href', '/app')
     await userEvent.click(within(nav).getByRole('link', { name: 'About' }))
-    expect(await screen.findByRole('heading', { level: 1, name: 'Better Claims Start Before Submission.' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { level: 1, name: 'Better Claims Start with Cleaner Submissions.' })).toBeInTheDocument()
     expect(window.location.pathname).toBe('/about')
     expect(document.title).toBe('About — VeriClaim')
   })

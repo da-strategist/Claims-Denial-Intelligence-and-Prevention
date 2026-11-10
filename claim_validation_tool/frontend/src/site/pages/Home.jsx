@@ -641,7 +641,7 @@ export function ClosingCta() {
       />
       <div className="relative mx-auto max-w-3xl px-5 text-center sm:px-8">
         <h2 id="closing-title" className="text-3xl font-semibold tracking-tight text-balance text-white sm:text-5xl sm:leading-[1.08]">
-          Better Claims Start Before Submission.
+          Better Claims Start with Cleaner Submissions.
         </h2>
         <p className="mx-auto mt-5 max-w-xl text-lg leading-relaxed text-slate-300">
           Discover how VeriClaim could fit your billing workflow and help your team identify errors earlier.

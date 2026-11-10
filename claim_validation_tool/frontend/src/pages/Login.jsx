@@ -52,7 +52,7 @@ export default function Login({ onSignIn, notice }) {
           <span className="text-[17px] font-semibold tracking-tight">VeriClaim</span>
         </a>
         <div className="relative max-w-md">
-          <h2 className="text-4xl leading-[1.1] font-semibold tracking-tight text-balance">Better claims start before submission.</h2>
+          <h2 className="text-4xl leading-[1.1] font-semibold tracking-tight text-balance">Better claims start with cleaner submissions.</h2>
           <ol className="mt-10 space-y-4">
             {PROMISE.map(([step, text], index) => (
               <li key={step} className="flex gap-4 rounded-2xl bg-white/5 p-4 ring-1 ring-white/10">

@@ -73,7 +73,7 @@ export default function About() {
       <section aria-labelledby="about-title" className="mx-auto max-w-4xl px-5 pt-16 pb-12 text-center sm:px-8 sm:pt-24">
         <div className="text-xs font-semibold tracking-[0.14em] text-accent uppercase">About VeriClaim</div>
         <h1 id="about-title" className="mt-4 text-4xl font-semibold tracking-tight text-balance text-gray-900 sm:text-6xl sm:leading-[1.05]">
-          Better Claims Start Before Submission.
+          Better Claims Start with Cleaner Submissions.
         </h1>
         <p className="mx-auto mt-6 max-w-2xl text-lg leading-relaxed text-gray-600">
           VeriClaim is a pre-submission claims validation platform. It helps hospital billing teams find and correct claim errors
