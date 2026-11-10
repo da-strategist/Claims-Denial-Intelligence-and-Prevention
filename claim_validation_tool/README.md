@@ -389,6 +389,8 @@ for your domain by itself, serves the built frontend (`npm run build`), adds HST
 strict content security policy, and passes `/api/*` to the API listening on 127.0.0.1
 only. Run the API there with `RCM_ENVIRONMENT=production`, `RCM_COOKIE_SECURE=1`, and
 `RCM_ALLOWED_ORIGINS=https://<your domain>`; instructions are at the top of the file.
+The pilot server on AWS (one EC2 instance with KMS, set up by script) is in
+`deploy/aws/README.md`; the demo stays on Fly and Vercel.
 `http://localhost:5173` keeps working during development (Chrome treats localhost as
 secure, so the HTTPS-only cookie is still sent).
 

@@ -134,6 +134,11 @@ continuous claims:
   content security policy), keep the API on 127.0.0.1, and set `RCM_COOKIE_SECURE=1` and
   `RCM_ALLOWED_ORIGINS` to the app's address (production mode refuses to start without the
   first). Tested locally with `deploy/https-local.sh`; see the README.
+- **Pilot server.** [x] Scripts for one small AWS server in us-east-1 (~$13/month), in
+  `deploy/aws/` (see its README): `bundle.sh` builds the release, `provision.sh` creates the
+  KMS key, server, firewall, snapshots and budget alert, `deploy.sh` installs it. KMS, HTTPS
+  (sslip.io until there's a domain), production mode and the code sets are set from the start.
+  Open: accept the AWS BAA first, then run them; a domain and SES email later.
 - **BAAs.** Record each organisation's signed BAA on the Platform page before loading its
   real data; in production mode an organisation without one can't sign in.
 - **Key service.** [x] AWS KMS is built (`RCM_KEY_PROVIDER=aws-kms`, `RCM_KMS_KEY_ID`,

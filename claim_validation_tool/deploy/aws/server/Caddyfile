@@ -1,0 +1,26 @@
+# The pilot server: HTTPS for RCM_DOMAIN (Caddy gets and renews the Let's Encrypt
+# certificate), the API on 127.0.0.1:8000, and the built frontend. The address opens the
+# app's sign-in; the public website stays on the demo (Vercel).
+import security-headers.caddy
+
+{$RCM_DOMAIN} {
+	encode zstd gzip
+	import security_headers
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+	}
+
+	# The website's pages aren't for the pilot server: they go to the app (redir runs
+	# before handle, so the API is excluded here)
+	@not_app not path /api/* /app /app/* /assets/* /favicon.svg
+	redir @not_app /app 302
+	handle /api/* {
+		reverse_proxy 127.0.0.1:8000
+	}
+	handle {
+		root * {$RCM_FRONTEND_DIST}
+		try_files {path} /index.html
+		file_server
+	}
+}

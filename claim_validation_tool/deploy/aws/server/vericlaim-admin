@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# Run the app's admin commands on the pilot server, with its settings, as its own account.
+#   sudo vericlaim-admin users add superadmin --name "Your Name" --role platform
+#   sudo vericlaim-admin users list
+#   sudo vericlaim-admin orgs list
+#   sudo vericlaim-admin orgs key-status
+set -euo pipefail
+[ "$(id -u)" = 0 ] || { echo "Run with sudo" >&2; exit 1; }
+module=${1:?Say which: users or orgs}; shift
+case "$module" in users|orgs) ;; *) echo "users or orgs" >&2; exit 1 ;; esac
+set -a
+# shellcheck disable=SC1091
+. /etc/vericlaim/api.env
+set +a
+cd /srv/vericlaim/current/claim_validation_tool/backend
+exec runuser -u vericlaim --preserve-environment -- /srv/vericlaim/current/.venv/bin/python -m "app.$module" "$@"
