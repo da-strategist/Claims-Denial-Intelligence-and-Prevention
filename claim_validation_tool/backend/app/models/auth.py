@@ -100,6 +100,9 @@ class User(BaseModel):
     # May still sign in with a password when the organisation uses SSO only, so an
     # administrator can get in if the identity provider is down
     break_glass: bool = False
+    # Set when someone else chose the password (a new account, or a reset): the person must
+    # choose their own at their next sign-in before they can do anything else
+    must_change_password: bool = False
     # Set per request (never stored) while a platform account uses emergency access
     emergency_access_id: str | None = Field(default=None, exclude=True)
 
@@ -131,6 +134,7 @@ class UserSummary(BaseModel):
     scope: AccessScope
     sso_id: str | None = None
     break_glass: bool = False
+    must_change_password: bool = False
 
 
 class UserCreate(BaseModel):
@@ -161,6 +165,13 @@ class UserUpdate(BaseModel):
 
 class PasswordReset(BaseModel):
     password: str = Field(min_length=1, max_length=256)
+
+
+class PasswordChange(BaseModel):
+    """Changing your own password: the current one proves it's you."""
+
+    current_password: str = Field(min_length=1, max_length=256)
+    new_password: str = Field(min_length=1, max_length=256)
 
 
 class OrganisationSummary(BaseModel):
@@ -197,6 +208,9 @@ class CurrentUser(BaseModel):
     permissions: list[Permission]
     session_expires_at: datetime = Field(description="Absolute end of this session")
     idle_timeout_minutes: int = Field(description="Signed out after this long without a request")
+    must_change_password: bool = Field(
+        default=False, description="Someone else set the password; choose a new one before anything else"
+    )
 
 
 class LoginRequest(BaseModel):

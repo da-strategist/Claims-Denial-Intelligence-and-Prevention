@@ -13,3 +13,6 @@ export function pageCount(document) {
   const unit = document.media_type === 'application/pdf' ? 'page' : 'part'
   return `${document.pages} ${unit}${document.pages === 1 ? '' : 's'}`
 }
+
+/** Payers that can have documents: every one but self-pay. */
+export const documentPayers = (payers) => Object.values(payers ?? {}).filter((payer) => payer.payer_type !== 'Self-Pay')

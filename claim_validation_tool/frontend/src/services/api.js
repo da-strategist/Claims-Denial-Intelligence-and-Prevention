@@ -73,6 +73,10 @@ export const logout = () => request('/auth/logout', { method: 'POST' })
 /** The signed-in user; rejects (401) when signed out. */
 export const getMe = (options) => request('/auth/me', options)
 
+/** Change your own password. Required at the first sign-in after someone else set it. */
+export const changePassword = (currentPassword, newPassword) =>
+  request('/auth/password', { method: 'POST', body: { current_password: currentPassword, new_password: newPassword } })
+
 // --- Audit log (admins) ------------------------------------------------------------
 
 /** Recent API requests, newest first. Params: username, record_id, outcome, limit. */
@@ -107,6 +111,14 @@ export const recordBaa = (orgId, baa) =>
 export const deleteOrganisation = (orgId, confirm) =>
   request(`/platform/organisations/${encodeURIComponent(orgId)}/delete`, { method: 'POST', body: { confirm } })
 export const listEmergencyAccess = (options) => request('/platform/emergency-access', options)
+
+/** Pilot requests: the website's form saves them; platform accounts approve or decline them. */
+export const submitPilotRequest = (form) => request('/pilot-requests', { method: 'POST', body: form })
+export const listPilotRequests = (options) => request('/platform/pilot-requests', options)
+export const approvePilotRequest = (id, organisation) =>
+  request(`/platform/pilot-requests/${encodeURIComponent(id)}/approve`, { method: 'POST', body: { organisation } })
+export const declinePilotRequest = (id, reason) =>
+  request(`/platform/pilot-requests/${encodeURIComponent(id)}/decline`, { method: 'POST', body: { reason } })
 export const endEmergencyAccess = (grantId) =>
   request(`/platform/emergency-access/${encodeURIComponent(grantId)}/end`, { method: 'POST' })
 export const listPlatformAudit = (options) => request('/platform/audit', options)

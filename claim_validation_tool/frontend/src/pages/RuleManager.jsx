@@ -257,6 +257,7 @@ export default function RuleManager() {
           payers={payers}
           departments={departments}
           documents={documents.data ?? []}
+          onDocumentAdded={documents.reload}
           onClose={() => setEditing(null)}
           onSaved={() => {
             setEditing(null)

@@ -6,7 +6,7 @@ from datetime import UTC, datetime, timedelta
 from app.data.audit import get_audit_log, get_platform_audit_log
 from app.data.emergency import get_emergency_access
 from app.models import Role
-from app.tests.conftest import TestClient, sign_in
+from app.tests.conftest import TestClient, org_folder, sign_in
 from app.tests.test_claim_entry import NEW_CLAIM
 
 REASON = "Ticket 4471: claims page fails to load for the billing team"
@@ -37,17 +37,29 @@ def test_organisation_admins_have_no_platform_powers(client):
     assert "platform1" not in {u["username"] for u in client.get("/api/users").json()}
 
 
+FIRST_ADMIN = {"username": "acmeadmin", "display_name": "Acme Admin", "password": "Acme-admin-123"}
+
+
+def new_org(client, org_id="acme", name="Acme Health", **admin):
+    body = {"id": org_id, "name": name, "admin": {**FIRST_ADMIN, **admin}}
+    return client.post("/api/platform/organisations", json=body)
+
+
 def test_a_new_organisation_starts_empty_with_its_first_admin(client):
     sign_in(client, Role.PLATFORM)
-    res = client.post("/api/platform/organisations", json={"id": "acme", "name": "Acme Health"})
-    assert res.status_code == 201 and res.json()["accounts"] == 0
-    assert client.post("/api/platform/organisations", json={"id": "acme", "name": "Again"}).status_code == 409
-    admin = client.post("/api/platform/organisations/acme/admins", json={
-        "username": "acmeadmin", "display_name": "Acme Admin", "password": "Acme-admin-123",
-    })
-    assert admin.status_code == 201 and admin.json()["role"] == "admin"
+    res = new_org(client)
+    assert res.status_code == 201
+    assert (res.json()["accounts"], res.json()["active_admins"]) == (1, 1)
+    assert new_org(client, name="Again", username="other").status_code == 409
     with TestClient(client.app) as acme:
-        acme.post("/api/auth/login", json={"username": "acmeadmin", "password": "Acme-admin-123"})
+        signed_in = acme.post("/api/auth/login", json={"username": "acmeadmin", "password": "Acme-admin-123"})
+        assert signed_in.json()["must_change_password"] is True  # the platform chose it
+        assert acme.get("/api/claims").status_code == 403
+        changed = acme.post(
+            "/api/auth/password",
+            json={"current_password": "Acme-admin-123", "new_password": "Acme-own-pass-456"},
+        )
+        assert changed.status_code == 200
         assert acme.get("/api/auth/me").json()["organisation"] == {
             "id": "acme",
             "name": "Acme Health",
@@ -56,6 +68,51 @@ def test_a_new_organisation_starts_empty_with_its_first_admin(client):
         assert acme.get("/api/claims").json()["total"] == 0
         assert acme.get("/api/dashboard").status_code == 200
         assert acme.get("/api/codes/procedures").json()  # shared code sets are there
+
+
+def test_an_organisation_needs_its_first_admin(client):
+    sign_in(client, Role.PLATFORM)
+    no_admin = client.post("/api/platform/organisations", json={"id": "acme", "name": "Acme Health"})
+    assert no_admin.status_code == 422
+    assert "acme" not in {o["id"] for o in client.get("/api/platform/organisations").json()}
+
+
+def test_nothing_is_created_when_the_admin_cant_be(client):
+    sign_in(client, Role.PLATFORM)
+    weak = new_org(client, password="short")
+    assert weak.status_code == 422 and "password" in weak.text
+    taken = new_org(client, username="admin1")  # Meridian's
+    assert taken.status_code == 409
+    assert "acme" not in {o["id"] for o in client.get("/api/platform/organisations").json()}
+    assert not org_folder("acme").exists()
+    # The ID is still free, and works once the administrator is fine
+    assert new_org(client).status_code == 201
+
+
+def test_a_failed_admin_rolls_the_organisation_back(client, monkeypatch):
+    sign_in(client, Role.PLATFORM)
+    from app.data.users import UserStore
+
+    def taken_meanwhile(self, username, *args, **kwargs):
+        raise ValueError(f"The username {username} is taken; choose another")
+
+    monkeypatch.setattr(UserStore, "add", taken_meanwhile)
+    assert new_org(client).status_code == 409
+    assert "acme" not in {o["id"] for o in client.get("/api/platform/organisations").json()}
+    assert not org_folder("acme").exists()
+    monkeypatch.undo()
+    assert new_org(client).status_code == 201
+
+
+def test_another_admin_can_still_be_added_later(client):
+    sign_in(client, Role.PLATFORM)
+    new_org(client)
+    second = client.post("/api/platform/organisations/acme/admins", json={
+        "username": "acme2", "display_name": "Second Admin", "password": "Acme-second-123",
+    })
+    assert second.status_code == 201
+    acme = next(o for o in client.get("/api/platform/organisations").json() if o["id"] == "acme")
+    assert acme["active_admins"] == 2
 
 
 def test_suspending_an_organisation_locks_its_accounts_out(client):

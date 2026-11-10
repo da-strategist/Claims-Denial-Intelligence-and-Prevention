@@ -31,6 +31,7 @@ const PLATFORM_PAGE = {
   ],
   'GET /platform/emergency-access': () => [],
   'GET /platform/audit': () => [],
+  'GET /platform/pilot-requests': () => [],
 }
 
 describe('platform accounts', () => {
@@ -218,5 +219,53 @@ describe('Audit Log page', () => {
     })
     render(<App />)
     expect(await screen.findByText(/Events from 2019 and earlier were deleted.*by Ana Diaz/)).toBeInTheDocument()
+  })
+})
+
+describe('a password someone else set', () => {
+  const NEW_PASSWORD = 'My-own-pass-123'
+
+  it('must be replaced before anything else opens', async () => {
+    const fetchMock = mockApi({
+      ...PAGE,
+      'GET /auth/me': () => ({ ...ANALYST, must_change_password: true }),
+      'POST /auth/password': ({ body }) =>
+        body.current_password === 'Given-pass-123'
+          ? { ...ANALYST, must_change_password: false }
+          : reply(403, { detail: 'Your current password isn’t right' }),
+    })
+    render(<App />)
+    expect(await screen.findByRole('heading', { name: 'Choose your own password' })).toBeInTheDocument()
+    expect(screen.queryByRole('navigation', { name: 'Main' })).not.toBeInTheDocument()
+
+    const save = screen.getByRole('button', { name: 'Save new password' })
+    await userEvent.type(screen.getByLabelText('Password you were given'), 'Wrong-pass-123')
+    await userEvent.type(screen.getByLabelText('Password'), NEW_PASSWORD)
+    expect(save).toBeDisabled() // not repeated yet
+    await userEvent.type(screen.getByLabelText('Repeat password'), NEW_PASSWORD)
+    await userEvent.click(save)
+    expect(await screen.findByRole('alert')).toHaveTextContent('current password isn’t right')
+
+    await userEvent.clear(screen.getByLabelText('Password you were given'))
+    await userEvent.type(screen.getByLabelText('Password you were given'), 'Given-pass-123')
+    await userEvent.click(save)
+    expect(await screen.findByRole('navigation', { name: 'Main' })).toBeInTheDocument()
+    expect(sentBodies(fetchMock, 'POST /auth/password').at(-1)).toEqual({
+      current_password: 'Given-pass-123',
+      new_password: NEW_PASSWORD,
+    })
+  })
+
+  it('can be changed any time from the account menu', async () => {
+    mockApi({ ...PAGE, 'GET /auth/me': () => ANALYST, 'POST /auth/password': () => ANALYST })
+    render(<App />)
+    await userEvent.click(await screen.findByRole('button', { name: 'Change password' }))
+    await userEvent.type(screen.getByLabelText('Current password'), 'Old-pass-1234')
+    await userEvent.type(screen.getByLabelText('Password'), NEW_PASSWORD)
+    await userEvent.type(screen.getByLabelText('Repeat password'), NEW_PASSWORD)
+    await userEvent.click(screen.getByRole('button', { name: 'Save new password' }))
+    expect(await screen.findByRole('status')).toHaveTextContent('Your password is changed')
+    await userEvent.click(screen.getByRole('button', { name: 'Back' }))
+    expect(screen.queryByRole('heading', { name: 'Change your password' })).not.toBeInTheDocument()
   })
 })

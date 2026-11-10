@@ -13,7 +13,15 @@ from app.data.users import UserStore, get_user_store
 from app.data.emergency import get_emergency_access
 from app.data.orgs import OrgId, OrgStatus, get_org_registry
 from app.data.repository import get_repository
-from app.models import CurrentUser, EmergencySummary, LoginRequest, OrganisationSummary, User
+from app.data.users import verify_password
+from app.models import (
+    CurrentUser,
+    EmergencySummary,
+    LoginRequest,
+    OrganisationSummary,
+    PasswordChange,
+    User,
+)
 from app.services.auth import (
     SESSION_COOKIE,
     LoginThrottle,
@@ -71,6 +79,7 @@ def _current(user: User, sessions: SessionStore, created) -> CurrentUser:
         permissions=sorted(user.permissions),
         session_expires_at=sessions.expires_at(created),
         idle_timeout_minutes=int(sessions.idle.total_seconds() // 60),
+        must_change_password=user.must_change_password,
     )
 
 
@@ -206,3 +215,40 @@ def logout(request: Request, user: SignedIn, sessions: Sessions) -> Response:
 def me(request: Request, user: SignedIn, sessions: Sessions) -> CurrentUser:
     """Who is signed in, with their role's permissions. 401 when signed out."""
     return _current(user, sessions, request.state.session)
+
+
+@router.post("/password", response_model=CurrentUser)
+def change_password(
+    body: PasswordChange,
+    request: Request,
+    response: Response,
+    user: SignedIn,
+    users: Annotated[UserStore, Depends(get_user_store)],
+    sessions: Sessions,
+    throttle: Annotated[LoginThrottle, Depends(get_login_throttle)],
+) -> CurrentUser:
+    """Change your own password; the current one proves it's you. Required at the first
+    sign-in after someone else set it. Your other sessions end; this one carries on."""
+    if user.emergency_access_id is not None:
+        raise HTTPException(status_code=403, detail="End emergency access before changing your password")
+    if throttle.locked(user.username):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many wrong passwords. Try again in 15 minutes.",
+        )
+    stored = users.get(user.username)
+    if stored is None or not verify_password(body.current_password, stored.password_hash):
+        throttle.failed(user.username)  # the same lock as signing in, so it can't be used to guess
+        raise HTTPException(status_code=403, detail="Your current password isn't right")
+    throttle.succeeded(user.username)
+    if body.new_password == body.current_password:
+        raise HTTPException(status_code=422, detail="Choose a password different from the current one")
+    try:
+        updated = users.update(user.username, password=body.new_password, must_change_password=False)
+    except ValueError as err:
+        raise HTTPException(status_code=422, detail=str(err)) from err
+    audit_note(request, password_changed=True)
+    sessions.end_all(user.username)
+    token = _start_session(response, updated, sessions)
+    request.state.user = updated
+    return _current(updated, sessions, sessions.touch(token))

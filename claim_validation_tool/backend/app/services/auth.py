@@ -36,6 +36,9 @@ SAVE_SEEN_EVERY = timedelta(seconds=60)
 # Routes for hospital systems: reached with an API key and nothing else, and the only routes
 # an API key reaches
 MACHINE_API_PREFIX = "/api/v1/"
+# All an account can reach until it replaces a password someone else set
+PASSWORD_CHANGE_PATHS = frozenset({"/api/auth/me", "/api/auth/logout", "/api/auth/password"})
+MUST_CHANGE_PASSWORD = "Choose a new password to continue"
 
 PERMISSION_LABELS = {
     Permission.CLAIMS_READ: "view claims",
@@ -236,6 +239,8 @@ def current_user(
         raise HTTPException(status_code=401, detail="Sign in to continue")
     request.state.user = user
     request.state.session = session
+    if user.must_change_password and request.url.path not in PASSWORD_CHANGE_PATHS:
+        raise HTTPException(status_code=403, detail=MUST_CHANGE_PASSWORD)
     return user
 
 

@@ -4,6 +4,7 @@ import Icon from './components/Icon'
 import Logo from './components/Logo'
 import { AuthContext, useAuth, useAuthState } from './hooks/useAuth'
 import AuditLog from './pages/AuditLog'
+import ChangePassword from './pages/ChangePassword'
 import ClaimsWorkbench from './pages/ClaimsWorkbench'
 import JabAudit from './pages/JabAudit'
 import Platform from './pages/Platform'
@@ -54,7 +55,8 @@ function App() {
   }
   return (
     <AuthContext.Provider value={auth}>
-      <Shell />
+      {/* Someone else set the password: replace it before anything else opens */}
+      {auth.user.must_change_password ? <ChangePassword required /> : <Shell />}
     </AuthContext.Provider>
   )
 }
@@ -86,7 +88,7 @@ function NavLink({ route, current }) {
   )
 }
 
-function UserMenu({ user, onSignOut }) {
+function UserMenu({ user, onSignOut, onChangePassword }) {
   return (
     <div className="flex items-center gap-3">
       <div
@@ -102,6 +104,14 @@ function UserMenu({ user, onSignOut }) {
           {user.access && ' · limited'}
         </div>
       </div>
+      <button
+        onClick={onChangePassword}
+        title="Change password"
+        className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-200/60 hover:text-gray-900"
+      >
+        <Icon name="shield" className="h-[18px] w-[18px]" />
+        <span className="sr-only">Change password</span>
+      </button>
       <button
         onClick={onSignOut}
         title="Sign out"
@@ -145,6 +155,9 @@ function Shell() {
   const { Page } = route
   const main = routes.filter((r) => !r.admin)
   const admin = routes.filter((r) => r.admin)
+  // Opened from the account menu over the current page; a menu link goes to its page instead
+  const [passwordOpenedAt, setPasswordOpenedAt] = useState(null)
+  const changingPassword = passwordOpenedAt === hash
 
   return (
     <div className="min-h-screen lg:flex">
@@ -162,7 +175,7 @@ function Shell() {
           </div>
         </div>
         <div className="ml-auto lg:order-last lg:mt-auto lg:ml-0 lg:border-t lg:border-gray-200/70 lg:px-2 lg:pt-4">
-          <UserMenu user={auth.user} onSignOut={auth.signOut} />
+          <UserMenu user={auth.user} onSignOut={auth.signOut} onChangePassword={() => setPasswordOpenedAt(hash)} />
         </div>
         <nav
           aria-label="Main"
@@ -185,11 +198,15 @@ function Shell() {
         {auth.user.emergency && <EmergencyBanner user={auth.user} onEnd={auth.refresh} />}
         {/* Keyed by the full hash so a new query (e.g. ?search=) starts the page fresh,
             and leaving a crashed page clears the error */}
-        <ErrorBoundary key={hash}>
-          <Suspense fallback={<div className="p-10 text-sm text-gray-400">Loading…</div>}>
-            <Page />
-          </Suspense>
-        </ErrorBoundary>
+        {changingPassword ? (
+          <ChangePassword onClose={() => setPasswordOpenedAt(null)} />
+        ) : (
+          <ErrorBoundary key={hash}>
+            <Suspense fallback={<div className="p-10 text-sm text-gray-400">Loading…</div>}>
+              <Page />
+            </Suspense>
+          </ErrorBoundary>
+        )}
       </main>
     </div>
   )

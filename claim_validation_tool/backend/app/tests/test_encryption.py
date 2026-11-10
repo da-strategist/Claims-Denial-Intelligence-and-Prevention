@@ -172,7 +172,9 @@ def test_deleting_an_organisation_shreds_its_key_folder_and_accounts(client):
         res = old.post("/api/auth/login", json={"username": "admin2", "password": "Fixture-password-1"})
         assert res.status_code == 401
     # The record stays, so the ID isn't reused, and nothing more can be done to it
-    assert client.post("/api/platform/organisations", json={"id": "lakeside", "name": "Lakeside again"}).status_code == 409
+    body = {"id": "lakeside", "name": "Lakeside again",
+            "admin": {"username": "lake3", "display_name": "L", "password": "Lakeside-again-1"}}
+    assert client.post("/api/platform/organisations", json=body).status_code == 409
     assert client.post("/api/platform/organisations/lakeside/reactivate").status_code == 409
     sign_in(client, Role.ADMIN)
     assert client.get("/api/claims").status_code == 200  # Meridian carries on
@@ -327,7 +329,8 @@ def test_new_organisations_get_keys_from_the_active_provider(client, monkeypatch
     monkeypatch.setenv("RCM_KEY_PROVIDER", "test-kms")
     org_cipher.cache_clear()
     sign_in(client, Role.PLATFORM)
-    client.post("/api/platform/organisations", json={"id": "acme", "name": "Acme Health"})
+    client.post("/api/platform/organisations", json={"id": "acme", "name": "Acme Health",
+                "admin": {"username": "acmeadmin", "display_name": "A", "password": "Acme-admin-123"}})
     assert org_cipher_for("acme") is not None
     assert data_key_provider(org_folder("acme")) == "test-kms"
     assert json.loads((org_folder("acme") / "data_key.enc").read_text())["provider"] == "test-kms"

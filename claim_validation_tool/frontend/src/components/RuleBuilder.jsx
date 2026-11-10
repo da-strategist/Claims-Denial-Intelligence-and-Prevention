@@ -1,10 +1,11 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import { INPUT_CLASS, RULE_CATEGORIES, SCOPE_TYPES, SEVERITIES } from '../constants'
 import { createRule, getPayerDocumentPage, replaceRule, testRule } from '../services/api'
-import { pageCount } from '../utils/files'
+import { documentPayers, pageCount } from '../utils/files'
 import { describeScope, scopeOptions } from '../utils/ruleSummary'
 import ConditionBuilder from './ConditionBuilder'
 import Icon from './Icon'
+import { UploadForm } from './PayerDocumentsCard'
 import Toggle from './Toggle'
 
 const NEW_RULE = {
@@ -97,10 +98,16 @@ function ScopePicker({ scope, payers, departments, onChange }) {
   )
 }
 
-function SourcePicker({ source, documents, payers, onChange, ids }) {
+function SourcePicker({ source, documents: listed, payers, scope, onChange, onDocumentAdded, ids }) {
   const [preview, setPreview] = useState({ page: null, text: null, error: null, loading: false })
+  const [uploading, setUploading] = useState(false)
+  // Uploaded here: usable at once, before the page's list reloads
+  const [added, setAdded] = useState([])
+  const documents = [...listed, ...added.filter((d) => !listed.some((l) => l.id === d.id))]
   const document = documents.find((d) => d.id === source?.document_id)
   const byPayer = groupByPayer(documents)
+  // A rule for one payer: its documents are that payer's
+  const scopePayer = scope?.type === 'payer' && scope.values?.length === 1 ? scope.values[0] : ''
 
   const choose = (documentId) =>
     onChange(documentId ? { document_id: documentId, page: 1, excerpt: source?.excerpt ?? '' } : null)
@@ -115,11 +122,33 @@ function SourcePicker({ source, documents, payers, onChange, ids }) {
     }
   }
 
+  const upload = uploading ? (
+    <UploadForm
+      payers={documentPayers(payers)}
+      payerId={scopePayer}
+      onCancel={() => setUploading(false)}
+      onUploaded={(uploaded) => {
+        setAdded((prev) => [...prev, uploaded])
+        setUploading(false)
+        onChange({ document_id: uploaded.id, page: 1, excerpt: source?.excerpt ?? '' })
+        onDocumentAdded?.()
+      }}
+    />
+  ) : (
+    <button type="button" className="btn-secondary btn-sm" onClick={() => setUploading(true)}>
+      <Icon name="upload" className="h-4 w-4" />
+      Upload a document
+    </button>
+  )
+
   if (documents.length === 0) {
     return (
-      <p className="text-sm text-gray-500">
-        No payer documents yet. Add one under Payer documents on the Rules page, then cite it here.
-      </p>
+      <div className="space-y-3">
+        <p className="text-sm text-gray-500">
+          No payer documents yet. Upload the payer’s manual or policy this rule is based on, then cite its page.
+        </p>
+        {upload}
+      </div>
     )
   }
   return (
@@ -146,6 +175,7 @@ function SourcePicker({ source, documents, payers, onChange, ids }) {
           ))}
         </select>
       </div>
+      {upload}
       {source && document && (
         <>
           <div className="flex flex-wrap items-end gap-3">
@@ -221,7 +251,16 @@ function TestResult({ result }) {
  * Slide-in panel to create or edit a rule. `rule` is the rule being edited, or null
  * for a new one. Calls `onSaved(rule)` after a successful save.
  */
-export default function RuleBuilder({ rule, fields, payers, departments, documents = [], onClose, onSaved }) {
+export default function RuleBuilder({
+  rule,
+  fields,
+  payers,
+  departments,
+  documents = [],
+  onDocumentAdded,
+  onClose,
+  onSaved,
+}) {
   const [draft, setDraft] = useState(() => toDraft(rule))
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
@@ -398,8 +437,10 @@ export default function RuleBuilder({ rule, fields, payers, departments, documen
               source={draft.source}
               documents={documents}
               payers={payers}
+              scope={draft.scope}
               ids={titleId}
               onChange={(source) => change({ source })}
+              onDocumentAdded={onDocumentAdded}
             />
           </Section>
 

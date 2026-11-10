@@ -15,6 +15,7 @@ from app.data.drafts import get_draft_store
 from app.data.new_claims import get_new_claim_store
 from app.data.patient_list import get_patient_list
 from app.data.payer_documents import get_payer_documents
+from app.data.pilot_requests import get_pilot_requests
 from app.data.prior_auth_lists import get_prior_auth_lists
 from app.data.registrations import get_registration_store
 from app.data.knowledge import get_knowledge_base
@@ -179,6 +180,7 @@ def anon_client(monkeypatch, tmp_path) -> TestClient:
         get_patient_list,
         get_prior_auth_lists,
         get_payer_documents,
+        get_pilot_requests,
         get_registration_store,
         get_reference_data,
         get_status_snapshot,

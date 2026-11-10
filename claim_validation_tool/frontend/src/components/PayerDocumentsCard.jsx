@@ -1,7 +1,7 @@
 import { useId, useState } from 'react'
 import { INPUT_CLASS } from '../constants'
 import { deletePayerDocument, payerDocumentFileUrl, uploadPayerDocument } from '../services/api'
-import { pageCount, readBase64 } from '../utils/files'
+import { documentPayers, pageCount, readBase64 } from '../utils/files'
 import Icon from './Icon'
 
 const ACCEPT = '.pdf,.txt,.md'
@@ -84,10 +84,14 @@ function DocumentRow({ document, payerName, citedBy, onRemoved }) {
   )
 }
 
-function UploadForm({ payers, onUploaded }) {
+/**
+ * Upload one payer document. Not a <form> of its own, so it also works inside the rule form
+ * (forms can't nest). `onUploaded(document)` gets the new document; `payerId` preselects one.
+ */
+export function UploadForm({ payers, onUploaded, onCancel, payerId: initialPayer = '' }) {
   const ids = useId()
   const [file, setFile] = useState(null)
-  const [payerId, setPayerId] = useState('')
+  const [payerId, setPayerId] = useState(initialPayer)
   const [title, setTitle] = useState('')
   const [effective, setEffective] = useState('')
   const [busy, setBusy] = useState(false)
@@ -101,13 +105,12 @@ function UploadForm({ payers, onUploaded }) {
     if (chosen && !title) setTitle(chosen.name.replace(/\.[^.]+$/, ''))
   }
 
-  const submit = async (event) => {
-    event.preventDefault()
+  const submit = async () => {
     setBusy(true)
     setError(null)
     try {
       const content = await readBase64(file)
-      await uploadPayerDocument({
+      const document = await uploadPayerDocument({
         payer_id: payerId,
         title: title.trim(),
         effective_date: effective || null,
@@ -118,7 +121,7 @@ function UploadForm({ payers, onUploaded }) {
       setTitle('')
       setEffective('')
       setInputKey((key) => key + 1)
-      onUploaded()
+      onUploaded(document)
     } catch (err) {
       setError(err.message)
     } finally {
@@ -127,8 +130,15 @@ function UploadForm({ payers, onUploaded }) {
   }
 
   const tooLarge = file && file.size > MAX_MB * 1024 * 1024
+  const ready = file && !tooLarge && payerId && title.trim()
   return (
-    <form onSubmit={submit} aria-label="Upload a payer document" className="space-y-3 rounded-xl bg-gray-50 p-4">
+    <div
+      role="group"
+      aria-label="Upload a payer document"
+      className="space-y-3 rounded-xl bg-gray-50 p-4"
+      // Enter in a field here would otherwise submit the rule form around it
+      onKeyDown={(e) => e.key === 'Enter' && e.target.tagName === 'INPUT' && e.preventDefault()}
+    >
       <div className="grid gap-3 sm:grid-cols-2">
         <div>
           <label htmlFor={`${ids}-file`} className="mb-1 block text-sm font-medium text-gray-800">
@@ -198,11 +208,18 @@ function UploadForm({ payers, onUploaded }) {
           Could not upload — {error}
         </p>
       )}
-      <button type="submit" className="btn-primary btn-sm" disabled={busy || !file || tooLarge}>
-        <Icon name="plus" className="h-4 w-4" strokeWidth={2} />
-        {busy ? 'Uploading…' : 'Upload document'}
-      </button>
-    </form>
+      <div className="flex flex-wrap gap-2">
+        <button type="button" className="btn-primary btn-sm" disabled={busy || !ready} onClick={submit}>
+          <Icon name="plus" className="h-4 w-4" strokeWidth={2} />
+          {busy ? 'Uploading…' : 'Upload document'}
+        </button>
+        {onCancel && (
+          <button type="button" className="btn-secondary btn-sm" onClick={onCancel} disabled={busy}>
+            Cancel
+          </button>
+        )}
+      </div>
+    </div>
   )
 }
 
@@ -212,7 +229,7 @@ function UploadForm({ payers, onUploaded }) {
  */
 export default function PayerDocumentsCard({ documents, error, reload, payers, rules }) {
   const [adding, setAdding] = useState(false)
-  const options = Object.values(payers ?? {}).filter((payer) => payer.payer_type !== 'Self-Pay')
+  const options = documentPayers(payers)
   const citing = (documentId) =>
     (rules ?? []).filter((rule) => rule.source?.document_id === documentId).map((rule) => rule.id)
 
@@ -239,6 +256,7 @@ export default function PayerDocumentsCard({ documents, error, reload, payers, r
       {adding && (
         <UploadForm
           payers={options}
+          onCancel={() => setAdding(false)}
           onUploaded={() => {
             setAdding(false)
             reload()

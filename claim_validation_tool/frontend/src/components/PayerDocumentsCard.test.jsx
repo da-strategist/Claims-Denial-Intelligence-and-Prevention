@@ -118,6 +118,56 @@ describe('citing a document in a rule', () => {
     expect(sent.source).toEqual({ document_id: 'DOC-001', page: 4, excerpt: 'MRI needs prior authorization.' })
   })
 
+  it('uploads a document from inside the rule form and cites it', async () => {
+    const fetchMock = mockApi({
+      'POST /payer-documents': () => DOCUMENT,
+      'PUT /rules/RULE-022': ({ body }) => ({ ...body, id: 'RULE-022' }),
+    })
+    let reloaded = 0
+    const rule = {
+      id: 'RULE-022',
+      name: 'Medicare MRI authorization',
+      category: 'Payer-Specific',
+      severity: 'warning',
+      enabled: true,
+      scope: { type: 'payer', values: ['PAY001'] },
+      condition_logic: 'AND',
+      conditions: [{ field: 'total_charge', operator: 'greaterThan', value: '0' }],
+      recommended_action: '',
+      source: null,
+    }
+    render(
+      <RuleBuilder
+        rule={rule}
+        fields={FIELDS}
+        payers={PAYERS}
+        departments={{}}
+        documents={[]}
+        onDocumentAdded={() => reloaded++}
+        onClose={() => {}}
+        onSaved={() => {}}
+      />,
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Upload a document' }))
+    const upload = screen.getByRole('group', { name: 'Upload a payer document' })
+    expect(within(upload).getByLabelText('Payer')).toHaveValue('PAY001') // the rule's payer
+    const file = new File(['%PDF-1.4 manual'], 'Provider manual 2026.pdf', { type: 'application/pdf' })
+    await userEvent.upload(within(upload).getByLabelText(/^File/), file)
+    await userEvent.type(within(upload).getByLabelText('Title'), '{Enter}') // doesn't save the rule
+    expect(sentBodies(fetchMock, 'PUT /rules/RULE-022')).toHaveLength(0)
+    await userEvent.click(within(upload).getByRole('button', { name: 'Upload document' }))
+
+    expect(await screen.findByLabelText(/Payer document/)).toHaveValue('DOC-001')
+    expect(reloaded).toBe(1)
+    await userEvent.type(screen.getByLabelText(/Passage/), 'MRI needs prior authorization.')
+    await userEvent.click(screen.getByRole('button', { name: 'Save changes' }))
+    expect(sentBodies(fetchMock, 'PUT /rules/RULE-022')[0].source).toEqual({
+      document_id: 'DOC-001',
+      page: 1,
+      excerpt: 'MRI needs prior authorization.',
+    })
+  })
+
   it('sends no source when none is chosen', async () => {
     const fetchMock = mockApi({ 'POST /rules': ({ body }) => ({ ...body, id: 'RULE-021' }) })
     render(

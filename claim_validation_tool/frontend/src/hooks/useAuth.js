@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useState } from 'react'
-import { getMe, login, logout, SIGNED_OUT_EVENT } from '../services/api'
+import { changePassword, getMe, login, logout, SIGNED_OUT_EVENT } from '../services/api'
 
 /**
  * The signed-in user: { user, status, notice, signIn, signOut }. `status` is 'loading',
@@ -57,5 +57,11 @@ export function useAuthState() {
     return user
   }, [])
 
-  return { ...state, signIn, signOut, refresh }
+  // Your own new password; the session carries on (and stops requiring one if it did)
+  const updatePassword = useCallback(async (current, next) => {
+    const user = await changePassword(current, next)
+    setState({ status: 'signed-in', user, notice: null })
+  }, [])
+
+  return { ...state, signIn, signOut, refresh, updatePassword }
 }

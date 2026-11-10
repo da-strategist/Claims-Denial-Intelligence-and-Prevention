@@ -6,6 +6,7 @@ inside an organisation takes emergency access (data/emergency.py), which is read
 time-limited, needs a reason, and is written to the organisation's own audit log.
 """
 
+import shutil
 from datetime import UTC, date, datetime
 from typing import Annotated
 
@@ -13,11 +14,12 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
 
 from app.data.audit import get_audit_log, get_platform_audit_log
+from app.data.pilot_requests import PilotRequest, RequestNotPending, get_pilot_requests
 from app.data.emergency import MAX_MINUTES, MIN_MINUTES, EmergencyAccess, get_emergency_access
 from app.data.org_lifecycle import delete_organisation
 from app.data.orgs import BusinessAssociateAgreement, OrgId, OrgStatus, SsoSettings, get_org_registry
 from app.data.repository import get_repository
-from app.data.users import UserStore, get_user_store
+from app.data.users import UserStore, check_password_strength, get_user_store
 from app.models import AuditEvent, Permission, Role, UserSummary
 from app.models.auth import Username
 from app.sample_org import empty
@@ -45,15 +47,16 @@ class OrganisationInfo(BaseModel):
     deleted_at: datetime | None
 
 
-class OrganisationCreate(BaseModel):
-    id: OrgId
-    name: str = Field(min_length=2, max_length=120)
-
-
 class FirstAdmin(BaseModel):
     username: Username
     display_name: str = Field(min_length=1, max_length=80)
     password: str = Field(min_length=1, max_length=256)
+
+
+class OrganisationCreate(BaseModel):
+    id: OrgId
+    name: str = Field(min_length=2, max_length=120)
+    admin: FirstAdmin = Field(description="Its first administrator, created with it")
 
 
 class BaaRecord(BaseModel):
@@ -100,6 +103,14 @@ def _org(org_id: str):
     return org
 
 
+def _undo_create(org_id: str, folder) -> None:
+    """Remove a half-created organisation: its entry, its folder (with any data key), and
+    anything cached for it, so the ID can be used again cleanly."""
+    get_org_registry().discard(org_id)
+    shutil.rmtree(folder, ignore_errors=True)
+    forget_organisation(org_id)
+
+
 @router.get("/organisations", response_model=list[OrganisationInfo])
 def list_organisations(users: Users) -> list[OrganisationInfo]:
     return [_info(org, users) for org in get_org_registry().list()]
@@ -107,17 +118,46 @@ def list_organisations(users: Users) -> list[OrganisationInfo]:
 
 @router.post("/organisations", response_model=OrganisationInfo, status_code=status.HTTP_201_CREATED)
 def create_organisation(body: OrganisationCreate, users: Users, request: Request) -> OrganisationInfo:
-    """A new, empty organisation: the shared code sets, and its own tables waiting for its
-    patients, providers, facilities, and claims to be loaded."""
+    """A new, empty organisation with its first administrator: the shared code sets, and its
+    own tables waiting for its patients, providers, facilities, and claims to be loaded.
+    Both are created or neither is, so no organisation is left without an administrator."""
+    return _create_organisation(body, users, request)
+
+
+def _create_organisation(body: OrganisationCreate, users: UserStore, request: Request) -> OrganisationInfo:
     registry = get_org_registry()
     if registry.get(body.id) is not None:
         raise HTTPException(status_code=409, detail=f"Organisation {body.id} already exists")
     template = next((o for o in registry.list()), None)
     if template is None:
         raise HTTPException(status_code=409, detail="Run `python -m app.orgs migrate` first")
-    audit_note(request, organisation=body.id)
-    empty(registry.folder(body.id) / "data", registry.data_dir(template.id))
-    org = registry.add(body.id, body.name, registry.folder(body.id).relative_to(registry.root) / "data")
+    # Everything about the administrator is checked before anything is created
+    try:
+        check_password_strength(body.admin.password)
+    except ValueError as err:
+        raise HTTPException(status_code=422, detail=f"Administrator's password: {err}") from err
+    if users.get(body.admin.username) is not None:
+        raise HTTPException(status_code=409, detail=f"The username {body.admin.username} is taken; choose another")
+    audit_note(request, organisation=body.id, new_user=body.admin.username)
+    folder = registry.folder(body.id)
+    try:
+        empty(folder / "data", registry.data_dir(template.id))
+        org = registry.add(body.id, body.name, folder.relative_to(registry.root) / "data")
+    except Exception:
+        _undo_create(body.id, folder)
+        raise
+    try:
+        users.add(
+            body.admin.username,
+            body.admin.display_name,
+            Role.ADMIN,
+            body.admin.password,
+            org.id,
+            must_change_password=True,
+        )
+    except ValueError as err:  # e.g. the username was taken a moment ago
+        _undo_create(body.id, folder)
+        raise HTTPException(status_code=409, detail=str(err)) from err
     return _info(org, users)
 
 
@@ -204,11 +244,13 @@ def delete(
     "/organisations/{org_id}/admins", response_model=UserSummary, status_code=status.HTTP_201_CREATED
 )
 def add_admin(org_id: OrgId, body: FirstAdmin, users: Users, request: Request) -> UserSummary:
-    """An administrator for the organisation (typically its first); they manage the rest."""
+    """Another administrator for the organisation (its first comes with it); they manage the rest."""
     _org(org_id)
     audit_note(request, new_user=body.username)
     try:
-        user = users.add(body.username, body.display_name, Role.ADMIN, body.password, org_id)
+        user = users.add(
+            body.username, body.display_name, Role.ADMIN, body.password, org_id, must_change_password=True
+        )
     except ValueError as err:
         code = 409 if "is taken" in str(err) else 422
         raise HTTPException(status_code=code, detail=str(err)) from err
@@ -272,3 +314,60 @@ def end_emergency_access(grant_id: str, me: SignedIn, request: Request) -> Emerg
 def platform_audit(limit: int = 200) -> list[AuditEvent]:
     """Requests that belong to no organisation: platform accounts' work, unknown sign-ins."""
     return list(reversed(get_platform_audit_log().events()))[: max(1, min(limit, 1000))]
+
+
+# ----- Pilot requests from the website ----------------------------------------------------
+
+
+class PilotApproval(BaseModel):
+    """The organisation to create for the request, filled in from it on the Platform page."""
+
+    organisation: OrganisationCreate
+
+
+class PilotDecline(BaseModel):
+    reason: str = Field(min_length=3, max_length=500)
+
+
+def _pilot_request(request_id: str) -> PilotRequest:
+    found = get_pilot_requests().get(request_id)
+    if found is None:
+        raise HTTPException(status_code=404, detail=f"No pilot request {request_id}")
+    return found
+
+
+@router.get("/pilot-requests", response_model=list[PilotRequest])
+def list_pilot_requests() -> list[PilotRequest]:
+    """Requests from the website's pilot form: pending first. Decided ones are deleted a year
+    after the decision."""
+    return get_pilot_requests().all()
+
+
+@router.post("/pilot-requests/{request_id}/approve", response_model=OrganisationInfo)
+def approve_pilot_request(
+    request_id: str, body: PilotApproval, users: Users, me: SignedIn, request: Request
+) -> OrganisationInfo:
+    """Create the organisation and its first administrator (as New organisation does), then
+    mark the request approved. If the organisation can't be created, the request stays pending."""
+    pilot = _pilot_request(request_id)
+    audit_note(request, pilot_request=request_id)
+    store = get_pilot_requests()
+    if pilot.status != "pending":
+        raise HTTPException(status_code=409, detail=f"{request_id} was already {pilot.status}")
+    org = _create_organisation(body.organisation, users, request)
+    try:
+        store.approve(request_id, me.username, org.id)
+    except RequestNotPending as err:  # decided by someone else meanwhile; the organisation stays
+        raise HTTPException(status_code=409, detail=f"{err}; {org.name} was still created") from err
+    return org
+
+
+@router.post("/pilot-requests/{request_id}/decline", response_model=PilotRequest)
+def decline_pilot_request(request_id: str, body: PilotDecline, me: SignedIn, request: Request) -> PilotRequest:
+    """Decline, with a reason kept for the record. Nothing is sent to them: tell them yourself."""
+    _pilot_request(request_id)
+    audit_note(request, pilot_request=request_id)
+    try:
+        return get_pilot_requests().decline(request_id, me.username, body.reason.strip())
+    except RequestNotPending as err:
+        raise HTTPException(status_code=409, detail=str(err)) from err

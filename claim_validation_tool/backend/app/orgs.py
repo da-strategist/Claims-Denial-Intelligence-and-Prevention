@@ -42,7 +42,14 @@ from app.data.registrations import DEFAULT_REGISTRATIONS_FILE
 from app.data.repository import DEFAULT_DATA_DIR
 from app.data.rules import DEFAULT_RULES_FILE
 from app.data.key_providers import active_name
-from app.data.secure_files import MASTER_KEY_ENV, EncryptionError, data_key_provider, new_master_key
+from app.data.pilot_requests import PLATFORM_FOLDER
+from app.data.secure_files import (
+    MASTER_KEY_ENV,
+    EncryptionError,
+    data_key_provider,
+    new_master_key,
+    rewrap_data_key,
+)
 from app.data.users import get_user_store
 from app import cms_org
 from app.sample_org import generate
@@ -181,6 +188,9 @@ def main(argv: list[str] | None = None) -> int:
                     if org.status != OrgStatus.DELETED:
                         changed = rotate_master_key(org.id)
                         print(f"{org.id}: {'re-wrapped' if changed else 'already on the first key'}")
+                # The platform's own data key (pilot requests)
+                changed = rewrap_data_key(registry.root / PLATFORM_FOLDER)
+                print(f"platform: {'re-wrapped' if changed else 'already on the first key, or none yet'}")
                 print(f"Every data key is now held by {active_name()}; older keys can be removed.")
             case "key-status":
                 print(f"active key provider: {active_name()}")
@@ -188,6 +198,8 @@ def main(argv: list[str] | None = None) -> int:
                     if org.status != OrgStatus.DELETED:
                         held = data_key_provider(registry.folder(org.id)) or "no data key (unencrypted)"
                         print(f"{org.id:14} {held}")
+                held = data_key_provider(registry.root / PLATFORM_FOLDER) or "no data key yet"
+                print(f"{'(platform)':14} {held}")
             case "audit-purge":
                 if not args.dry_run and not (args.by or "").strip():
                     raise ValueError("Say who is running the purge: --by \"Your Name\"")
