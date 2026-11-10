@@ -178,6 +178,7 @@ class OrganisationSummary(BaseModel):
     id: str
     name: str
     default_claim_route: ClaimRoute = ClaimRoute.VALIDATE_ONLY
+    sample_data: bool = Field(default=False, description="Synthetic demo data, not real claims")
 
 
 class OrganisationSettings(BaseModel):

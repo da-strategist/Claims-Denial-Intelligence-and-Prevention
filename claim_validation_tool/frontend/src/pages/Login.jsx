@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import Icon from '../components/Icon'
 import Logo from '../components/Logo'
 import { INPUT_CLASS } from '../constants'
+import { getHealth } from '../services/api'
 
 const PROMISE = [
   ['Load', 'Claims from your systems, a file, or the claim form'],
@@ -18,6 +19,13 @@ export default function Login({ onSignIn, notice }) {
   const [visible, setVisible] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
+  // A demo server says so; the pilot and production servers don't
+  const [demo, setDemo] = useState(false)
+  useEffect(() => {
+    getHealth()
+      .then((health) => setDemo(Boolean(health?.demo)))
+      .catch(() => {})
+  }, [])
 
   const submit = async (event) => {
     event.preventDefault()
@@ -59,7 +67,9 @@ export default function Login({ onSignIn, notice }) {
             ))}
           </ol>
         </div>
-        <p className="relative text-xs text-slate-400">Sign-in is for invited users. Demonstrations use synthetic data.</p>
+        <p className="relative text-xs text-slate-400">
+          Sign-in is for invited users.{demo && ' Demonstrations use synthetic data.'}
+        </p>
       </aside>
 
       <div className="flex flex-col px-4 py-10 sm:px-8">

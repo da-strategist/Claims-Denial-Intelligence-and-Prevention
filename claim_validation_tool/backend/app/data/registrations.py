@@ -20,7 +20,7 @@ from threading import Lock
 
 from cryptography.fernet import Fernet
 
-from app.data.orgs import org_cipher_for, org_file
+from app.data.orgs import get_org_registry, org_cipher_for, org_file
 from app.data.secure_files import read_text, write_text
 from app.models import (
     Address,
@@ -89,9 +89,11 @@ def _years_before(day: date, years: int) -> date:
 
 
 class RegistrationStore:
-    def __init__(self, path: Path | None = None, cipher: Fernet | None = None) -> None:
+    def __init__(self, path: Path | None = None, cipher: Fernet | None = None, *, sample: bool = True) -> None:
         self.path = path
         self._cipher = cipher
+        # Generate details for patients with none entered: sample organisations only
+        self.sample = sample
         self._entered: dict[str, PatientRegistration] = {}
         self._lock = Lock()
         if path is not None and path.exists():
@@ -99,11 +101,14 @@ class RegistrationStore:
                 registration = PatientRegistration.model_validate(item)
                 self._entered[registration.patient_id] = registration
 
-    def get(self, patient: Patient, payer: Payer | None, today: date) -> PatientRegistration:
-        """The entered details if there are any, else sample details."""
+    def get(self, patient: Patient, payer: Payer | None, today: date) -> PatientRegistration | None:
+        """The entered details if there are any. Otherwise generated sample details in a sample
+        organisation, and None in a real one: its patients' details come from their claims."""
         with self._lock:
             entered = self._entered.get(patient.patient_id)
-        return entered or sample_registration(patient, payer, today)
+        if entered is not None or not self.sample:
+            return entered
+        return sample_registration(patient, payer, today)
 
     def with_policy(self, payer_id: str, member_id: str) -> list[str]:
         """Patients whose saved details have this member ID with this payer."""
@@ -162,4 +167,9 @@ class RegistrationStore:
 @lru_cache(maxsize=None)
 def get_registration_store(org_id: str) -> RegistrationStore:
     """The organisation's patient registrations, saved in its folder."""
-    return RegistrationStore(org_file(org_id, "patient_registrations.json"), org_cipher_for(org_id))
+    org = get_org_registry().get(org_id)
+    return RegistrationStore(
+        org_file(org_id, "patient_registrations.json"),
+        org_cipher_for(org_id),
+        sample=bool(org and org.sample_data),
+    )

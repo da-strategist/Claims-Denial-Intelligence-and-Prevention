@@ -184,6 +184,8 @@ BAA = {"signed_on": "2026-10-01", "reference": "BAA-2026-014", "signatory": "Dr.
 
 
 def test_without_a_baa_production_sign_in_is_blocked(client, monkeypatch):
+    for org_id in ("meridian", "lakeside"):  # production runs real organisations only
+        get_org_registry().set_sample_data(org_id, False)
     monkeypatch.setenv("RCM_ENVIRONMENT", "production")
     monkeypatch.setenv("RCM_COOKIE_SECURE", "1")
     login = {"username": "admin2", "password": "Fixture-password-1"}
@@ -351,7 +353,11 @@ def test_a_key_held_by_a_provider_that_isnt_set_up_is_refused(client, monkeypatc
 
 @pytest.mark.parametrize(
     ("name", "message"),
-    [("aws-kms", "AWS KMS \\(aws-kms\\) isn't built yet"), ("awskms", "Unknown key provider 'awskms'")],
+    [
+        ("azure-keyvault", "Azure Key Vault \\(azure-keyvault\\) isn't built yet"),
+        ("aws-kms", "RCM_KEY_PROVIDER=aws-kms but its settings aren't given"),  # no RCM_KMS_KEY_ID
+        ("awskms", "Unknown key provider 'awskms'"),
+    ],
 )
 def test_unbuilt_or_misspelt_providers_stop_startup(anon_client, monkeypatch, name, message):
     monkeypatch.setenv("RCM_KEY_PROVIDER", name)

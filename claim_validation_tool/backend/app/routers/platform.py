@@ -6,7 +6,9 @@ inside an organisation takes emergency access (data/emergency.py), which is read
 time-limited, needs a reason, and is written to the organisation's own audit log.
 """
 
+import os
 import shutil
+from pathlib import Path
 from datetime import UTC, date, datetime
 from typing import Annotated
 
@@ -19,6 +21,7 @@ from app.data.emergency import MAX_MINUTES, MIN_MINUTES, EmergencyAccess, get_em
 from app.data.org_lifecycle import delete_organisation
 from app.data.orgs import BusinessAssociateAgreement, OrgId, OrgStatus, SsoSettings, get_org_registry
 from app.data.repository import get_repository
+from app.data.secure_files import production
 from app.data.users import UserStore, check_password_strength, get_user_store
 from app.models import AuditEvent, Permission, Role, UserSummary
 from app.models.auth import Username
@@ -124,13 +127,29 @@ def create_organisation(body: OrganisationCreate, users: Users, request: Request
     return _create_organisation(body, users, request)
 
 
+def code_sets_dir(registry) -> Path | None:
+    """Where a new organisation's shared code sets (CPT, ICD-10, payers, edits) come from:
+    RCM_CODE_SETS_DIR, a folder of code sets only. Outside production, an existing
+    organisation's data will do (a demo, or tests); production never copies from one."""
+    configured = os.environ.get("RCM_CODE_SETS_DIR", "").strip()
+    if configured:
+        return Path(configured)
+    if production():
+        return None
+    template = next((o for o in registry.list()), None)
+    return registry.data_dir(template.id) if template else None
+
+
 def _create_organisation(body: OrganisationCreate, users: UserStore, request: Request) -> OrganisationInfo:
     registry = get_org_registry()
     if registry.get(body.id) is not None:
         raise HTTPException(status_code=409, detail=f"Organisation {body.id} already exists")
-    template = next((o for o in registry.list()), None)
-    if template is None:
-        raise HTTPException(status_code=409, detail="Run `python -m app.orgs migrate` first")
+    code_sets = code_sets_dir(registry)
+    if code_sets is None:
+        raise HTTPException(
+            status_code=409,
+            detail="No code sets to start from: set RCM_CODE_SETS_DIR (python -m app.orgs code-sets)",
+        )
     # Everything about the administrator is checked before anything is created
     try:
         check_password_strength(body.admin.password)
@@ -141,7 +160,7 @@ def _create_organisation(body: OrganisationCreate, users: UserStore, request: Re
     audit_note(request, organisation=body.id, new_user=body.admin.username)
     folder = registry.folder(body.id)
     try:
-        empty(folder / "data", registry.data_dir(template.id))
+        empty(folder / "data", code_sets)
         org = registry.add(body.id, body.name, folder.relative_to(registry.root) / "data")
     except Exception:
         _undo_create(body.id, folder)

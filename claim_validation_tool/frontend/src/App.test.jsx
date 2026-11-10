@@ -269,3 +269,17 @@ describe('a password someone else set', () => {
     expect(screen.queryByRole('heading', { name: 'Change your password' })).not.toBeInTheDocument()
   })
 })
+
+describe('the sign-in page', () => {
+  it('mentions synthetic data only on a demo server', async () => {
+    mockApi({ ...signedOut, 'GET /health': () => ({ status: 'ok', demo: true }) })
+    const { unmount } = render(<App />)
+    expect(await screen.findByText(/Demonstrations use synthetic data/)).toBeInTheDocument()
+    unmount()
+    mockApi({ ...signedOut, 'GET /health': () => ({ status: 'ok', demo: false }) })
+    render(<App />)
+    await screen.findByRole('form', { name: 'Sign in' })
+    expect(screen.getByText(/Sign-in is for invited users/)).toBeInTheDocument()
+    expect(screen.queryByText(/synthetic data/)).not.toBeInTheDocument()
+  })
+})

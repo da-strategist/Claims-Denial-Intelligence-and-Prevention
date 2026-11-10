@@ -10,7 +10,7 @@ import {
   PayerTable,
   RevenueTrendChart,
 } from '../components/DashboardCharts'
-import { DASHBOARD_PERIODS, DEFAULT_DASHBOARD_MONTHS, FIELD_CLASS } from '../constants'
+import { DASHBOARD_PERIODS, dashboardMonthsFor, FIELD_CLASS } from '../constants'
 import { useAuth, useCan } from '../hooks/useAuth'
 import { usePayerLookup } from '../hooks/useClaims'
 import { useDashboard } from '../hooks/useDashboard'
@@ -119,7 +119,7 @@ export default function Dashboard() {
   const { user } = useAuth() ?? {}
   const canEnterClaims = useCan('claims:write')
   const [filters, setFilters] = useState({
-    months: DEFAULT_DASHBOARD_MONTHS,
+    months: dashboardMonthsFor(user?.organisation),
     payer_id: '',
     department_id: '',
   })

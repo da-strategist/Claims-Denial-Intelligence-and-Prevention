@@ -43,9 +43,13 @@ def build_dashboard(
     denials: pd.DataFrame,
     statuses: pd.DataFrame,
     payers: dict[str, Payer],
+    *,
+    today: date | None = None,
 ) -> Dashboard:
     """`claims`/`denials` are the frames the account can see; `statuses` comes from
-    StatusSnapshot. An account limited to an area with no claims gets an empty dashboard."""
+    StatusSnapshot. An account limited to an area with no claims gets an empty dashboard.
+    `today`: count "last N months" back from it (real claims); otherwise from the latest
+    service date in the data (the synthetic sample, which ends in December 2025)."""
     if claims.empty:
         today = date.today()
         data_range = Period(start=today, end=today)
@@ -60,7 +64,7 @@ def build_dashboard(
     if query.department_id is not None:
         scoped = scoped[scoped["department_id"] == query.department_id]
 
-    period, comparison = _periods(query.months, data_range)
+    period, comparison = _periods(query.months, today or data_range.end)
     current = _in_period(scoped, period)
     previous = _in_period(scoped, comparison) if comparison else None
     if previous is not None and previous.empty:
@@ -109,16 +113,12 @@ def _drafts(scoped: pd.DataFrame, statuses: pd.DataFrame) -> DraftSummary:
 # --- Periods --------------------------------------------------------------------
 
 
-def _periods(months: int | None, data_range: Period) -> tuple[Period | None, Period | None]:
-    """The selected period and the one before it, or (None, None) for all time.
-
-    The window counts back from the latest service date in the data. That suits the
-    synthetic sample (it ends in December 2025); before going live on real claims, count
-    back from today instead. See PHASES.md, "Before going live".
-    """
+def _periods(months: int | None, last_day: date) -> tuple[Period | None, Period | None]:
+    """The selected period, ending with `last_day`'s month, and the one before it; or
+    (None, None) for all time."""
     if months is None:
         return None, None
-    last = pd.Period(data_range.end, freq="M")
+    last = pd.Period(last_day, freq="M")
     first = last - (months - 1)
     period = Period(start=first.start_time.date(), end=last.end_time.date())
     before_last = first - 1

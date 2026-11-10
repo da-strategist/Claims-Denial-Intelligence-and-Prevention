@@ -9,4 +9,8 @@ if [ ! -f /data/orgs/organisations.json ]; then
   cp /seed/users.json /data/users.json
   chmod 600 /data/users.json
 fi
+# The demo's seed organisations are synthetic: mark them so (older volumes predate the mark)
+for org in meridian lakeside; do
+  python -m app.orgs sample-data "$org" on >/dev/null 2>&1 || true
+done
 exec "$@"

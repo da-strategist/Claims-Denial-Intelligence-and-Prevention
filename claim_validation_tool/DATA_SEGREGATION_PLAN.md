@@ -265,7 +265,7 @@ organisations' data keys; each `data_key.enc` records which provider locked it.
 | Provider | `RCM_KEY_PROVIDER` | Status |
 |---|---|---|
 | Master key in the environment (`RCM_MASTER_KEY`, `.env`) | `local` (default) | Built; in use |
-| AWS Key Management Service | `aws-kms` | Planned |
+| AWS Key Management Service | `aws-kms` (`RCM_KMS_KEY_ID`, `aws_kms.py`) | Built; for the AWS pilot |
 | Azure Key Vault | `azure-keyvault` | Planned |
 | Google Cloud KMS | `gcp-kms` | Planned |
 

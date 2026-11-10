@@ -66,13 +66,22 @@ async def lifespan(app: FastAPI):
         raise RuntimeError("RCM_ENVIRONMENT=production needs RCM_COOKIE_SECURE=1 (HTTPS only)")
     get_session_store()  # and so does RCM_SESSIONS_FILE in production
     if production():
+        # Real claims only: a demo organisation's generated patients don't belong beside them
+        sample = [o.id for o in get_org_registry().list() if o.sample_data and o.status != OrgStatus.DELETED]
+        if sample:
+            raise RuntimeError(
+                f"RCM_ENVIRONMENT=production runs real claims only; sample organisations: {', '.join(sample)}"
+            )
         for org in get_org_registry().list():
             if org.status == OrgStatus.ACTIVE and org.baa is None:
                 logger.warning(f"{org.id} has no business associate agreement on record: its accounts can't sign in")
     # Load each organisation's data once at startup so the first request isn't slow
     orgs = [org for org in get_org_registry().list() if org.status == OrgStatus.ACTIVE]
     if not orgs:
-        logger.warning("No organisations yet: run `uv run python -m app.orgs migrate`")
+        logger.warning(
+            "No organisations yet: create one on the Platform page "
+            "(or `uv run python -m app.orgs migrate` for the sample data)"
+        )
     for org in orgs:
         repo, rules = get_repository(org.id), get_rule_repository(org.id)
         get_reference_data(org.id)
@@ -193,4 +202,6 @@ def health_check():
         "status": "ok",
         "service": "claim-validation-api",
         "version": "0.1.0",
+        # Not production: a demo or development server (the sign-in page says so)
+        "demo": not production(),
     }

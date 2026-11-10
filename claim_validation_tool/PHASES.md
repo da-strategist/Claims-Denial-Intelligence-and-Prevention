@@ -102,16 +102,21 @@ Tasks:
 Settings chosen for the synthetic sample data that must change once the tool runs on real,
 continuous claims:
 
-- **Overview period.** The Overview opens on *All time* (`DEFAULT_DASHBOARD_MONTHS` in
-  `frontend/src/constants.js`), and "Last N months" counts back from the latest service date
-  in the data (`_periods` in `backend/app/services/dashboard.py`). That's because the sample
-  claims end in December 2025 while claims entered now carry 2026 dates, so one new claim
-  would move the window onto mostly empty months. On real data, switch to counting back
-  **from today** and open on *Last 12 months*.
-- **Sample patient registrations.** The synthetic patients' dates of birth, addresses, and
-  member IDs are generated (`backend/app/data/registrations.py`, marked "sample" in the
-  form). Real patients' details must come from the hospital's registration system or be
-  captured on their first claim; turn off sample generation.
+- [x] **Real organisations, no sample data.** Each organisation is marked sample (synthetic
+  demo data: Meridian, Lakeside, CMS Florida) or real (every organisation created on the
+  Platform page). A real one starts from the shared code sets only (`python -m app.orgs
+  code-sets <dir>`, then `RCM_CODE_SETS_DIR`; production never copies them from another
+  organisation), never gets generated patient details (they come from its claims), and its
+  Overview opens on the last 12 months counted back from today. `RCM_ENVIRONMENT=production`
+  refuses to start while any sample organisation exists, and the sign-in page mentions
+  synthetic data only on a demo server.
+- **The payer list.** The shared payer catalogue (`dim_payers`) is the sample one: before the
+  pilot, replace it with the hospital's real payers and their payer IDs.
+- **Full code sets.** The shared code sets are small samples (e.g. a few dozen ICD-10 codes
+  of about 70,000), so real claims would be flagged for valid codes. Load the full current
+  ICD-10-CM, CPT/HCPCS, NCCI and MUE tables into the pilot's code sets folder first.
+- **Code set licences.** CPT descriptions are the AMA's and need a licence for production use;
+  confirm which code sets the pilot ships with, and their sources and licences.
 - **837 settings.** Complete `backend/edi_settings.json` (submitter, clearinghouse, billing
   provider with NPI, EIN and ZIP+4, payer IDs), give facilities ZIP+4 addresses, set `mode`
   to `production`, and validate a test file with the clearinghouse first.
@@ -131,9 +136,9 @@ continuous claims:
   first). Tested locally with `deploy/https-local.sh`; see the README.
 - **BAAs.** Record each organisation's signed BAA on the Platform page before loading its
   real data; in production mode an organisation without one can't sign in.
-- **Key service.** Pick a cloud key service, add its provider (`key_providers.py`, about one
-  small class; see DATA_SEGREGATION_PLAN.md §9.6), and move the key to it with `rotate-key`.
-  Production logs a warning while the key is still in `.env`.
+- **Key service.** [x] AWS KMS is built (`RCM_KEY_PROVIDER=aws-kms`, `RCM_KMS_KEY_ID`,
+  `backend/app/data/aws_kms.py`). On a new pilot server, use it from the start, so the master
+  key never sits in `.env`. Production logs a warning while the key is still in `.env`.
 - **Single sign-on.** Add the identity provider the clients use (OpenID Connect covers
   Entra ID, Okta, and Google; DATA_SEGREGATION_PLAN.md §9.7) and its screens, link each
   person's SSO ID, mark a break-glass administrator, then make sign-in SSO only.
