@@ -11,10 +11,10 @@ from app.models import (
     RuleTestResult,
     RuleUpdate,
 )
-from app.models.rule import RuleId
+from app.models.rule import RuleId, RuleSource
 from app.services import validation_engine
 from app.services.auth import require
-from app.services.org_context import OrgClaims, OrgRules
+from app.services.org_context import OrgClaims, OrgPayerDocuments, OrgRules
 
 router = APIRouter(prefix="/api/rules", tags=["rules"], dependencies=[require(Permission.CLAIMS_READ)])
 
@@ -48,19 +48,37 @@ def get_rule(rule_id: RuleId, rules: Rules) -> Rule:
     return _found(rules.get(rule_id), rule_id)
 
 
+def _checked_source(source: RuleSource | None, documents) -> RuleSource | None:
+    """The rule's source with its document's title, if the document and page exist."""
+    if source is None:
+        return None
+    document = documents.get(source.document_id)
+    if document is None:
+        raise HTTPException(status_code=422, detail=f"No payer document {source.document_id}")
+    if source.page is not None and source.page > document.pages:
+        raise HTTPException(
+            status_code=422, detail=f"{document.title} has {document.pages} pages; there's no page {source.page}"
+        )
+    return source.model_copy(update={"document_title": document.title, "excerpt": source.excerpt.strip()})
+
+
 @router.post("", response_model=Rule, status_code=status.HTTP_201_CREATED, dependencies=WRITE)
-def create_rule(data: RuleCreate, rules: Rules) -> Rule:
+def create_rule(data: RuleCreate, rules: Rules, documents: OrgPayerDocuments) -> Rule:
+    data = data.model_copy(update={"source": _checked_source(data.source, documents)})
     return rules.create(data)
 
 
 @router.put("/{rule_id}", response_model=Rule, dependencies=WRITE)
-def replace_rule(rule_id: RuleId, data: RuleCreate, rules: Rules) -> Rule:
+def replace_rule(rule_id: RuleId, data: RuleCreate, rules: Rules, documents: OrgPayerDocuments) -> Rule:
+    data = data.model_copy(update={"source": _checked_source(data.source, documents)})
     return _found(rules.replace(rule_id, data), rule_id)
 
 
 @router.patch("/{rule_id}", response_model=Rule, dependencies=WRITE)
-def update_rule(rule_id: RuleId, changes: RuleUpdate, rules: Rules) -> Rule:
-    """Partial update, e.g. {"enabled": false} to toggle a rule off."""
+def update_rule(rule_id: RuleId, changes: RuleUpdate, rules: Rules, documents: OrgPayerDocuments) -> Rule:
+    """Partial update, e.g. {"enabled": false} to toggle a rule off, or {"source": null}."""
+    if "source" in changes.model_fields_set:
+        changes = changes.model_copy(update={"source": _checked_source(changes.source, documents)})
     return _found(rules.update(rule_id, changes), rule_id)
 
 

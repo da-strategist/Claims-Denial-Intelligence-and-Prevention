@@ -8,6 +8,7 @@ import { currency } from '../utils/format'
 import EdiFileCard from './EdiFileCard'
 import FixSuggestion from './FixSuggestion'
 import Icon from './Icon'
+import RuleSourceLink from './RuleSourceLink'
 import { SeverityBadge } from './StatusBadge'
 
 function Section({ title, children }) {
@@ -43,6 +44,16 @@ function Findings({ validation, suggestions, onApply, readOnlyReason }) {
             </span>
           </div>
           {finding.message && <p className="mt-1.5 text-sm text-gray-600">{finding.message}</p>}
+          {finding.source && (
+            <div className="mt-1.5">
+              <RuleSourceLink source={finding.source} />
+              {finding.source.excerpt && (
+                <blockquote className="mt-1 border-l-2 border-gray-200 pl-3 text-xs text-gray-600 italic">
+                  {finding.source.excerpt}
+                </blockquote>
+              )}
+            </div>
+          )}
           {finding.recommended_action && !suggestions?.[finding.rule_id] && (
             <p className="mt-1.5 text-sm text-gray-800">
               <span className="font-medium">Recommended: </span>

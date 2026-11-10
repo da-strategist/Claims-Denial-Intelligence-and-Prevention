@@ -12,6 +12,7 @@ const SOURCE_TYPE_LABELS = {
   carc: 'CARC',
   rarc: 'RARC',
   fee_schedule: 'Fee schedule',
+  payer_document: 'Payer document',
 }
 
 function Inline({ text, sourceId }) {

@@ -193,8 +193,8 @@ function ResetPassword({ user, onDone, onCancel }) {
   return (
     <form onSubmit={submit} aria-label={`New password for ${user.username}`} className="space-y-3 rounded-xl bg-gray-50 p-4">
       <p className="text-sm text-gray-700">
-        New password for <strong className="font-medium">{user.display_name}</strong>. They’ll be signed out
-        and sign in with it.
+        New password for <strong className="font-medium">{user.display_name}</strong>. They’ll be signed out,
+        sign in with it, and then choose their own.
       </p>
       <PasswordFields password={secret.password} confirm={secret.confirm} onChange={setSecret} autoFocus />
       {error && <Notice>Could not reset the password — {error}</Notice>}
@@ -501,7 +501,7 @@ export default function Users() {
           onCreated={(user) => {
             setAdding(false)
             done(
-              `${user.display_name} can now sign in as ${user.username} (${roleLabel(user.role).toLowerCase()}). Give them their password in person or by phone, not by email.`,
+              `${user.display_name} can now sign in as ${user.username} (${roleLabel(user.role).toLowerCase()}). Give them the password in person or by phone, not by email; it’s temporary, and they choose their own when they first sign in.`,
             )
           }}
         />

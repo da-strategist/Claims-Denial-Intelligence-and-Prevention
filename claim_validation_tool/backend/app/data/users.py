@@ -96,6 +96,7 @@ class UserStore:
         role: Role,
         password: str,
         organisation_id: str | None = None,
+        must_change_password: bool = False,
     ) -> User:
         check_password_strength(password)
         now = datetime.now(UTC)
@@ -107,6 +108,7 @@ class UserStore:
             created_at=now,
             password_changed_at=now,
             organisation_id=organisation_id,
+            must_change_password=must_change_password,
         )
         with self._lock:
             if user.username in self._users:
@@ -128,8 +130,11 @@ class UserStore:
         scope: AccessScope | None = None,
         sso_id: str | None = None,
         break_glass: bool | None = None,
+        must_change_password: bool | None = None,
     ) -> User:
         changes: dict = {}
+        if must_change_password is not None:
+            changes["must_change_password"] = must_change_password
         if sso_id is not None:
             changes["sso_id"] = sso_id.lower() or None  # "" clears it
         if break_glass is not None:

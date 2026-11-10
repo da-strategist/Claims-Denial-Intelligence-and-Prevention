@@ -22,6 +22,7 @@ from app.data.api_keys import get_api_keys
 from app.data.audit import AuditLog, closed_year_files
 from app.data.emergency import get_emergency_access
 from app.data.orgs import OrgStatus, get_org_registry, org_cipher_for
+from app.data.payer_documents import DOCUMENTS_FILE, DOCUMENTS_FOLDER, get_payer_documents
 from app.data.secure_files import (
     ENCRYPTED_SUFFIX,
     EncryptionError,
@@ -66,6 +67,10 @@ def encrypt_organisation(org_id: str) -> list[str]:
         path = folder / name
         if path.exists() and encrypt_file(path, cipher):
             done.append(f"encrypted {org_id}/{name}")
+    documents = [folder / DOCUMENTS_FILE, *sorted((folder / DOCUMENTS_FOLDER).glob("DOC-*"))]
+    for path in documents:  # payer documents: kept like PHI because contract terms can be confidential
+        if path.exists() and encrypt_file(path, cipher):
+            done.append(f"encrypted {org_id}/{path.relative_to(folder)}")
     head = folder / "logs/audit-head.json"
     if head.exists() and encrypt_file(head, cipher):
         done.append(f"encrypted {org_id}/logs/{head.name}")
@@ -98,6 +103,11 @@ def export_organisation(org_id: str, exported_by: str) -> tuple[bytes, dict]:
         path = folder / name
         if path.exists():
             files[f"app/{name}"] = read_text(path, cipher).encode()
+    if (folder / DOCUMENTS_FILE).exists():
+        documents = get_payer_documents(org_id)
+        files[f"app/{DOCUMENTS_FILE}"] = read_text(folder / DOCUMENTS_FILE, cipher).encode()
+        for document in documents.all():
+            files[f"app/{DOCUMENTS_FOLDER}/{document.id}-{document.filename}"] = documents.content(document.id)
     audit = AuditLog(folder / AUDIT_FILE, cipher)
     if lines := list(audit.lines()):  # every year still kept, in one file
         files["app/audit.jsonl"] = "".join(line + "\n" for line in lines).encode()

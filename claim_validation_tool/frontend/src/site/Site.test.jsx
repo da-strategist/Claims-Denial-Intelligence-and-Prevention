@@ -5,7 +5,7 @@ import Root from '../Root'
 import ClaimDemo from './ClaimDemo'
 import { pilotEmail } from './pilotEmail'
 import Site from './Site'
-import { mockApi, reply } from '../test/mockApi'
+import { mockApi, reply, sentBodies } from '../test/mockApi'
 
 function at(url) {
   window.history.replaceState({}, '', url)
@@ -160,17 +160,17 @@ describe('the pilot form', () => {
     at('/pilot')
     render(<Site />)
     expect(screen.getByText(/aren’t open on this site yet/)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Continue in your email app' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Request a pilot' })).toBeDisabled()
   })
 
-  it('checks the details, then opens an email addressed to the pilot contact', async () => {
-    vi.stubEnv('VITE_PILOT_CONTACT_EMAIL', 'pilots@example.org')
-    at('/pilot')
-    render(<Site />)
-    await userEvent.click(screen.getByRole('button', { name: 'Continue in your email app' }))
-    expect(screen.getByText('Enter your full name.')).toBeInTheDocument()
-    expect(screen.getByLabelText('Full name')).toHaveFocus()
-
+  const fillIn = async () => {
+    await userEvent.type(screen.getByLabelText('Full name'), 'Alex Rivera')
+    await userEvent.type(screen.getByLabelText('Work email'), 'alex@hospital.org')
+    await userEvent.type(screen.getByLabelText('Hospital or organization'), 'Valley Critical Access Hospital')
+    await userEvent.type(screen.getByLabelText('Job title'), 'Revenue Cycle Director')
+    await userEvent.selectOptions(screen.getByLabelText('Organization type'), 'Critical Access Hospital')
+  }
+  const watchHref = () => {
     const hrefs = []
     vi.stubGlobal('location', {
       ...window.location,
@@ -178,14 +178,45 @@ describe('the pilot form', () => {
         hrefs.push(value)
       },
     })
-    await userEvent.type(screen.getByLabelText('Full name'), 'Alex Rivera')
-    await userEvent.type(screen.getByLabelText('Work email'), 'alex@hospital.org')
-    await userEvent.type(screen.getByLabelText('Hospital or organization'), 'Valley Critical Access Hospital')
-    await userEvent.type(screen.getByLabelText('Job title'), 'Revenue Cycle Director')
-    await userEvent.selectOptions(screen.getByLabelText('Organization type'), 'Critical Access Hospital')
-    await userEvent.click(screen.getByRole('button', { name: 'Continue in your email app' }))
+    return hrefs
+  }
+
+  it('checks the details, saves the request, and opens an email to the pilot contact too', async () => {
+    vi.stubEnv('VITE_PILOT_CONTACT_EMAIL', 'pilots@example.org')
+    const fetchMock = mockApi({ 'POST /pilot-requests': () => reply(202, { received: true }) })
+    at('/pilot')
+    render(<Site />)
+    await userEvent.click(screen.getByRole('button', { name: 'Request a pilot' }))
+    expect(screen.getByText('Enter your full name.')).toBeInTheDocument()
+    expect(screen.getByLabelText('Full name')).toHaveFocus()
+
+    const hrefs = watchHref()
+    await fillIn()
+    await userEvent.click(screen.getByRole('button', { name: 'Request a pilot' }))
+    expect(await screen.findByRole('heading', { name: 'Thank you, we have your request' })).toBeInTheDocument()
     expect(hrefs[0]).toMatch(/^mailto:pilots@example\.org\?subject=Pilot%20interest%3A%20Valley/)
-    expect(screen.getByRole('heading', { name: 'Your email app should now be open' })).toBeInTheDocument()
+    expect(sentBodies(fetchMock, 'POST /pilot-requests')[0]).toEqual({
+      name: 'Alex Rivera',
+      email: 'alex@hospital.org',
+      organization: 'Valley Critical Access Hospital',
+      title: 'Revenue Cycle Director',
+      org_type: 'Critical Access Hospital',
+      message: '',
+      website: '',
+    })
+  })
+
+  it('still sends the email when the request can’t be saved', async () => {
+    vi.stubEnv('VITE_PILOT_CONTACT_EMAIL', 'pilots@example.org')
+    mockApi({ 'POST /pilot-requests': () => reply(429, { detail: 'Too many requests just now.' }) })
+    at('/pilot')
+    render(<Site />)
+    const hrefs = watchHref()
+    await fillIn()
+    await userEvent.click(screen.getByRole('button', { name: 'Request a pilot' }))
+    expect(await screen.findByRole('heading', { name: 'Your email app should now be open' })).toBeInTheDocument()
+    expect(screen.getByText(/couldn’t save your request/)).toBeInTheDocument()
+    expect(hrefs[0]).toMatch(/^mailto:pilots@example\.org/)
   })
 
   it('writes every field into the email', () => {

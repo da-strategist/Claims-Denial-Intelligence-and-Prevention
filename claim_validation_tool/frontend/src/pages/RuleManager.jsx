@@ -1,12 +1,14 @@
 import { useState } from 'react'
 import Icon from '../components/Icon'
+import PayerDocumentsCard from '../components/PayerDocumentsCard'
 import PageHeader, { Notice, Page } from '../components/PageHeader'
 import RuleBuilder from '../components/RuleBuilder'
+import RuleSourceLink from '../components/RuleSourceLink'
 import { SeverityBadge } from '../components/StatusBadge'
 import Toggle from '../components/Toggle'
 import { FIELD_CLASS, INPUT_CLASS, RULE_CATEGORIES } from '../constants'
 import { usePayerLookup } from '../hooks/useClaims'
-import { useDepartmentLookup, useRuleFields, useRules } from '../hooks/useRules'
+import { useDepartmentLookup, usePayerDocuments, useRuleFields, useRules } from '../hooks/useRules'
 import { deleteRule, updateRule } from '../services/api'
 import { describeCondition, describeScope } from '../utils/ruleSummary'
 
@@ -66,6 +68,7 @@ function RuleRow({ rule, fields, payers, departments, busy, onToggle, onEdit, on
           {rule.id} · {rule.category}
         </div>
         {rule.description && <p className="mt-1 text-sm text-gray-600">{rule.description}</p>}
+        {rule.source && <RuleSourceLink source={rule.source} className="mt-1.5" />}
       </td>
       <td className="px-4 py-5">
         <SeverityBadge severity={rule.severity} />
@@ -101,6 +104,7 @@ export default function RuleManager() {
   const fields = useRuleFields()
   const payers = usePayerLookup()
   const departments = useDepartmentLookup()
+  const documents = usePayerDocuments()
 
   const [editing, setEditing] = useState(null) // null = closed, 'new', or a rule
   const [busyId, setBusyId] = useState(null)
@@ -238,12 +242,22 @@ export default function RuleManager() {
         </table>
       </div>
 
+      <PayerDocumentsCard
+        documents={documents.data}
+        error={documents.error}
+        reload={documents.reload}
+        payers={payers}
+        rules={rules}
+      />
+
       {editing && (
         <RuleBuilder
           rule={editing === 'new' ? null : editing}
           fields={fields}
           payers={payers}
           departments={departments}
+          documents={documents.data ?? []}
+          onDocumentAdded={documents.reload}
           onClose={() => setEditing(null)}
           onSaved={() => {
             setEditing(null)

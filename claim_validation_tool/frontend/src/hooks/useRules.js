@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { listDepartments, listRuleFields, listRules } from '../services/api'
+import { listDepartments, listPayerDocuments, listRuleFields, listRules } from '../services/api'
 import { useApi } from './useApi'
 
 export function useRules() {
@@ -19,4 +19,9 @@ export function useDepartmentLookup() {
     () => Object.fromEntries((data ?? []).map((d) => [d.department_id, d])),
     [data],
   )
+}
+
+/** The organisation's payer documents, which rules can cite. */
+export function usePayerDocuments() {
+  return useApi((options) => listPayerDocuments(options))
 }

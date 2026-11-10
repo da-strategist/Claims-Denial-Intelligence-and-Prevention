@@ -1,9 +1,11 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import { INPUT_CLASS, RULE_CATEGORIES, SCOPE_TYPES, SEVERITIES } from '../constants'
-import { createRule, replaceRule, testRule } from '../services/api'
+import { createRule, getPayerDocumentPage, replaceRule, testRule } from '../services/api'
+import { documentPayers, pageCount } from '../utils/files'
 import { describeScope, scopeOptions } from '../utils/ruleSummary'
 import ConditionBuilder from './ConditionBuilder'
 import Icon from './Icon'
+import { UploadForm } from './PayerDocumentsCard'
 import Toggle from './Toggle'
 
 const NEW_RULE = {
@@ -16,6 +18,7 @@ const NEW_RULE = {
   scope: { type: 'all', values: [] },
   conditions: [{ field: 'total_charge', operator: 'greaterThan', value: '' }],
   condition_logic: 'AND',
+  source: null,
 }
 
 const EDITABLE_FIELDS = Object.keys(NEW_RULE)
@@ -24,6 +27,7 @@ function toDraft(rule) {
   if (!rule) return structuredClone(NEW_RULE)
   const draft = Object.fromEntries(EDITABLE_FIELDS.map((key) => [key, structuredClone(rule[key])]))
   draft.conditions = draft.conditions.map((c) => ({ ...c, value: c.value ?? '' }))
+  draft.source = draft.source ?? null
   return draft
 }
 
@@ -94,6 +98,137 @@ function ScopePicker({ scope, payers, departments, onChange }) {
   )
 }
 
+function SourcePicker({ source, documents: listed, payers, scope, onChange, onDocumentAdded, ids }) {
+  const [preview, setPreview] = useState({ page: null, text: null, error: null, loading: false })
+  const [uploading, setUploading] = useState(false)
+  // Uploaded here: usable at once, before the page's list reloads
+  const [added, setAdded] = useState([])
+  const documents = [...listed, ...added.filter((d) => !listed.some((l) => l.id === d.id))]
+  const document = documents.find((d) => d.id === source?.document_id)
+  const byPayer = groupByPayer(documents)
+  // A rule for one payer: its documents are that payer's
+  const scopePayer = scope?.type === 'payer' && scope.values?.length === 1 ? scope.values[0] : ''
+
+  const choose = (documentId) =>
+    onChange(documentId ? { document_id: documentId, page: 1, excerpt: source?.excerpt ?? '' } : null)
+
+  const showPage = async () => {
+    setPreview({ page: source.page, text: null, error: null, loading: true })
+    try {
+      const { text } = await getPayerDocumentPage(source.document_id, source.page)
+      setPreview({ page: source.page, text, error: null, loading: false })
+    } catch (err) {
+      setPreview({ page: source.page, text: null, error: err.message, loading: false })
+    }
+  }
+
+  const upload = uploading ? (
+    <UploadForm
+      payers={documentPayers(payers)}
+      payerId={scopePayer}
+      onCancel={() => setUploading(false)}
+      onUploaded={(uploaded) => {
+        setAdded((prev) => [...prev, uploaded])
+        setUploading(false)
+        onChange({ document_id: uploaded.id, page: 1, excerpt: source?.excerpt ?? '' })
+        onDocumentAdded?.()
+      }}
+    />
+  ) : (
+    <button type="button" className="btn-secondary btn-sm" onClick={() => setUploading(true)}>
+      <Icon name="upload" className="h-4 w-4" />
+      Upload a document
+    </button>
+  )
+
+  if (documents.length === 0) {
+    return (
+      <div className="space-y-3">
+        <p className="text-sm text-gray-500">
+          No payer documents yet. Upload the payer’s manual or policy this rule is based on, then cite its page.
+        </p>
+        {upload}
+      </div>
+    )
+  }
+  return (
+    <div className="space-y-3">
+      <div>
+        <Label htmlFor={`${ids}-doc`} hint="optional">
+          Payer document
+        </Label>
+        <select
+          id={`${ids}-doc`}
+          className={INPUT_CLASS}
+          value={source?.document_id ?? ''}
+          onChange={(e) => choose(e.target.value)}
+        >
+          <option value="">None</option>
+          {Object.entries(byPayer).map(([payerId, items]) => (
+            <optgroup key={payerId} label={payers?.[payerId]?.payer_name ?? payerId}>
+              {items.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.title} ({pageCount(d)})
+                </option>
+              ))}
+            </optgroup>
+          ))}
+        </select>
+      </div>
+      {upload}
+      {source && document && (
+        <>
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="w-32">
+              <Label htmlFor={`${ids}-page`}>{document.media_type === 'application/pdf' ? 'Page' : 'Part'}</Label>
+              <input
+                id={`${ids}-page`}
+                type="number"
+                min={1}
+                max={document.pages}
+                className={INPUT_CLASS}
+                value={source.page ?? ''}
+                onChange={(e) => onChange({ ...source, page: e.target.value ? Number(e.target.value) : null })}
+              />
+            </div>
+            {source.page >= 1 && source.page <= document.pages && (
+              <button type="button" className="btn-secondary btn-sm mb-1" onClick={showPage} disabled={preview.loading}>
+                {preview.loading ? 'Loading…' : 'Show its text'}
+              </button>
+            )}
+          </div>
+          {preview.text !== null && preview.page === source.page && (
+            <div className="max-h-48 overflow-y-auto rounded-xl bg-gray-50 p-3 text-xs leading-relaxed whitespace-pre-wrap text-gray-700 ring-1 ring-gray-200/70">
+              {preview.text || 'No text could be read from this page.'}
+            </div>
+          )}
+          {preview.error && <p className="text-sm text-red-700">{preview.error}</p>}
+          <div>
+            <Label htmlFor={`${ids}-excerpt`} hint="shown with flagged claims">
+              Passage
+            </Label>
+            <textarea
+              id={`${ids}-excerpt`}
+              rows={3}
+              maxLength={1000}
+              placeholder="Paste the sentence this rule is based on"
+              className={INPUT_CLASS}
+              value={source.excerpt}
+              onChange={(e) => onChange({ ...source, excerpt: e.target.value })}
+            />
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+function groupByPayer(items) {
+  const groups = {}
+  for (const item of items) (groups[item.payer_id] ??= []).push(item)
+  return groups
+}
+
 function TestResult({ result }) {
   const share = result.in_scope ? (result.matched / result.in_scope) * 100 : 0
   return (
@@ -116,7 +251,16 @@ function TestResult({ result }) {
  * Slide-in panel to create or edit a rule. `rule` is the rule being edited, or null
  * for a new one. Calls `onSaved(rule)` after a successful save.
  */
-export default function RuleBuilder({ rule, fields, payers, departments, onClose, onSaved }) {
+export default function RuleBuilder({
+  rule,
+  fields,
+  payers,
+  departments,
+  documents = [],
+  onDocumentAdded,
+  onClose,
+  onSaved,
+}) {
   const [draft, setDraft] = useState(() => toDraft(rule))
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
@@ -285,6 +429,18 @@ export default function RuleBuilder({ rule, fields, payers, departments, onClose
               fields={fields}
               onChange={(conditions) => change({ conditions })}
               onLogicChange={(condition_logic) => change({ condition_logic })}
+            />
+          </Section>
+
+          <Section title="Source">
+            <SourcePicker
+              source={draft.source}
+              documents={documents}
+              payers={payers}
+              scope={draft.scope}
+              ids={titleId}
+              onChange={(source) => change({ source })}
+              onDocumentAdded={onDocumentAdded}
             />
           </Section>
 

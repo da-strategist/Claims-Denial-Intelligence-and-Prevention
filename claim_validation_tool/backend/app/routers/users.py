@@ -59,12 +59,14 @@ def list_users(users: Users, org_id: OrgId) -> list[UserSummary]:
 @router.post("", response_model=UserSummary, status_code=status.HTTP_201_CREATED)
 def create_user(body: UserCreate, users: Users, request: Request, org_id: OrgId) -> UserSummary:
     """Add an account. The password must meet the policy (12+ characters, mixed case,
-    and a digit or symbol)."""
+    and a digit or symbol). It's temporary: they choose their own at their first sign-in."""
     audit_note(request, new_user=body.username, role=body.role)
     _organisation_role(body.role)
     try:
         # Into the administrator's own organisation; the body can't choose another
-        user = users.add(body.username, body.display_name, body.role, body.password, org_id)
+        user = users.add(
+            body.username, body.display_name, body.role, body.password, org_id, must_change_password=True
+        )
     except ValueError as err:
         code = 409 if "is taken" in str(err) else 422
         raise HTTPException(status_code=code, detail=str(err)) from err
@@ -142,7 +144,10 @@ def reset_password(
     target = _target(users, username, org_id)
     audit_note(request, password_reset=True)
     try:
-        users.update(target.username, password=body.password)
+        # Someone else's: a temporary password they replace at their next sign-in
+        users.update(
+            target.username, password=body.password, must_change_password=target.username != me.username
+        )
     except ValueError as err:
         raise HTTPException(status_code=422, detail=str(err)) from err
     if target.username != me.username:

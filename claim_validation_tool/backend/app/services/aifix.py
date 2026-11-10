@@ -121,13 +121,27 @@ def _change(claim: ClaimDetail, field: str, suggested: str | None = None, option
     )
 
 
-def _rule_citation(rule: Rule) -> Citation:
-    return Citation(
-        source_type=SourceType.RULE,
-        reference_id=rule.id,
-        title=rule.name,
-        excerpt=rule.description,
-    )
+def _rule_citations(rule: Rule) -> list[Citation]:
+    """The rule, and the payer document page it's based on, if it cites one."""
+    citations = [
+        Citation(
+            source_type=SourceType.RULE,
+            reference_id=rule.id,
+            title=rule.name,
+            excerpt=rule.description,
+        )
+    ]
+    if source := rule.source:
+        page = f", page {source.page}" if source.page else ""
+        citations.append(
+            Citation(
+                source_type=SourceType.PAYER_DOCUMENT,
+                reference_id=source.document_id + (f" p.{source.page}" if source.page else ""),
+                title=f"{source.document_title or source.document_id}{page}",
+                excerpt=source.excerpt,
+            )
+        )
+    return citations
 
 
 def _payer_citation(claim: ClaimDetail) -> list[Citation]:
@@ -195,7 +209,7 @@ class RuleBasedSuggester:
             id=f"{context.claim.claim_id}:{rule.id}",
             claim_id=context.claim.claim_id,
             rule_id=rule.id,
-            citations=[*citations, _rule_citation(rule)],
+            citations=[*citations, *_rule_citations(rule)],
             source=self.name,
             **fields,
         )

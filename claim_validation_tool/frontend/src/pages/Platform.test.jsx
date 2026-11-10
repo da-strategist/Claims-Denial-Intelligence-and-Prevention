@@ -15,6 +15,7 @@ function setup(extra = {}) {
     'GET /platform/organisations': () => ORGS,
     'GET /platform/emergency-access': () => [],
     'GET /platform/audit': () => [],
+    'GET /platform/pilot-requests': () => [],
     ...extra,
   })
   const refresh = async () => ({ emergency: { id: 'EA-1' } })
@@ -55,18 +56,50 @@ describe('Platform', () => {
     ])
   })
 
-  it('creates an organisation', async () => {
+  it('creates an organisation together with its first administrator', async () => {
     const user = userEvent.setup()
     const fetchMock = setup({
-      'POST /platform/organisations': ({ body }) => reply(201, { ...body, status: 'active', accounts: 0, active_admins: 0 }),
+      'POST /platform/organisations': ({ body }) =>
+        reply(201, { id: body.id, name: body.name, status: 'active', accounts: 1, active_admins: 1 }),
+    })
+    await user.click(await screen.findByRole('button', { name: 'New organisation' }))
+    const form = screen.getByRole('form', { name: 'New organisation' })
+    const create = within(form).getByRole('button', { name: 'Create organisation' })
+    await user.type(within(form).getByLabelText('Name'), 'Riverbend Clinic')
+    await user.type(within(form).getByLabelText(/ID/), 'Riverbend')
+    expect(create).toBeDisabled() // no administrator yet
+    const admin = within(form).getByRole('group', { name: 'First administrator' })
+    await user.type(within(admin).getByLabelText('Full name'), 'Rita Moss')
+    await user.type(within(admin).getByLabelText('Username'), 'RMoss')
+    await user.type(within(admin).getByLabelText('Password'), 'Riverbend-admin-1')
+    await user.type(within(admin).getByLabelText(/Repeat|Confirm/), 'Riverbend-admin-1')
+    await user.click(create)
+    expect(await screen.findByText(/Riverbend Clinic is ready, and Rita Moss can sign in as rmoss/)).toBeInTheDocument()
+    expect(sentBodies(fetchMock, 'POST /platform/organisations')).toEqual([
+      {
+        id: 'riverbend',
+        name: 'Riverbend Clinic',
+        admin: { display_name: 'Rita Moss', username: 'rmoss', password: 'Riverbend-admin-1' },
+      },
+    ])
+  })
+
+  it('keeps the form and says why when the organisation can’t be created', async () => {
+    const user = userEvent.setup()
+    setup({
+      'POST /platform/organisations': () => reply(409, { detail: 'The username admin1 is taken; choose another' }),
     })
     await user.click(await screen.findByRole('button', { name: 'New organisation' }))
     const form = screen.getByRole('form', { name: 'New organisation' })
     await user.type(within(form).getByLabelText('Name'), 'Riverbend Clinic')
-    await user.type(within(form).getByLabelText(/ID/), 'Riverbend')
+    await user.type(within(form).getByLabelText(/ID/), 'riverbend')
+    await user.type(within(form).getByLabelText('Full name'), 'Rita Moss')
+    await user.type(within(form).getByLabelText('Username'), 'admin1')
+    await user.type(within(form).getByLabelText('Password'), 'Riverbend-admin-1')
+    await user.type(within(form).getByLabelText(/Repeat|Confirm/), 'Riverbend-admin-1')
     await user.click(within(form).getByRole('button', { name: 'Create organisation' }))
-    expect(await screen.findByText(/Riverbend Clinic is ready/)).toBeInTheDocument()
-    expect(sentBodies(fetchMock, 'POST /platform/organisations')).toEqual([{ id: 'riverbend', name: 'Riverbend Clinic' }])
+    expect(await within(form).findByText(/admin1 is taken/)).toBeInTheDocument()
+    expect(within(form).getByLabelText('Name')).toHaveValue('Riverbend Clinic')
   })
 
   it('flags a missing BAA and records one', async () => {
@@ -120,5 +153,76 @@ describe('Platform', () => {
     const acme = await row('Acme Health')
     expect(within(acme).getByText(/deleted/)).toBeInTheDocument()
     expect(within(acme).queryByRole('button')).not.toBeInTheDocument()
+  })
+})
+
+const REQUEST = {
+  id: 'PR-1a2b3c4d',
+  name: 'Grace Adeyemi',
+  email: 'Grace.Adeyemi@valleyhospital.org',
+  organization: 'Valley Critical Access Hospital',
+  title: 'Revenue cycle director',
+  org_type: 'Critical Access Hospital',
+  message: 'About 900 claims a month.',
+  received_at: '2026-11-06T09:00:00Z',
+  status: 'pending',
+}
+
+describe('Pilot requests', () => {
+  it('approves a request with an organisation filled in from it', async () => {
+    const user = userEvent.setup()
+    const fetchMock = setup({
+      'GET /platform/pilot-requests': () => [REQUEST],
+      'POST /platform/pilot-requests/PR-1a2b3c4d/approve': ({ body }) => ({ ...ORGS[0], ...body.organisation }),
+    })
+    expect(await screen.findByRole('heading', { name: /Pilot requests · 1 pending/ })).toBeInTheDocument()
+    const item = await row('Valley Critical Access Hospital')
+    expect(within(item).getByText('About 900 claims a month.')).toBeInTheDocument()
+    await user.click(within(item).getByRole('button', { name: 'Approve' }))
+
+    const form = screen.getByRole('form', { name: 'New organisation' })
+    expect(within(form).getByLabelText('Name')).toHaveValue('Valley Critical Access Hospital')
+    expect(within(form).getByLabelText('ID (short, lower case)')).toHaveValue('valley-critical-access-hospital')
+    expect(within(form).getByLabelText('Full name')).toHaveValue('Grace Adeyemi')
+    expect(within(form).getByLabelText('Username')).toHaveValue('grace.adeyemi')
+    await user.clear(within(form).getByLabelText('ID (short, lower case)'))
+    await user.type(within(form).getByLabelText('ID (short, lower case)'), 'valley')
+    await user.type(within(form).getByLabelText('Password'), 'Valley-temp-123')
+    await user.type(within(form).getByLabelText('Repeat password'), 'Valley-temp-123')
+    await user.click(within(form).getByRole('button', { name: 'Approve and create' }))
+
+    expect(await screen.findByText(/is ready, and Grace Adeyemi can sign in as grace.adeyemi/)).toBeInTheDocument()
+    expect(sentBodies(fetchMock, 'POST /platform/pilot-requests/PR-1a2b3c4d/approve')[0]).toEqual({
+      organisation: {
+        id: 'valley',
+        name: 'Valley Critical Access Hospital',
+        admin: { display_name: 'Grace Adeyemi', username: 'grace.adeyemi', password: 'Valley-temp-123' },
+      },
+    })
+  })
+
+  it('declines with a reason and keeps decided requests out of the way', async () => {
+    const user = userEvent.setup()
+    const fetchMock = setup({
+      'GET /platform/pilot-requests': () => [
+        REQUEST,
+        { ...REQUEST, id: 'PR-old', organization: 'Old Clinic', status: 'declined', decided_by: 'platform1', decided_at: '2026-11-01T09:00:00Z', decline_reason: 'Not a fit' },
+      ],
+      'POST /platform/pilot-requests/PR-1a2b3c4d/decline': () => ({ ...REQUEST, status: 'declined' }),
+    })
+    const item = await row('Valley Critical Access Hospital')
+    expect(screen.queryByText('Old Clinic')).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Show decided requests (1)' }))
+    expect(screen.getByText(/Declined by platform1: “Not a fit”/)).toBeInTheDocument()
+
+    await user.click(within(item).getByRole('button', { name: 'Decline' }))
+    const decline = within(item).getByRole('button', { name: 'Decline request' })
+    expect(decline).toBeDisabled()
+    await user.type(within(item).getByLabelText('Reason (kept for the record)'), 'Outside the US for now')
+    await user.click(decline)
+    expect(await screen.findByText(/request was declined/)).toBeInTheDocument()
+    expect(sentBodies(fetchMock, 'POST /platform/pilot-requests/PR-1a2b3c4d/decline')[0]).toEqual({
+      reason: 'Outside the US for now',
+    })
   })
 })

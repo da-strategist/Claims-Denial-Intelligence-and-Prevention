@@ -107,6 +107,13 @@ class OrgRegistry:
             self._save()
             return org
 
+    def discard(self, org_id: str) -> None:
+        """Forget an organisation that was only just added and never used (its creation
+        failed half way). Deleting a real one is org_lifecycle.delete_organisation."""
+        with self._lock:
+            if self._orgs.pop(org_id, None) is not None:
+                self._save()
+
     def set_status(self, org_id: str, status: OrgStatus) -> Organisation:
         with self._lock:
             org = self._require(org_id).model_copy(update={"status": status})

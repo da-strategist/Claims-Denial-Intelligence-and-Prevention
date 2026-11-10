@@ -47,6 +47,8 @@ class SourceType(StrEnum):
     MUE = "mue"
     COVERAGE_POLICY = "coverage_policy"  # LCD / NCD
     FEE_SCHEDULE = "fee_schedule"
+    # Documents the organisation uploaded: a payer's manual, policy, or prior auth list
+    PAYER_DOCUMENT = "payer_document"
 
 
 class Citation(BaseModel):

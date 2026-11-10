@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { pilotContactEmail } from '../content'
+import { submitPilotRequest } from '../../services/api'
 import { pilotEmail } from '../pilotEmail'
 
 const ORG_TYPES = [
@@ -12,7 +13,7 @@ const ORG_TYPES = [
   'Other',
 ]
 
-const EMPTY = { name: '', email: '', organization: '', title: '', orgType: '', message: '' }
+const EMPTY = { name: '', email: '', organization: '', title: '', orgType: '', message: '', website: '' }
 const LIMITS = { name: 100, email: 200, organization: 150, title: 100, message: 1500 }
 
 function validate(form) {
@@ -48,20 +49,23 @@ function Field({ id, label, error, optional, hint, children }) {
 }
 
 /**
- * Pilot interest. Requests go by email: the form checks the details, then opens the visitor's
- * email app with a message addressed to the configured contact, so nothing is stored here and
- * nothing is sent until they send it (VITE_PILOT_CONTACT_EMAIL). Without one it says requests aren't open.
+ * Pilot interest. The request is saved for the ClaustraRCM team to approve (the Platform page),
+ * and the visitor's email app opens with the same message addressed to the configured contact
+ * (VITE_PILOT_CONTACT_EMAIL), so it still arrives if saving fails. Without a contact it says
+ * requests aren't open.
  */
 export default function Pilot() {
   const [form, setForm] = useState(EMPTY)
   const [errors, setErrors] = useState({})
   const [opened, setOpened] = useState(false)
+  const [saved, setSaved] = useState(false)
+  const [sending, setSending] = useState(false)
   const contact = pilotContactEmail()
   const configured = Boolean(contact)
 
   const set = (field) => (event) => setForm((prev) => ({ ...prev, [field]: event.target.value }))
 
-  const submit = (event) => {
+  const submit = async (event) => {
     event.preventDefault()
     const found = validate(form)
     setErrors(found)
@@ -69,6 +73,24 @@ export default function Pilot() {
       document.getElementById(`pilot-${Object.keys(found)[0]}`)?.focus()
       return
     }
+    setSending(true)
+    let isSaved = false
+    try {
+      await submitPilotRequest({
+        name: form.name.trim(),
+        email: form.email.trim(),
+        organization: form.organization.trim(),
+        title: form.title.trim(),
+        org_type: form.orgType,
+        message: form.message.trim(),
+        website: form.website,
+      })
+      isSaved = true
+    } catch {
+      // The email below still reaches us
+    }
+    setSending(false)
+    setSaved(isSaved)
     window.location.href = pilotEmail(form)
     setOpened(true)
   }
@@ -125,11 +147,20 @@ export default function Pilot() {
         )}
         {opened ? (
           <div role="status" className="space-y-3 py-6 text-center">
-            <h2 className="text-xl font-semibold text-gray-900">Your email app should now be open</h2>
-            <p className="text-[15px] text-gray-600">
-              Your request is ready to send to <span className="font-medium text-gray-900">{contact}</span>. It’s only
-              sent once you press Send there.
-            </p>
+            <h2 className="text-xl font-semibold text-gray-900">
+              {saved ? 'Thank you, we have your request' : 'Your email app should now be open'}
+            </h2>
+            {saved ? (
+              <p className="text-[15px] text-gray-600">
+                We’ll be in touch about a pilot. Your email app has also opened with a copy addressed to{' '}
+                <span className="font-medium text-gray-900">{contact}</span>; sending it is optional.
+              </p>
+            ) : (
+              <p className="text-[15px] text-gray-600">
+                We couldn’t save your request just now, so please send it by email: it’s ready to send to{' '}
+                <span className="font-medium text-gray-900">{contact}</span> once you press Send there.
+              </p>
+            )}
             <p className="text-sm text-gray-500">
               Nothing opened? Email{' '}
               <a className="font-medium text-accent hover:underline" href={`mailto:${contact}`}>
@@ -192,12 +223,25 @@ export default function Pilot() {
                 disabled={!configured}
               />
             </Field>
-            <button type="submit" className="btn-primary w-full py-3 text-base" disabled={!configured}>
-              Continue in your email app
+            {/* Hidden from people; form-filling bots fill it in, and their requests aren't kept */}
+            <div aria-hidden="true" className="absolute -left-[9999px] h-px w-px overflow-hidden">
+              <label htmlFor="pilot-website">Website</label>
+              <input
+                id="pilot-website"
+                tabIndex={-1}
+                autoComplete="off"
+                value={form.website}
+                onChange={set('website')}
+              />
+            </div>
+            <button type="submit" className="btn-primary w-full py-3 text-base" disabled={!configured || sending}>
+              {sending ? 'Sending…' : 'Request a pilot'}
             </button>
-            <p className="text-center text-xs leading-relaxed text-gray-500">
-              This opens your email app with your request filled in. Nothing is stored on this site, and nothing is sent until you
-              send the email.
+            <p className="text-xs leading-relaxed text-gray-500">
+              <span className="font-medium text-gray-700">How we use these details.</span> We keep your request so the
+              ClaustraRCM team can review it and contact you about a pilot, and nothing else. It’s stored encrypted, seen
+              only by our team, and deleted 12 months after we decide on it. Your email app also opens with a copy
+              addressed to us. Please don’t include any patient information.
             </p>
           </form>
         )}

@@ -208,9 +208,73 @@ Features 3 and 4 can follow when real volume flows or a client asks.
    credentials, and a business associate agreement first; complete
    `backend/edi_settings.json` and validate a test file with them before going live.
 
-## Client-facing documentation (later)
+## Payer documents behind the rules
 
-- [ ] **Architecture and product document for client discussions.** A plain-language explanation of how the tool is built (frontend, backend, data per organisation, security and compliance, the assistant and what it shares with Claude, the claim routes), with a diagram, written for hospital IT, compliance and revenue cycle leads. Build it from `PROJECT_GUIDE.md`, `README.md` and `DATA_SEGREGATION_PLAN.md`.
+Administrators upload a payer's own documents (provider manual, prior authorization list,
+policy bulletin), so rules and the assistant can point to the payer's actual words.
+
+- [x] **Stage 1: documents as evidence.** Upload a PDF or text document per payer on the Rules
+  page, with its effective date (each organisation's own, encrypted with its key, in its data
+  export). A rule can cite a document, page and passage; flagged claims and AI Fix show that
+  source, and the assistant searches the documents and cites them by page. A document a rule
+  cites can't be deleted until the rule stops citing it. A document can also be uploaded from
+  the rule form's Source section (the rule's payer preselected), and is cited at once.
+- [ ] **Stage 2: draft rules suggested from a document.** Claude reads an uploaded document and
+  proposes rules, each with the passage it came from; an administrator accepts, edits or rejects
+  each one, and nothing goes live on its own. Proposals the rule builder can't express (time
+  limits, frequency per patient) are listed as needing a new kind of check. A newer version of a
+  document flags the rules based on the older one for review. Questions for the pilot: which
+  payers' documents hospitals have, and in what form.
+
+## Onboarding hospitals (Platform page)
+
+Today a hospital asks for a pilot through the website form, which opens an email to the
+founder; after talking to them, a platform account creates the organisation on the Platform
+page and then, as a separate step, adds its first administrator.
+
+- [x] **Organisation and first administrator in one step.** The New organisation form takes the
+  first administrator (name, username, password) too. Everything about the administrator is
+  checked first, and if creating them still fails the organisation is removed again, so no
+  organisation is left without an administrator. Further administrators are added on its row.
+  Their email address comes with the invitation below.
+- [x] **Temporary password, changed at first sign-in.** A password someone else chose (a new
+  organisation's first administrator, another administrator added on the Platform page, an
+  account added on the Users page, or a reset by an administrator) is temporary. After signing
+  in with it, the person sees only a "Choose your own password" screen: they enter the password
+  they were given and a new one, and nothing else opens until they do (the API refuses every
+  other request with 403). Changing it ends their other sessions; wrong current passwords count
+  towards the sign-in lockout. Anyone can also change their own password from the account menu.
+  Accounts made with `python -m app.users` are not affected.
+- [ ] **Invitation instead of a password (later).** The first administrator gets an emailed
+  link to set their own password (expires in 72 hours, single use), so the platform account
+  never chooses or sees a hospital's password. Needs an email service (e.g. Resend or
+  Postmark) and a domain of our own to send from, with a signed agreement. Until then the
+  temporary password above is given in person or by phone.
+- [x] **Pilot requests approval list.** The website's pilot form saves each request on the
+  server, and still opens the visitor's email app with a copy addressed to the founder (so a
+  request arrives even if saving fails, and the founder hears of each one without an email
+  service). The Platform page lists requests as Pending, with **Approve** (the New organisation
+  form filled in from the request: organisation name and ID, the contact as first
+  administrator with a temporary password; creates both, then marks the request Approved) and
+  **Decline** (with a reason, kept for the record). Nothing is emailed to the requester either
+  way: the founder contacts them.
+  - Spam protection: a hidden honeypot field (filled-in requests are answered but not kept),
+    at most 3 requests per email address and 5 per network address a day, 30 an hour overall,
+    and 200 waiting. No account is created until approved. The limits are kept in memory, so a
+    restart resets them; add a challenge such as Cloudflare Turnstile if spam gets through.
+  - The requests hold personal data (name, work email, job title), not patient data: a privacy
+    notice on the form, kept in the platform's own encrypted store (`_platform/`, with its own
+    data key, included in `rotate-key` and `key-status`), deleted 12 months after a decision,
+    and every view, approval and decline in the platform audit log (by request ID; the
+    details aren't copied into the log).
+  - Approval doesn't mean the hospital can load real claims: its BAA must still be recorded
+    before go-live, as now.
+  - Later, with the email service: email the founder from the server instead of the visitor's
+    email app, and send the approved administrator an invitation instead of a password.
+
+## Client-facing documentation
+
+- [x] **Architecture and product document for client discussions** (`CLIENT_OVERVIEW.md`). A plain-language explanation of how the tool is built (frontend, backend, data per organisation, security and compliance, the assistant and what it shares with Claude, the claim routes), with a diagram, written for hospital IT, compliance and revenue cycle leads. Build it from `PROJECT_GUIDE.md`, `README.md` and `DATA_SEGREGATION_PLAN.md`.
 
 ## Summary
 

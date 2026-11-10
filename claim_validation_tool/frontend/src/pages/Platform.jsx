@@ -8,11 +8,14 @@ import { useApi } from '../hooks/useApi'
 import { useAuth } from '../hooks/useAuth'
 import {
   addOrganisationAdmin,
+  approvePilotRequest,
   createOrganisation,
+  declinePilotRequest,
   deleteOrganisation,
   endEmergencyAccess,
   listEmergencyAccess,
   listOrganisations,
+  listPilotRequests,
   listPlatformAudit,
   recordBaa,
   setOrganisationActive,
@@ -36,9 +39,36 @@ function Field({ label, children }) {
   )
 }
 
-function NewOrganisation({ onDone, onCancel }) {
-  const [form, setForm] = useState({ id: '', name: '' })
+// Suggestions from a pilot request, to check and change before approving
+const orgIdFrom = (name) =>
+  name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^[^a-z]+/, '')
+    .slice(0, 32)
+    .replace(/-+$/, '')
+const usernameFrom = (email) =>
+  email
+    .split('@')[0]
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]/g, '')
+    .replace(/^[^a-z]+/, '')
+    .slice(0, 32)
+
+/** New organisation with its first administrator; `request` approves a pilot request with it. */
+function NewOrganisation({ onDone, onCancel, request = null }) {
+  const [form, setForm] = useState(
+    request ? { id: orgIdFrom(request.organization), name: request.organization } : { id: '', name: '' },
+  )
+  const [admin, setAdmin] = useState(
+    request ? { display_name: request.name, username: usernameFrom(request.email) } : { display_name: '', username: '' },
+  )
+  const [secret, setSecret] = useState({ password: '', confirm: '' })
   const [error, setError] = useState(null)
+  const [busy, setBusy] = useState(false)
+  const ready =
+    form.id && form.name && admin.display_name && admin.username &&
+    passwordProblems(secret.password, secret.confirm).length === 0
   return (
     <form
       aria-label="New organisation"
@@ -46,15 +76,30 @@ function NewOrganisation({ onDone, onCancel }) {
       onSubmit={async (e) => {
         e.preventDefault()
         setError(null)
+        setBusy(true)
         try {
-          const org = await createOrganisation(form)
-          onDone(`${org.name} is ready. Add its first administrator, then load its patients, providers, and claims.`)
+          const body = { ...form, admin: { ...admin, password: secret.password } }
+          const org = request ? await approvePilotRequest(request.id, body) : await createOrganisation(body)
+          onDone(
+            `${org.name} is ready, and ${admin.display_name} can sign in as ${admin.username} to manage it. ` +
+              'Give them the password in person or by phone, not by email; it’s temporary, and they choose their own when they first sign in. Next, load its patients, providers, and claims.',
+          )
         } catch (err) {
           setError(err.message)
+          setBusy(false)
         }
       }}
     >
-      <h2 className="text-[15px] font-semibold text-gray-900">New organisation</h2>
+      <h2 className="text-[15px] font-semibold text-gray-900">
+        {request ? `Approve ${request.organization}` : 'New organisation'}
+      </h2>
+      {request && (
+        <p className="text-xs text-gray-500">
+          Filled in from the request: check the ID and username before creating it. Approving creates the organisation
+          and its first administrator, then marks the request approved. Nothing is emailed to {request.name}: contact them
+          at {request.email} yourself.
+        </p>
+      )}
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Name">
           {(id) => <input id={id} required className={INPUT_CLASS} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />}
@@ -76,9 +121,45 @@ function NewOrganisation({ onDone, onCancel }) {
       <p className="text-xs text-gray-500">
         It starts with the shared code sets and no patients, providers, or claims of its own.
       </p>
+
+      <fieldset className="space-y-3 border-t border-gray-100 pt-4">
+        <legend className="text-[15px] font-semibold text-gray-900">First administrator</legend>
+        <p className="text-xs text-gray-500">
+          They manage the organisation’s own accounts, rules and settings. Created together with the organisation. The password you set is temporary: they choose their own when they first sign in.
+        </p>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field label="Full name">
+            {(id) => (
+              <input
+                id={id}
+                required
+                className={INPUT_CLASS}
+                value={admin.display_name}
+                onChange={(e) => setAdmin({ ...admin, display_name: e.target.value })}
+              />
+            )}
+          </Field>
+          <Field label="Username">
+            {(id) => (
+              <input
+                id={id}
+                required
+                autoComplete="off"
+                className={`${INPUT_CLASS} font-mono`}
+                value={admin.username}
+                onChange={(e) => setAdmin({ ...admin, username: e.target.value.toLowerCase().trim() })}
+              />
+            )}
+          </Field>
+        </div>
+        <PasswordFields password={secret.password} confirm={secret.confirm} onChange={setSecret} />
+      </fieldset>
+
       {error && <Notice>Could not create it — {error}</Notice>}
       <div className="flex gap-2">
-        <button type="submit" className="btn-primary">Create organisation</button>
+        <button type="submit" disabled={!ready || busy} className="btn-primary">
+          {busy ? 'Creating…' : request ? 'Approve and create' : 'Create organisation'}
+        </button>
         <button type="button" className="btn-secondary" onClick={onCancel}>Cancel</button>
       </div>
     </form>
@@ -99,7 +180,7 @@ function AddAdmin({ org, onDone, onCancel }) {
         setError(null)
         try {
           const user = await addOrganisationAdmin(org.id, { ...form, password: secret.password })
-          onDone(`${user.display_name} can now sign in as ${user.username} and manage ${org.name}.`)
+          onDone(`${user.display_name} can now sign in as ${user.username} and manage ${org.name}. Give them the password in person or by phone, not by email; it’s temporary, and they choose their own when they first sign in.`)
         } catch (err) {
           setError(err.message)
         }
@@ -401,11 +482,144 @@ function OrganisationRow({ org, onDone, onError, onStarted }) {
 }
 
 /** Organisations, their first administrators, and emergency access (platform accounts). */
+const STATUS_TONE = {
+  pending: 'bg-amber-50 text-amber-900 ring-amber-200',
+  approved: 'bg-emerald-50 text-emerald-900 ring-emerald-200',
+  declined: 'bg-gray-100 text-gray-700 ring-gray-200',
+}
+
+function DeclineForm({ request, onDone, onCancel }) {
+  const [reason, setReason] = useState('')
+  const [error, setError] = useState(null)
+  return (
+    <form
+      aria-label={`Decline ${request.organization}`}
+      className="mt-3 space-y-3 rounded-xl bg-gray-50 p-4"
+      onSubmit={async (e) => {
+        e.preventDefault()
+        try {
+          await declinePilotRequest(request.id, reason.trim())
+          onDone(`${request.organization}’s request was declined. Let ${request.name} know yourself.`)
+        } catch (err) {
+          setError(err.message)
+        }
+      }}
+    >
+      <Field label="Reason (kept for the record)">
+        {(id) => (
+          <input
+            id={id}
+            required
+            minLength={3}
+            maxLength={500}
+            className={INPUT_CLASS}
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+          />
+        )}
+      </Field>
+      {error && <Notice>Could not decline it — {error}</Notice>}
+      <div className="flex gap-2">
+        <button type="submit" disabled={reason.trim().length < 3} className="btn-danger btn-sm">Decline request</button>
+        <button type="button" className="btn-secondary btn-sm" onClick={onCancel}>Cancel</button>
+      </div>
+    </form>
+  )
+}
+
+function PilotRequestRow({ request, open, onOpen, onDone }) {
+  const decided = request.status !== 'pending'
+  return (
+    <li className="py-3">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0 text-sm">
+          <p className="font-medium text-gray-900">
+            {request.organization}
+            <span className={`ml-2 rounded-full px-2 py-0.5 text-xs font-medium ring-1 ${STATUS_TONE[request.status]}`}>
+              {request.status[0].toUpperCase() + request.status.slice(1)}
+            </span>
+          </p>
+          <p className="text-xs text-gray-500">
+            {request.name} · {request.title} · {request.email} · {request.org_type} · {when(request.received_at)}
+          </p>
+          {request.message && <p className="mt-1 max-w-2xl text-sm whitespace-pre-line text-gray-700">{request.message}</p>}
+          {decided && (
+            <p className="mt-1 text-xs text-gray-500">
+              {request.status === 'approved'
+                ? `Approved by ${request.decided_by}: ${request.organisation_id}`
+                : `Declined by ${request.decided_by}: “${request.decline_reason}”`}{' '}
+              · {when(request.decided_at)}
+            </p>
+          )}
+        </div>
+        {!decided && !open && (
+          <div className="flex gap-2">
+            <button type="button" className="btn-primary btn-sm" onClick={() => onOpen('approve')}>
+              Approve
+            </button>
+            <button type="button" className="btn-secondary btn-sm" onClick={() => onOpen('decline')}>
+              Decline
+            </button>
+          </div>
+        )}
+      </div>
+      {open === 'approve' && (
+        <div className="mt-3">
+          <NewOrganisation request={request} onCancel={() => onOpen(null)} onDone={onDone} />
+        </div>
+      )}
+      {open === 'decline' && <DeclineForm request={request} onCancel={() => onOpen(null)} onDone={onDone} />}
+    </li>
+  )
+}
+
+function PilotRequests({ requests, error, onDone }) {
+  const [open, setOpen] = useState(null) // { id, action }
+  const [showDecided, setShowDecided] = useState(false)
+  const pending = (requests ?? []).filter((r) => r.status === 'pending')
+  const decided = (requests ?? []).filter((r) => r.status !== 'pending')
+  const row = (request) => (
+    <PilotRequestRow
+      key={request.id}
+      request={request}
+      open={open?.id === request.id ? open.action : null}
+      onOpen={(action) => setOpen(action ? { id: request.id, action } : null)}
+      onDone={(message) => {
+        setOpen(null)
+        onDone(message)
+      }}
+    />
+  )
+  return (
+    <section aria-labelledby="pilot-requests-title" className="card space-y-1 px-6 py-4">
+      <h2 id="pilot-requests-title" className="text-[15px] font-semibold text-gray-900">
+        Pilot requests{pending.length > 0 && ` · ${pending.length} pending`}
+      </h2>
+      <p className="text-xs text-gray-500">
+        From the website’s pilot form. Approving creates the organisation; its BAA must still be recorded before it loads
+        real claims. Decided requests are deleted after 12 months.
+      </p>
+      {error && <Notice>Could not load pilot requests — {error}</Notice>}
+      {requests && pending.length === 0 && <p className="py-2 text-sm text-gray-500">No requests waiting.</p>}
+      <ul className="divide-y divide-gray-100">{pending.map(row)}</ul>
+      {decided.length > 0 && (
+        <>
+          <button type="button" className="text-sm font-medium text-accent hover:underline" onClick={() => setShowDecided((v) => !v)}>
+            {showDecided ? 'Hide decided requests' : `Show decided requests (${decided.length})`}
+          </button>
+          {showDecided && <ul className="divide-y divide-gray-100">{decided.map(row)}</ul>}
+        </>
+      )}
+    </section>
+  )
+}
+
 export default function Platform() {
   const auth = useAuth()
   const orgs = useApi((options) => listOrganisations(options))
   const grants = useApi((options) => listEmergencyAccess(options))
   const activity = useApi((options) => listPlatformAudit(options))
+  const pilots = useApi((options) => listPilotRequests(options))
   const [creating, setCreating] = useState(false)
   const [message, setMessage] = useState(null)
   const [error, setError] = useState(null)
@@ -417,6 +631,7 @@ export default function Platform() {
     orgs.reload()
     grants.reload()
     activity.reload()
+    pilots.reload()
   }
   // Starting emergency access changes what this account sees: reload who it is, then
   // open the organisation's Overview
@@ -438,6 +653,8 @@ export default function Platform() {
       {message && <Notice tone="info">{message}</Notice>}
       {(error || orgs.error) && <Notice>{error ?? `Could not load organisations — ${orgs.error}`}</Notice>}
       {creating && <NewOrganisation onCancel={() => setCreating(false)} onDone={(m) => { setCreating(false); done(m) }} />}
+
+      <PilotRequests requests={pilots.data} error={pilots.error} onDone={done} />
 
       <section aria-label="Organisations" className="card px-6 py-2">
         <ul className="divide-y divide-gray-100">

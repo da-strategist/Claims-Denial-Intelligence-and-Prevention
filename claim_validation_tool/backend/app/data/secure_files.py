@@ -180,6 +180,10 @@ def write_bytes(path: Path, data: bytes) -> None:
     tmp.replace(path)
 
 
+def read_bytes(path: Path, cipher: Fernet | None) -> bytes:
+    return _decrypt(path.read_bytes(), cipher, path)
+
+
 def read_text(path: Path, cipher: Fernet | None) -> str:
     return _decrypt(path.read_bytes(), cipher, path).decode()
 

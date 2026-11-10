@@ -27,7 +27,9 @@ from app.routers import (
     jab,
     organisation,
     patients,
+    payer_documents,
     payers,
+    pilot,
     reference,
     rules,
     platform,
@@ -108,6 +110,7 @@ app.include_router(audit.router)
 app.include_router(users.router)
 app.include_router(organisation.router)
 app.include_router(platform.router)
+app.include_router(pilot.router)
 app.include_router(claim_api.router)
 app.include_router(claim_import.router)  # before claims: /api/claims/import isn't a claim ID
 app.include_router(claims.router)
@@ -115,6 +118,7 @@ app.include_router(drafts.router)
 app.include_router(payers.router)
 app.include_router(departments.router)
 app.include_router(rules.router)
+app.include_router(payer_documents.router)
 app.include_router(validation.router)
 app.include_router(aifix.router)
 app.include_router(dashboard.router)

@@ -128,6 +128,27 @@ aren't checked, because their synthetic lines would flag about two thirds of the
 whose rules were saved before these rules existed get them added once (`seed_version` in
 `rules.json`); a rule an administrator deletes later stays deleted.
 
+### Payer documents behind the rules
+
+Administrators upload a payer's own documents on the Rules page: a provider manual, policy
+or prior authorization list, as PDF or text (up to 15 MB), with its payer and effective date.
+The text of each page is read on upload (a text file is read in parts of about 3,000
+characters); a scanned PDF with no text is kept but can't be searched.
+
+- **Rules cite them.** A rule's **Source** names a document, a page and the passage it's based
+  on. Claims the rule flags show that source with a link to the document, and AI Fix lists it
+  among its citations. A document a rule cites can't be deleted (409) until no rule cites it.
+- **The assistant searches them.** Each page is a source keyed by its payer and the codes it
+  mentions. Only the claim's own payer's documents (or a payer named in the question) are
+  used, and the question's wording or a billed code picks the page; answers name the
+  document and page. Page text is sent to Claude like the other reference sources; it holds
+  no patient details.
+- **Kept per organisation.** `payer_documents.json` and the `payer_documents/` folder, encrypted
+  with the organisation's key (contract terms can be confidential) and included in its data
+  export. Uploads, downloads and deletions are in the audit log by document ID.
+
+Drafting rules from a document is Stage 2 in `PHASES.md`.
+
 ### Risk score (0–100)
 
 25 points per rule error, 10 per warning, 20 for prior patient denials (+5 if preventable),
@@ -179,8 +200,9 @@ organisation-wide. Changes apply on the person's next action.
 **Platform administration.** Whoever runs the hosted service uses a *platform* account
 (`uv run python -m app.users add ops --name "Ops" --role platform`, no `--org`). It belongs to
 no organisation and sees no patient data. Its **Platform** page lists organisations (status,
-accounts, active admins), creates new ones (starting with the shared code sets and empty
-tables for their own data), adds an organisation's administrator, and suspends or
+accounts, active admins), creates new ones together with their first administrator (both or
+neither; the organisation starts with the shared code sets and empty tables for its own
+data), adds further administrators, and suspends or
 reactivates organisations (suspending signs their users out at once). It records each
 organisation's business associate agreement (BAA); a missing one is flagged, and in
 production mode (`RCM_ENVIRONMENT=production`) blocks the organisation's sign-ins. A
@@ -296,12 +318,25 @@ itself, `POST /api/v1/claims/{claim_id}/handoff` finishes it here (open issues n
 requests get 429 with `Retry-After`. Every request is in the audit log as `api.<key id>`, without
 the claim number, which can be a patient account number.
 
+### Pilot requests
+
+The website's **Request a pilot** form (`POST /api/pilot-requests`, no sign-in) saves the
+request and opens the visitor's email app with a copy addressed to `VITE_PILOT_CONTACT_EMAIL`.
+Platform accounts see requests on the **Platform** page: **Approve** creates the organisation and
+its first administrator from the request (with a temporary password), **Decline** keeps a reason.
+Requests are encrypted with the platform's own data key in `<RCM_ORGS_DIR>/_platform/`, deleted
+12 months after a decision, and audited in the platform audit log. The form is limited per email
+and network address, and has a hidden honeypot field.
+
 ### Accounts
 
 The first administrator is created on the command line, as above. After that, administrators
 manage accounts on the **Users** page (Admin section): add people, change roles, reset
 passwords, and disable or re-enable accounts. Disabling or resetting a password signs that
-person out; administrators can't change their own role or disable themselves, and the last
+person out. A password an administrator sets for someone else (a new account or a reset) is
+temporary: after signing in with it, they must choose their own before anything else opens.
+Anyone can change their own password from the account menu (`POST /api/auth/password`, which
+ends their other sessions). Administrators can't change their own role or disable themselves, and the last
 active administrator can't be demoted or disabled. Every change is audited (never the
 password). Administrators only see and manage their own organisation's accounts; usernames
 are unique across all organisations. The same is possible with `uv run python -m app.users`
@@ -334,8 +369,9 @@ it's visited.
 
 Content only the owner can supply (team profiles, founder story, mission and vision
 approval, legal pages) lives in `frontend/src/site/content.js`; until it's filled in, the
-pages show labelled placeholders. The pilot form opens the visitor's email app addressed
-to `VITE_PILOT_CONTACT_EMAIL`; without it, the form says requests aren't open yet.
+pages show labelled placeholders. The pilot form saves the request for the Platform page
+(see Pilot requests) and opens the visitor's email app addressed to `VITE_PILOT_CONTACT_EMAIL`;
+without that address, the form says requests aren't open yet.
 
 ### HTTPS
 
@@ -412,7 +448,8 @@ All routes are under `/api`; full schemas at `/docs`.
 
 | Area | Endpoints |
 |---|---|
-| Sign-in | `POST /auth/login` · `POST /auth/logout` · `GET /auth/me` · `GET /auth/sso/{org}/start` · `GET /auth/sso/{org}/callback` (single sign-on) |
+| Pilot requests | `POST /pilot-requests` (public form) · `GET /platform/pilot-requests` · `POST /platform/pilot-requests/{id}/approve` · `POST /platform/pilot-requests/{id}/decline` (platform accounts) |
+| Sign-in | `POST /auth/login` · `POST /auth/logout` · `GET /auth/me` · `POST /auth/password` (your own) · `GET /auth/sso/{org}/start` · `GET /auth/sso/{org}/callback` (single sign-on) |
 | Audit | `GET /audit` (username, record_id, outcome, limit) · `GET /audit/verify` |
 | Users | `GET /users` · `POST /users` · `PATCH /users/{username}` · `POST /users/{username}/password` (administrators) |
 | Platform | `GET/POST /platform/organisations` · `POST /platform/organisations/{id}/suspend` · `…/reactivate` · `…/admins` · `…/baa` · `PUT/DELETE …/sso` · `…/delete` · `…/emergency-access` · `GET /platform/emergency-access` · `POST /platform/emergency-access/{id}/end` · `GET /platform/audit` (platform accounts) |
@@ -423,6 +460,7 @@ All routes are under `/api`; full schemas at `/docs`.
 | Saved drafts | `GET /drafts` · `POST /drafts` · `GET /drafts/{id}` · `PUT /drafts/{id}` · `DELETE /drafts/{id}` (billers and admins) |
 | Validation | `GET /validate/{id}` · `POST /validate` (up to 200 claims) |
 | Rules | `GET/POST /rules` · `GET/PUT/PATCH/DELETE /rules/{id}` · `GET /rules/fields` · `POST /rules/test` |
+| Payer documents | `GET/POST /payer-documents` · `GET/DELETE /payer-documents/{id}` · `GET /payer-documents/{id}/file` · `GET /payer-documents/{id}/pages/{page}` |
 | AI Fix | `GET /aifix/{id}` · `POST /aifix/{id}/apply` · `DELETE /aifix/{id}/corrections` |
 | Dashboard | `GET /dashboard` (months, payer_id, department_id) |
 | Reference | `/patients`, `/patients/{id}`, `/patients/{id}/registration`, `/payers`, `/departments`, `/providers`, `/facilities`, `/codes/procedures`, `/codes/diagnoses` |
@@ -477,5 +515,6 @@ claim_validation_tool/
   with Anthropic. Sessions live in memory, so a
   restart signs everyone out.
 - AI Fix is rule-based; the assistant handles the ambiguous cases. Its knowledge is limited to
-  the reference tables: there are no payer policy manuals, so it can't say which services a
-  payer requires prior authorization for, or quote filing limits, and says so.
+  the reference tables and the payer documents an organisation uploads: without a payer's
+  manual it can't say which services that payer requires prior authorization for, or quote
+  filing limits, and says so.
