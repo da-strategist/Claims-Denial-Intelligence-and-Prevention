@@ -50,7 +50,7 @@ describe('site navigation', () => {
     await userEvent.click(within(nav).getByRole('link', { name: 'About' }))
     expect(await screen.findByRole('heading', { level: 1, name: 'Better Claims Start Before Submission.' })).toBeInTheDocument()
     expect(window.location.pathname).toBe('/about')
-    expect(document.title).toBe('About — ClaustraRCM')
+    expect(document.title).toBe('About — VeriClaim')
   })
 
   it('opens and closes the mobile menu', async () => {

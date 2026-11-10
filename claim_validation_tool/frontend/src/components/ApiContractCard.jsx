@@ -1,8 +1,8 @@
 import { useId, useState } from 'react'
 
 const DIRECTIONS = {
-  outbound: { label: 'ClaustraRCM → JAB Audit', style: 'bg-accent-soft text-accent border-transparent' },
-  inbound: { label: 'JAB Audit → ClaustraRCM', style: 'bg-gray-100 text-gray-700 border-transparent' },
+  outbound: { label: 'VeriClaim → JAB Audit', style: 'bg-accent-soft text-accent border-transparent' },
+  inbound: { label: 'JAB Audit → VeriClaim', style: 'bg-gray-100 text-gray-700 border-transparent' },
 }
 
 const TABS = [

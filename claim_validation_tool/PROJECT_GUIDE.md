@@ -1,4 +1,4 @@
-# Project Guide — ClaustraRCM Claim Validation Tool
+# Project Guide — VeriClaim Claim Validation Tool
 
 ## Purpose
 

@@ -1,7 +1,7 @@
 # Data segregation plan: organisations and need-to-know access
 
 **Status:** design agreed 2026-10-17 (decisions in §8). **All four phases built**: A (organisation wall), B (need-to-know scope), C (platform administration and emergency access), and D (encryption at rest, data export, deletion, BAA tracking; §9). A separate deployment per client remains an option (§9.5).
-**Goal:** many organisations (hospitals, practices) can use one hosted ClaustraRCM, each
+**Goal:** many organisations (hospitals, practices) can use one hosted VeriClaim, each
 completely walled off from the others; inside each organisation, people see only the
 facilities, departments, or providers they work for (HIPAA's minimum necessary standard).
 

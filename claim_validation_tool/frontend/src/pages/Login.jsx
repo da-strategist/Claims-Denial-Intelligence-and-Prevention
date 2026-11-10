@@ -49,7 +49,7 @@ export default function Login({ onSignIn, notice }) {
         />
         <a href="/" className="relative flex w-fit items-center gap-2.5 rounded-lg">
           <Logo />
-          <span className="text-[17px] font-semibold tracking-tight">ClaustraRCM</span>
+          <span className="text-[17px] font-semibold tracking-tight">VeriClaim</span>
         </a>
         <div className="relative max-w-md">
           <h2 className="text-4xl leading-[1.1] font-semibold tracking-tight text-balance">Better claims start before submission.</h2>
@@ -74,7 +74,7 @@ export default function Login({ onSignIn, notice }) {
 
       <div className="flex flex-col px-4 py-10 sm:px-8">
         <a href="/" className="flex w-fit items-center gap-1.5 rounded-lg text-sm text-gray-500 hover:text-gray-900">
-          <Icon name="back" className="h-4 w-4" /> ClaustraRCM home
+          <Icon name="back" className="h-4 w-4" /> VeriClaim home
         </a>
         <div className="flex flex-1 items-center justify-center py-10">
           <div className="w-full max-w-sm">
@@ -82,7 +82,7 @@ export default function Login({ onSignIn, notice }) {
               <div className="lg:hidden">
                 <Logo size="h-11 w-11 text-lg rounded-2xl" />
               </div>
-              <h1 className="mt-5 text-3xl font-semibold tracking-tight text-gray-900 lg:mt-0">Sign in to ClaustraRCM</h1>
+              <h1 className="mt-5 text-3xl font-semibold tracking-tight text-gray-900 lg:mt-0">Sign in to VeriClaim</h1>
               <p className="mt-1.5 text-[15px] text-gray-500">Catch claim problems before payers do.</p>
             </div>
             <form onSubmit={submit} aria-label="Sign in" className="space-y-4">

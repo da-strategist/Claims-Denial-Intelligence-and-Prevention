@@ -119,7 +119,7 @@ function SettingsForm({ initial, payers, facilities, onSaved, onCancel }) {
           ))}
         </Group>
       )}
-      <Group title="Clearinghouse" summary="Only for sending from ClaustraRCM. Leave blank if you send from your own billing system.">
+      <Group title="Clearinghouse" summary="Only for sending from VeriClaim. Leave blank if you send from your own billing system.">
         <Text label="Clearinghouse ID" {...field('receiver/id')} />
         <Text label="Clearinghouse name" {...field('receiver/name')} />
       </Group>
@@ -190,7 +190,7 @@ export default function EdiSettingsCard() {
       </div>
       <div className="space-y-3">
         <Readiness label="Files for your billing system" mode={data.settings.mode} missing={data.missing_for_handoff} />
-        <Readiness label="Files sent from ClaustraRCM" mode={data.settings.mode} missing={data.missing_for_sending} />
+        <Readiness label="Files sent from VeriClaim" mode={data.settings.mode} missing={data.missing_for_sending} />
       </div>
       {editing && (
         <SettingsForm

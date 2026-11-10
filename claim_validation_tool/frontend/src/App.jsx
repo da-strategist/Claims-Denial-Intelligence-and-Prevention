@@ -167,7 +167,7 @@ function Shell() {
         <div className="flex items-center gap-2.5 lg:px-2">
           <Logo />
           <div className="leading-tight">
-            <div className="text-[15px] font-semibold tracking-tight text-gray-900">ClaustraRCM</div>
+            <div className="text-[15px] font-semibold tracking-tight text-gray-900">VeriClaim</div>
             {/* Whose data this is: each organisation's is kept apart from the others' */}
             <div className="truncate text-xs text-gray-500" title={auth.user.organisation?.name}>
               {auth.user.organisation?.name ?? (auth.user.role === 'platform' ? 'Platform' : 'Claim Validation')}

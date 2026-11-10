@@ -34,13 +34,13 @@ export const TEAM = [
   },
 ]
 
-/** The founder's account of why ClaustraRCM exists, adapted from the founder's own LinkedIn writing.
+/** The founder's account of why VeriClaim exists, adapted from the founder's own LinkedIn writing.
  * Paragraphs are separated by a blank line. A first version, to be refined. */
 export const FOUNDER_STORY = `There’s a gap in healthcare operations that often goes unnoticed. On one side are clinical coders and health information professionals, who understand ICD-10 rules, payer coverage requirements, and exactly why a claim gets denied. On the other are data and analytics engineers, who can build pipelines and dashboards but have never opened a coding manual. Both do important work, and neither speaks the other’s language fluently.
 
 The result is denial dashboards that count problems without explaining them, and catch them only after the damage is done. A denied claim costs twice: weeks waiting on cash, and hours of rework to get it. Many denials are preventable: a missing diagnosis, two codes that can’t be billed together, a prior authorization number that never made it onto the claim.
 
-I’ve worked on both sides. I coded clinical records, trained hospital staff, and helped design an electronic clinical coding system and an electronic health insurance system, then moved into data and analytics engineering. ClaustraRCM brings the two together: it checks every claim before submission, explains what’s wrong and how to fix it, and holds back the ones likely to be denied until someone does.
+I’ve worked on both sides. I coded clinical records, trained hospital staff, and helped design an electronic clinical coding system and an electronic health insurance system, then moved into data and analytics engineering. VeriClaim brings the two together: it checks every claim before submission, explains what’s wrong and how to fix it, and holds back the ones likely to be denied until someone does.
 
 We’re starting with the hospitals that can least afford the leakage: rural and Critical Access Hospitals.
 

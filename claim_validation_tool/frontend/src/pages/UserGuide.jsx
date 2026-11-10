@@ -152,7 +152,7 @@ const SECTIONS = [
             <strong className="font-medium">Reopen claim</strong> and confirm your system hasn’t sent it.
           </li>
           <li>
-            To send from ClaustraRCM, once nothing is flagged, choose{' '}
+            To send from VeriClaim, once nothing is flagged, choose{' '}
             <strong className="font-medium">Mark as submitted</strong>.
             The claim becomes Pending and moves to Claims, and its 837 claim file is created; use{' '}
             <strong className="font-medium">Download 837</strong> on the claim to get it, or the{' '}
@@ -237,7 +237,7 @@ const SECTIONS = [
     body: () => (
       <>
         <p className="text-[15px] text-gray-700">
-          A claim can’t be submitted from ClaustraRCM while it has any <strong className="font-medium">error</strong>{' '}
+          A claim can’t be submitted from VeriClaim while it has any <strong className="font-medium">error</strong>{' '}
           or <strong className="font-medium">warning</strong>; this applies to claims entered here
           and through the API. The rules are checked again as you submit, using today’s date,
           so a draft left too long can pick up a Timely Filing warning.

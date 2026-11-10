@@ -1,4 +1,4 @@
-# ClaustraRCM — Claim Validation Tool
+# VeriClaim — Claim Validation Tool
 
 Pre-submission claim validation and denial prevention for hospital revenue cycle teams.
 Every claim is checked against configurable rules and scored for denial risk; flagged claims
@@ -252,7 +252,7 @@ Audit Log page. Grants are kept in `backend/orgs/break_glass.json`.
 
 ### How claims leave
 
-ClaustraRCM works alongside a hospital's billing system. A draft can be **handed off**
+VeriClaim works alongside a hospital's billing system. A draft can be **handed off**
 (`POST /api/claims/{id}/hand-off`: the billing system sends it, open issues must be
 acknowledged) or **submitted** (`POST /api/claims/{id}/submit`: blocked by any rule error or
 warning). A claim takes one route; `POST /api/claims/{id}/reopen` puts a handed-off claim

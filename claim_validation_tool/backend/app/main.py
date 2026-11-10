@@ -99,7 +99,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="ClaustraRCM Claim Validation API",
+    title="VeriClaim Claim Validation API",
     version="0.1.0",
     description="AI-Powered Claims Denial Intelligence & Prevention",
     lifespan=lifespan,

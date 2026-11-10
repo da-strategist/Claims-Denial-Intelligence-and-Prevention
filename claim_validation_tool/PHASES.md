@@ -1,4 +1,4 @@
-# Build Phases — ClaustraRCM Claim Validation Tool
+# Build Phases — VeriClaim Claim Validation Tool
 
 > Status key: `[ ]` Pending | `[~]` In Progress | `[x]` Completed
 
@@ -63,7 +63,7 @@
 
 ## Phase 8: JAB Audit Integration (Conceptual)
 - [x] Build workflow diagram component — six steps, marked Live / Needed / Proposed, closing the loop back into Rule Manager
-- [x] Build integration architecture cards — ClaustraRCM, JAB Audit, clearinghouse, EHR/PM, contract repository, security & compliance
+- [x] Build integration architecture cards — VeriClaim, JAB Audit, clearinghouse, EHR/PM, contract repository, security & compliance
 - [x] Design future API contracts — claim handoff (out), underpayment findings, recovery status, rule suggestions (in). Pydantic models in `models/jab.py`, served by `GET /api/jab/contracts` as field tables, JSON Schema, and validated examples
 - Not built: a live underpayment preview. The synthetic allowed amounts aren't generated from contract rates (allowed/expected ranges 0.5–1.9×), so variance figures would be noise. Revisit once the data generator is aligned.
 
@@ -159,12 +159,12 @@ continuous claims:
 
 ## Planned feature updates: claim submission
 
-ClaustraRCM sits alongside a hospital's billing system rather than replacing it. Each
+VeriClaim sits alongside a hospital's billing system rather than replacing it. Each
 organisation sets a default route, and either route can be used on any claim:
 
 - **Validate only:** check and correct here, export, and send from the hospital's own
   billing system. Draft -> Handed off.
-- **Send through ClaustraRCM:** Draft -> Pending, with its 837 saved. Sending for real needs
+- **Send through VeriClaim:** Draft -> Pending, with its 837 saved. Sending for real needs
   the clearinghouse connection below.
 
 Build order:

@@ -71,12 +71,12 @@ export default function About() {
   return (
     <>
       <section aria-labelledby="about-title" className="mx-auto max-w-4xl px-5 pt-16 pb-12 text-center sm:px-8 sm:pt-24">
-        <div className="text-xs font-semibold tracking-[0.14em] text-accent uppercase">About ClaustraRCM</div>
+        <div className="text-xs font-semibold tracking-[0.14em] text-accent uppercase">About VeriClaim</div>
         <h1 id="about-title" className="mt-4 text-4xl font-semibold tracking-tight text-balance text-gray-900 sm:text-6xl sm:leading-[1.05]">
           Better Claims Start Before Submission.
         </h1>
         <p className="mx-auto mt-6 max-w-2xl text-lg leading-relaxed text-gray-600">
-          ClaustraRCM is a pre-submission claims validation platform. It helps hospital billing teams find and correct claim errors
+          VeriClaim is a pre-submission claims validation platform. It helps hospital billing teams find and correct claim errors
           before claims go to payers, starting with US rural hospitals and Critical Access Hospitals.
         </p>
       </section>
@@ -91,7 +91,7 @@ export default function About() {
           </div>
         ) : (
           <div className="mt-4">
-            <Placeholder>The founder’s account of why ClaustraRCM was built will appear here.</Placeholder>
+            <Placeholder>The founder’s account of why VeriClaim was built will appear here.</Placeholder>
           </div>
         )}
       </section>
@@ -173,10 +173,10 @@ export default function About() {
       <section aria-labelledby="invite-title" className="px-5 pb-24 sm:px-8">
         <div className="mx-auto flex max-w-4xl flex-col items-center gap-5 rounded-[1.75rem] bg-navy px-6 py-12 text-center sm:px-12">
           <h2 id="invite-title" className="text-2xl font-semibold tracking-tight text-white sm:text-3xl">
-            Shape ClaustraRCM with us.
+            Shape VeriClaim with us.
           </h2>
           <p className="max-w-xl text-[17px] text-slate-300">
-            Pilot partners use ClaustraRCM on their own claims and help decide what it checks next.
+            Pilot partners use VeriClaim on their own claims and help decide what it checks next.
           </p>
           <Link href="/pilot" className="btn-primary px-6 py-3 text-base">
             Request a Pilot

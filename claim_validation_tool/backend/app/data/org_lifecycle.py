@@ -129,7 +129,7 @@ def export_organisation(org_id: str, exported_by: str) -> tuple[bytes, dict]:
         "organisation": {"id": org.id, "name": org.name},
         "exported_at": datetime.now(UTC).isoformat(),
         "exported_by": exported_by,
-        "note": "Decrypted copy of everything this organisation has in ClaustraRCM. It holds PHI: "
+        "note": "Decrypted copy of everything this organisation has in VeriClaim. It holds PHI: "
         "store and send it only as your HIPAA policies allow. Passwords are not included.",
         "files": [
             {"path": path, "bytes": len(data), "sha256": hashlib.sha256(data).hexdigest()}

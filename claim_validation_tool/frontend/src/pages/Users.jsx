@@ -35,7 +35,7 @@ const CLAIM_ROUTES = [
   },
   {
     value: 'send',
-    label: 'ClaustraRCM',
+    label: 'VeriClaim',
     summary: 'Send claims from here once every rule passes.',
   },
 ]

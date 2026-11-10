@@ -1,7 +1,7 @@
 # HTTPS on a server: Caddy gets and renews a Let's Encrypt certificate for RCM_DOMAIN by
 # itself (ports 80 and 443 must reach the server, and the domain's DNS must point at it).
 #
-#   RCM_DOMAIN=rcm.example.com RCM_FRONTEND_DIST=/srv/claustrarcm/frontend/dist \
+#   RCM_DOMAIN=rcm.example.com RCM_FRONTEND_DIST=/srv/vericlaim/frontend/dist \
 #     caddy run --config Caddyfile.production --adapter caddyfile
 #
 # The API runs on the same server, reachable only from it:

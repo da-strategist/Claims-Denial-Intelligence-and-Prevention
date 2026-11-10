@@ -5,7 +5,7 @@ import HandoffExport from './HandoffExport'
 
 const BLOCKING_SEVERITIES = new Set(['error', 'warning'])
 
-/** Sending through ClaustraRCM: blocked, like the backend, while any rule error or warning remains. */
+/** Sending through VeriClaim: blocked, like the backend, while any rule error or warning remains. */
 function SendRoute({ primary, blocked, disabled, busy, onSend }) {
   return (
     <div className="flex flex-wrap items-center gap-3">
@@ -20,7 +20,7 @@ function SendRoute({ primary, blocked, disabled, busy, onSend }) {
       <span className="text-sm text-gray-600">
         {blocked
           ? 'Resolve every error and warning before submitting.'
-          : 'Sends from ClaustraRCM today and tracks it as pending.'}
+          : 'Sends from VeriClaim today and tracks it as pending.'}
       </span>
     </div>
   )

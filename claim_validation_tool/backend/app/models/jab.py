@@ -1,4 +1,4 @@
-"""Proposed API contracts between ClaustraRCM and JAB Audit (underpayment recovery).
+"""Proposed API contracts between VeriClaim and JAB Audit (underpayment recovery).
 
 Conceptual: nothing here is wired to a live system. The payload models are real so
 the design is type-checked, rendered as JSON Schema for the JAB Audit page, and
@@ -23,7 +23,7 @@ ContractId = Annotated[str, Field(pattern=r"^CON\d{4}$")]
 FindingId = Annotated[str, Field(pattern=r"^UF-[A-Z0-9-]+$")]
 
 
-# --- 1. Claim handoff (ClaustraRCM -> JAB Audit) ------------------------------------
+# --- 1. Claim handoff (VeriClaim -> JAB Audit) ------------------------------------
 
 
 class HandoffLine(BaseModel):
@@ -83,7 +83,7 @@ class HandoffAccepted(BaseModel):
     rejected: list[ClaimId] = Field(default_factory=list)
 
 
-# --- 2. Underpayment findings (JAB Audit -> ClaustraRCM) ----------------------------
+# --- 2. Underpayment findings (JAB Audit -> VeriClaim) ----------------------------
 
 
 class VarianceReason(StrEnum):
@@ -116,7 +116,7 @@ class FindingsBatch(BaseModel):
     findings: list[UnderpaymentFinding] = Field(min_length=1)
 
 
-# --- 3. Recovery status (JAB Audit -> ClaustraRCM) ------------------------------------
+# --- 3. Recovery status (JAB Audit -> VeriClaim) ------------------------------------
 
 
 class RecoveryStatus(StrEnum):
@@ -137,7 +137,7 @@ class RecoveryUpdate(BaseModel):
     note: str | None = None
 
 
-# --- 4. Rule suggestions (JAB Audit -> ClaustraRCM Rule Manager) ---------------------
+# --- 4. Rule suggestions (JAB Audit -> VeriClaim Rule Manager) ---------------------
 
 
 class RuleSuggestion(BaseModel):
@@ -157,8 +157,8 @@ class RuleSuggestion(BaseModel):
 
 
 class Direction(StrEnum):
-    OUTBOUND = "outbound"  # ClaustraRCM calls JAB Audit
-    INBOUND = "inbound"  # JAB Audit calls ClaustraRCM (webhook)
+    OUTBOUND = "outbound"  # VeriClaim calls JAB Audit
+    INBOUND = "inbound"  # JAB Audit calls VeriClaim (webhook)
 
 
 class ContractField(BaseModel):

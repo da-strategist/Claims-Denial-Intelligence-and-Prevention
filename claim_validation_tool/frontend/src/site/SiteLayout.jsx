@@ -15,10 +15,10 @@ const NAV = [
 
 function Brand({ inverse = false }) {
   return (
-    <Link href="/" className="flex items-center gap-2.5 rounded-lg" aria-label="ClaustraRCM home">
+    <Link href="/" className="flex items-center gap-2.5 rounded-lg" aria-label="VeriClaim home">
       <Logo />
       <span className={`text-[17px] font-semibold tracking-tight ${inverse ? 'text-white' : 'text-gray-900'}`}>
-        ClaustraRCM
+        VeriClaim
       </span>
     </Link>
   )
@@ -156,7 +156,7 @@ function SiteFooter() {
         </div>
       </div>
       <div className="border-t border-white/10">
-        <p className="mx-auto max-w-6xl px-5 py-6 text-xs text-gray-500 sm:px-8">© {YEAR} ClaustraRCM. Demonstrations use synthetic data only.</p>
+        <p className="mx-auto max-w-6xl px-5 py-6 text-xs text-gray-500 sm:px-8">© {YEAR} VeriClaim. Demonstrations use synthetic data only.</p>
       </div>
     </footer>
   )

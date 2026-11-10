@@ -1,4 +1,4 @@
-"""Catalog of the proposed ClaustraRCM <-> JAB Audit API contracts.
+"""Catalog of the proposed VeriClaim <-> JAB Audit API contracts.
 
 Each example is built as a model instance, so it is guaranteed to satisfy the schema
 shown next to it. Example values are illustrative, not drawn from the claims data.

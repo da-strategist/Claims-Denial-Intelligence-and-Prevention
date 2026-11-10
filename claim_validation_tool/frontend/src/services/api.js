@@ -312,7 +312,7 @@ export const getDashboard = (params, options) => request('/dashboard', { ...opti
 
 // --- JAB Audit (conceptual) ------------------------------------------------------
 
-/** Proposed ClaustraRCM <-> JAB Audit API contracts, with field tables, schemas, and examples. */
+/** Proposed VeriClaim <-> JAB Audit API contracts, with field tables, schemas, and examples. */
 export const listJabContracts = (options) => request('/jab/contracts', options)
 
 /** Ask the clarification assistant. Returns { answer, sources, mode, notice, claim_facts }. */
